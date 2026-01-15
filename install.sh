@@ -626,11 +626,9 @@ create_systemd_service() {
     cat > /etc/systemd/system/dapx-unified.service << SYSTEMD_UNIT
 [Unit]
 Description=DAPX Unified Replication Manager
-Documentation=https://github.com/grandir66/dapx-backandrepl
+Documentation=https://github.com/grandir66/DA-PXREPL
 After=network.target network-online.target
 Wants=network-online.target
-Requires=zfs.target
-After=zfs.target
 
 [Service]
 Type=simple
@@ -639,7 +637,7 @@ Group=$SERVICE_USER
 WorkingDirectory=$INSTALL_DIR
 
 # Environment
-EnvironmentFile=$CONFIG_DIR/dapx-unified.env
+EnvironmentFile=-$CONFIG_DIR/dapx-unified.env
 Environment="PATH=$INSTALL_DIR/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 # Execution
@@ -661,7 +659,6 @@ NoNewPrivileges=false
 ProtectSystem=false
 PrivateTmp=true
 ProtectHome=false
-ReadWritePaths=$DATA_DIR $LOG_DIR /root/.ssh
 
 # Resource limits
 LimitNOFILE=65535
