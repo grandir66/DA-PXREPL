@@ -610,7 +610,7 @@ SANOID_MANAGER_CORS_ORIGINS=
 SANOID_MANAGER_LOG_LEVEL=INFO
 ENV_FILE
 
-    chmod 600 "$CONFIG_DIR/sanoid-manager.env"
+    chmod 600 "$CONFIG_DIR/dapx-unified.env"
     log_success "Chiave segreta generata e salvata"
 }
 
@@ -864,7 +864,7 @@ verify_installation() {
     # Verifica file
     [[ -f "$INSTALL_DIR/main.py" ]] && log_success "Backend: OK" || log_warning "Backend: MISSING"
     [[ -f "$INSTALL_DIR/frontend/dist/index.html" ]] && log_success "Frontend: OK" || log_warning "Frontend: MISSING"
-    [[ -f "$CONFIG_DIR/sanoid-manager.env" ]] && log_success "Config: OK" || log_warning "Config: MISSING"
+    [[ -f "$CONFIG_DIR/dapx-unified.env" ]] && log_success "Config: OK" || log_warning "Config: MISSING"
 }
 
 # ============== OUTPUT FINALE ==============
