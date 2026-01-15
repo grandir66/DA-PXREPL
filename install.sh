@@ -1149,7 +1149,7 @@ do_install() {
     
     # Output finale
     print_ssh_key
-    print_completion_message
+    print_completion
 }
 
 # ============== FUNZIONE PRINCIPALE ==============
