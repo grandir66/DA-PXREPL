@@ -108,6 +108,11 @@ confirm() {
     local prompt="$1"
     local default="${2:-y}"
     
+    # Non-interactive mode
+    if [[ "${NONINTERACTIVE:-false}" == "true" ]]; then
+        return 0
+    fi
+    
     if [[ "$default" == "y" ]]; then
         prompt="$prompt [Y/n]: "
     else
