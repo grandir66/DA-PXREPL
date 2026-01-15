@@ -511,10 +511,13 @@ copy_application_files() {
     
     # Copia frontend
     if [[ -d "$SCRIPT_DIR/frontend/dist" ]]; then
-        log_info "Copia frontend..."
+        log_info "Copia frontend pre-compilato..."
         mkdir -p "$INSTALL_DIR/frontend/dist"
         cp -r "$SCRIPT_DIR/frontend/dist/"* "$INSTALL_DIR/frontend/dist/"
         log_success "Frontend copiato"
+    elif [[ -d "$SCRIPT_DIR/frontend" ]] && [[ -f "$SCRIPT_DIR/frontend/package.json" ]]; then
+        log_info "Frontend non compilato, avvio build..."
+        build_frontend
     else
         log_warning "Directory frontend non trovata, l'interfaccia web potrebbe non funzionare"
     fi
@@ -522,6 +525,52 @@ copy_application_files() {
     # Imposta permessi
     chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
     chmod +x "$INSTALL_DIR/main.py" 2>/dev/null || true
+}
+
+build_frontend() {
+    log_step "Build Frontend"
+    
+    # Verifica/Installa Node.js
+    if ! command -v node &> /dev/null; then
+        log_info "Node.js non trovato, installazione..."
+        
+        # Installa Node.js via NodeSource
+        curl -fsSL https://deb.nodesource.com/setup_20.x | bash - > /dev/null 2>&1
+        apt-get install -y nodejs > /dev/null 2>&1
+        
+        if ! command -v node &> /dev/null; then
+            log_error "Impossibile installare Node.js"
+            log_warning "Il frontend non sarà disponibile"
+            return 1
+        fi
+    fi
+    
+    NODE_VERSION=$(node --version)
+    log_info "Node.js: $NODE_VERSION"
+    
+    # Build frontend
+    cd "$SCRIPT_DIR/frontend"
+    
+    log_info "Installazione dipendenze npm..."
+    npm install --silent 2>/dev/null || npm install
+    
+    log_info "Compilazione frontend (Vue + Vite)..."
+    npm run build 2>/dev/null || {
+        log_error "Build frontend fallita"
+        return 1
+    }
+    
+    # Copia dist
+    if [[ -d "dist" ]]; then
+        mkdir -p "$INSTALL_DIR/frontend/dist"
+        cp -r dist/* "$INSTALL_DIR/frontend/dist/"
+        log_success "Frontend compilato e copiato"
+    else
+        log_error "Directory dist non creata dopo la build"
+        return 1
+    fi
+    
+    cd - > /dev/null
 }
 
 generate_secret_key() {
@@ -856,24 +905,27 @@ EOF
     
     echo -e "${BOLD}Comandi utili:${NC}"
     echo ""
-    echo -e "    Stato servizio:     ${CYAN}systemctl status sanoid-manager${NC}"
-    echo -e "    Riavvia servizio:   ${CYAN}systemctl restart sanoid-manager${NC}"
-    echo -e "    Visualizza log:     ${CYAN}journalctl -u sanoid-manager -f${NC}"
-    echo -e "    Log applicazione:   ${CYAN}tail -f $LOG_DIR/sanoid-manager.log${NC}"
+    echo -e "    Stato servizio:     ${CYAN}systemctl status dapx-unified${NC}"
+    echo -e "    Riavvia servizio:   ${CYAN}systemctl restart dapx-unified${NC}"
+    echo -e "    Visualizza log:     ${CYAN}journalctl -u dapx-unified -f${NC}"
+    echo -e "    Log applicazione:   ${CYAN}tail -f $LOG_DIR/dapx-unified.log${NC}"
     echo ""
     
     echo -e "${BOLD}Directory:${NC}"
     echo ""
     echo -e "    Applicazione:   $INSTALL_DIR"
     echo -e "    Configurazione: $CONFIG_DIR"
-    echo -e "    Database:       $DATA_DIR/sanoid-manager.db"
+    echo -e "    Database:       $DATA_DIR/dapx.db"
     echo -e "    Log:            $LOG_DIR"
     echo ""
     
-    echo -e "${BOLD}Documentazione:${NC}"
+    echo -e "${BOLD}Documentazione API:${NC}"
     echo ""
-    echo -e "    API Docs:       http://${LOCAL_IP}:${SERVICE_PORT}/docs"
+    echo -e "    Swagger UI:     http://${LOCAL_IP}:${SERVICE_PORT}/docs"
     echo -e "    Health Check:   http://${LOCAL_IP}:${SERVICE_PORT}/api/health"
+    echo ""
+    
+    echo -e "${BOLD}Porta:${NC} ${GREEN}$SERVICE_PORT${NC}"
     echo ""
 }
 
