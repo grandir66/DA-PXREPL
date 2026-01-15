@@ -158,17 +158,34 @@ check_os() {
 }
 
 check_zfs() {
-    log_step "Verifica ZFS"
+    log_step "Verifica ZFS (opzionale per installazione in LXC)"
     
     if ! command -v zfs &> /dev/null; then
-        log_error "ZFS non trovato!"
-        echo -e "Installa ZFS prima di procedere:"
-        echo -e "  ${YELLOW}apt install zfsutils-linux${NC}"
-        exit 1
+        log_warning "ZFS non trovato localmente."
+        echo -e "  ${CYAN}Nota: L'applicazione può gestire nodi Proxmox remoti via SSH.${NC}"
+        echo -e "  ${CYAN}ZFS locale non è necessario se eseguito in un container LXC.${NC}"
+        
+        # In modalità non interattiva (deploy LXC), continua senza errore
+        if [[ "${NONINTERACTIVE:-false}" == "true" ]]; then
+            log_info "Modalità LXC: continuo senza ZFS locale"
+            IS_LXC_MODE=true
+            return 0
+        fi
+        
+        # In modalità interattiva, chiedi conferma
+        if confirm "Continuare senza ZFS locale?" "y"; then
+            IS_LXC_MODE=true
+            return 0
+        else
+            log_error "Installazione annullata. Per installare ZFS:"
+            echo -e "  ${YELLOW}apt install zfsutils-linux${NC}"
+            exit 1
+        fi
     fi
     
     ZFS_VERSION=$(zfs version 2>/dev/null | head -1 || modinfo zfs 2>/dev/null | grep ^version | awk '{print $2}' || echo "installato")
     log_success "ZFS disponibile: $ZFS_VERSION"
+    IS_LXC_MODE=false
     
     # Verifica pool ZFS
     POOLS=$(zpool list -H -o name 2>/dev/null | wc -l)
