@@ -18,6 +18,9 @@ export interface JobLog {
     triggered_by: number;
 }
 
+// Alias for backward compatibility
+export type LogEntry = JobLog;
+
 export default {
     getLogs(params: {
         limit?: number;
@@ -35,5 +38,10 @@ export default {
 
     getJobHistory(jobId: number | string, limit: number = 50) {
         return apiClient.get<JobLog[]>(`/logs/job/${jobId}/history`, { params: { limit } });
+    },
+
+    clearLogs() {
+        return apiClient.delete('/logs/');
     }
 }
+
