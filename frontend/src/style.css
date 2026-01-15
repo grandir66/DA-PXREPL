@@ -1,0 +1,471 @@
+:root {
+  /* ==========================================================================
+     Design Tokens - Professional Dark Theme
+     ========================================================================== */
+
+  /* Neutral Scale (Slate/Gray) */
+  --color-bg-body: #0f1115;
+  /* Deepest background */
+  --color-bg-surface: #161b22;
+  /* Card/Sidebar background */
+  --color-bg-element: #21262d;
+  /* Input/Element background */
+  --color-bg-hover: #30363d;
+  /* Hover state */
+
+  --color-border: #30363d;
+  /* Subtle borders */
+  --color-border-hover: #8b949e;
+  /* Hover borders */
+
+  --color-text-primary: #f0f6fc;
+  /* High contrast text */
+  --color-text-secondary: #8b949e;
+  /* Medium contrast text */
+  --color-text-tertiary: #484f58;
+  /* Low contrast text */
+
+  /* Brand / Accent Colors (Indigo/Blue focus) */
+  --color-primary: #58a6ff;
+  /* Primary action/link */
+  --color-primary-dim: rgba(88, 166, 255, 0.15);
+  --color-accent: #79c0ff;
+  /* Secondary accent */
+
+  /* Semantic Colors */
+  --color-success: #238636;
+  /* Success solid */
+  --color-success-fg: #3fb950;
+  /* Success text/icon */
+  --color-success-dim: rgba(46, 160, 67, 0.15);
+
+  --color-warning: #9e6a03;
+  /* Warning solid */
+  --color-warning-fg: #d29922;
+  /* Warning text/icon */
+  --color-warning-dim: rgba(187, 128, 9, 0.15);
+
+  --color-danger: #da3633;
+  /* Danger solid */
+  --color-danger-fg: #f85149;
+  /* Danger text/icon */
+  --color-danger-dim: rgba(248, 81, 73, 0.15);
+
+  --color-info: #1f6feb;
+  /* Info solid */
+  --color-info-fg: #58a6ff;
+  /* Info text/icon */
+  --color-info-dim: rgba(56, 139, 253, 0.15);
+
+  /* Specific Service Colors */
+  --color-pbs: #e05d44;
+  /* Proxmox Backup Server (Orange-ish) */
+  --color-zfs: #73b756;
+  /* ZFS (Green-ish) */
+
+  /* Typography */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+
+  /* Spacing */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-8: 48px;
+
+  /* Radius */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.1);
+
+  /* --- COMPATIBILITY ALIASES --- */
+  /* Mapping Core Colors to Component Variables */
+  --bg-primary: var(--color-bg-body);
+  --bg-secondary: var(--color-bg-element);
+  --bg-surface: var(--color-bg-surface);
+
+  --text-primary: var(--color-text-primary);
+  --text-secondary: var(--color-text-secondary);
+  --text-tertiary: var(--color-text-tertiary);
+
+  --border-color: var(--color-border);
+
+  --accent-primary: var(--color-primary);
+  --accent-secondary: var(--color-accent);
+
+  --accent-success: var(--color-success);
+  --accent-warning: var(--color-warning);
+  --accent-danger: var(--color-danger);
+  --accent-info: var(--color-info);
+}
+
+/* Global Reset & Base */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  border-width: 0;
+  border-style: solid;
+  border-color: var(--color-border);
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-bg-body);
+  color: var(--color-text-primary);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+#app {
+  width: 100%;
+  min-height: 100vh;
+}
+
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.15s ease;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* Typography Utility */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 600;
+  color: var(--color-text-primary);
+  line-height: 1.25;
+}
+
+h1 {
+  font-size: 2rem;
+}
+
+h2 {
+  font-size: 1.5rem;
+}
+
+h3 {
+  font-size: 1.25rem;
+}
+
+/* Component: Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1.25rem;
+  white-space: nowrap;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Button Variants */
+.btn-primary {
+  background-color: var(--color-success);
+  color: #fff;
+  border: 1px solid rgba(240, 246, 252, 0.1);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: #2da44e;
+}
+
+.btn-secondary {
+  background-color: var(--color-bg-element);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background-color: var(--color-bg-hover);
+  border-color: var(--color-border-hover);
+}
+
+.btn-danger {
+  background-color: var(--color-danger-dim);
+  color: var(--color-danger-fg);
+  border: 1px solid var(--color-border);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background-color: rgba(248, 81, 73, 0.25);
+  border-color: var(--color-danger-fg);
+}
+
+.btn-sm {
+  padding: 4px 12px;
+  font-size: 0.75rem;
+}
+
+.btn-icon {
+  padding: 6px;
+}
+
+/* Groups */
+.btn-group {
+  display: flex;
+  gap: var(--space-1);
+}
+
+/* Component: Cards */
+.card {
+  background-color: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Component: Badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 18px;
+  border-radius: 2em;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.badge-outline {
+  border-color: var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+.badge-success {
+  background-color: var(--color-success-dim);
+  color: var(--color-success-fg);
+  border-color: rgba(46, 160, 67, 0.2);
+}
+
+.badge-warning {
+  background-color: var(--color-warning-dim);
+  color: var(--color-warning-fg);
+  border-color: rgba(187, 128, 9, 0.2);
+}
+
+.badge-danger {
+  background-color: var(--color-danger-dim);
+  color: var(--color-danger-fg);
+  border-color: rgba(248, 81, 73, 0.2);
+}
+
+.badge-info {
+  background-color: var(--color-info-dim);
+  color: var(--color-info-fg);
+  border-color: rgba(56, 139, 253, 0.2);
+}
+
+.badge-purple {
+  background-color: rgba(163, 113, 247, 0.15);
+  color: #d2a8ff;
+  border-color: rgba(163, 113, 247, 0.2);
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: currentColor;
+  margin-right: 6px;
+  display: inline-block;
+}
+
+/* Component: Tables */
+.table-container {
+  overflow-x: auto;
+  width: 100%;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-surface);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.data-table th {
+  text-align: left;
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--color-bg-surface);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.data-table td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  vertical-align: middle;
+}
+
+.data-table tr:last-child td {
+  border-bottom: none;
+}
+
+.data-table tr:hover td {
+  background-color: var(--color-bg-hover);
+}
+
+/* Component: Forms */
+.form-input {
+  display: block;
+  width: 100%;
+  padding: 6px 12px;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-body);
+  background-clip: padding-box;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+  font-family: inherit;
+}
+
+.form-input:focus {
+  border-color: var(--color-primary);
+  outline: 0;
+  box-shadow: 0 0 0 3px var(--color-primary-dim);
+}
+
+/* Utilities */
+.text-xs {
+  font-size: 0.75rem;
+}
+
+.text-sm {
+  font-size: 0.875rem;
+}
+
+.text-base {
+  font-size: 1rem;
+}
+
+.text-lg {
+  font-size: 1.125rem;
+}
+
+.text-xl {
+  font-size: 1.25rem;
+}
+
+.font-bold {
+  font-weight: 700;
+}
+
+.font-medium {
+  font-weight: 500;
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+.text-secondary {
+  color: var(--color-text-secondary);
+}
+
+.text-success {
+  color: var(--color-success-fg);
+}
+
+.text-warning {
+  color: var(--color-warning-fg);
+}
+
+.text-danger {
+  color: var(--color-danger-fg);
+}
+
+.flex {
+  display: flex;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.justify-between {
+  justify-content: space-between;
+}
+
+.justify-end {
+  justify-content: flex-end;
+}
+
+.gap-2 {
+  gap: var(--space-2);
+}
+
+.mt-1 {
+  margin-top: var(--space-1);
+}
+
+.mb-4 {
+  margin-bottom: var(--space-4);
+}
+
+.w-full {
+  width: 100%;
+}
+
+.cursor-pointer {
+  cursor: pointer;
+}
+
+.select-none {
+  user-select: none;
+}
+
+/* Transitions */
+.slide-enter-active,
+.slide-leave-active {
+  transition: transform 0.3s ease;
+}
+
+.slide-enter-from,
+.slide-leave-to {
+  transform: translateX(100%);
+}
