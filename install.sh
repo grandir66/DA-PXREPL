@@ -555,16 +555,24 @@ build_frontend() {
     npm install --silent 2>/dev/null || npm install
     
     log_info "Compilazione frontend (Vue + Vite)..."
-    npm run build 2>/dev/null || {
+    npm run build || {
         log_error "Build frontend fallita"
         return 1
     }
     
-    # Copia dist
+    # Copia dist solo se necessario (non copiare se siamo già nella directory di installazione)
     if [[ -d "dist" ]]; then
-        mkdir -p "$INSTALL_DIR/frontend/dist"
-        cp -r dist/* "$INSTALL_DIR/frontend/dist/"
-        log_success "Frontend compilato e copiato"
+        # Verifica se siamo già nella directory di installazione
+        FRONTEND_REALPATH=$(realpath "$SCRIPT_DIR/frontend/dist" 2>/dev/null || echo "$SCRIPT_DIR/frontend/dist")
+        INSTALL_FRONTEND_PATH=$(realpath "$INSTALL_DIR/frontend/dist" 2>/dev/null || echo "$INSTALL_DIR/frontend/dist")
+        
+        if [[ "$FRONTEND_REALPATH" == "$INSTALL_FRONTEND_PATH" ]]; then
+            log_success "Frontend compilato (già nella directory di installazione)"
+        else
+            mkdir -p "$INSTALL_DIR/frontend/dist"
+            cp -r dist/* "$INSTALL_DIR/frontend/dist/"
+            log_success "Frontend compilato e copiato"
+        fi
     else
         log_error "Directory dist non creata dopo la build"
         return 1
