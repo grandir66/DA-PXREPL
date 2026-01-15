@@ -33,10 +33,10 @@ update_status = {
 }
 
 # Configurazione
-GITHUB_REPO = "grandir66/dapx-backandrepl"
+GITHUB_REPO = "grandir66/DA-PXREPL"
 GITHUB_API = f"https://api.github.com/repos/{GITHUB_REPO}"
-INSTALL_DIR = "/opt/dapx-backandrepl"
-VERSION_FILE = os.path.join(INSTALL_DIR, "VERSION")  # File VERSION nella root
+INSTALL_DIR = "/opt/dapx-unified"
+VERSION_FILE = os.path.join(INSTALL_DIR, "version.json")
 
 # Modelli
 class UpdateCheckResponse(BaseModel):
@@ -61,43 +61,40 @@ class UpdateStartResponse(BaseModel):
 
 
 def get_current_version() -> str:
-    """Ottieni versione corrente installata"""
+    """Ottieni versione corrente installata da version.json"""
     try:
-        # Lista di percorsi da provare in ordine di priorità
+        # Lista di percorsi da provare
         version_paths = [
-            # Percorsi standard
             VERSION_FILE,
-            os.path.join(INSTALL_DIR, "VERSION"),
-            "/opt/dapx-backandrepl/VERSION",
-            "/opt/sanoid-manager/VERSION",
-            # Percorsi Docker (container)
-            "/app/VERSION",
-            os.path.join(os.getcwd(), "VERSION"),
-            # Percorsi relativi al backend (per sviluppo)
-            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "VERSION"),
-            os.path.join(os.path.dirname(os.path.dirname(__file__)), "..", "VERSION"),
-            # Percorsi alternativi
-            os.path.join(INSTALL_DIR, "version.txt"),
-            "/app/version.txt",
-            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "version.txt"),
+            os.path.join(INSTALL_DIR, "version.json"),
+            "/opt/dapx-unified/version.json",
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), "version.json"),
+            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "version.json"),
         ]
         
-        # Cerca file VERSION o version.txt
         for version_file in version_paths:
             if os.path.exists(version_file):
                 try:
                     with open(version_file, 'r') as f:
-                        version = f.read().strip()
-                        # Rimuovi spazi e newline
-                        version = version.split('\n')[0].strip()
+                        data = json.load(f)
+                        version = data.get("version", "unknown")
                         if version and version != "":
                             logger.debug(f"Versione letta da {version_file}: {version}")
                             return version
+                except json.JSONDecodeError:
+                    # Potrebbe essere un file VERSION vecchio stile
+                    try:
+                        with open(version_file, 'r') as f:
+                            version = f.read().strip().split('\n')[0].strip()
+                            if version:
+                                return version
+                    except:
+                        pass
                 except Exception as e:
                     logger.warning(f"Errore lettura file versione {version_file}: {e}")
                     continue
         
-        # Fallback: Prova git describe (restituisce tag se disponibile, altrimenti commit)
+        # Fallback: git describe
         if os.path.exists(os.path.join(INSTALL_DIR, ".git")):
             result = subprocess.run(
                 ["git", "describe", "--tags", "--always", "--dirty"],
@@ -107,26 +104,8 @@ def get_current_version() -> str:
                 timeout=5
             )
             if result.returncode == 0 and result.stdout.strip():
-                version = result.stdout.strip()
-                # Rimuovi prefisso 'v' se presente
-                if version.startswith('v'):
-                    version = version[1:]
+                version = result.stdout.strip().lstrip("v")
                 logger.debug(f"Versione da git describe: {version}")
-                return version
-        
-        # Ultimo fallback: Prova git rev-parse (solo se git describe fallisce)
-        # Questo restituisce un hash, quindi è meglio evitarlo se possibile
-        if os.path.exists(os.path.join(INSTALL_DIR, ".git")):
-            result = subprocess.run(
-                ["git", "rev-parse", "--short", "HEAD"],
-                cwd=INSTALL_DIR,
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                version = result.stdout.strip()
-                logger.warning(f"Usato hash commit come versione (file VERSION non trovato): {version}")
                 return version
         
         logger.warning("Impossibile determinare versione, uso 'unknown'")

@@ -78,6 +78,11 @@ const router = createRouter({
                     path: 'settings',
                     name: 'settings',
                     component: Settings
+                },
+                {
+                    path: 'updates',
+                    name: 'updates',
+                    component: () => import('../views/settings/Updates.vue')
                 }
             ]
         },
