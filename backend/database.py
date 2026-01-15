@@ -878,6 +878,22 @@ def init_default_config(db_session):
     if not db_session.query(NotificationConfig).first():
         db_session.add(NotificationConfig())
     
+    # Crea utente admin di default se non esistono utenti
+    if db_session.query(User).count() == 0:
+        import bcrypt
+        password_hash = bcrypt.hashpw('admin'.encode(), bcrypt.gensalt()).decode()
+        admin_user = User(
+            username='admin',
+            password_hash=password_hash,
+            full_name='Administrator',
+            auth_method=AuthMethod.LOCAL.value,
+            role=UserRole.ADMIN.value,
+            is_active=True,
+            must_change_password=True  # Forza cambio password al primo login
+        )
+        db_session.add(admin_user)
+        print("✓ Utente admin creato (credenziali: admin/admin)")
+    
     db_session.commit()
 
 
