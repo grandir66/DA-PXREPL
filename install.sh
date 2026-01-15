@@ -439,33 +439,37 @@ install_python_dependencies() {
     
     source "$INSTALL_DIR/venv/bin/activate"
     
-    # Lista dipendenze
-    local deps=(
-        "fastapi>=0.104.0"
-        "uvicorn[standard]>=0.24.0"
-        "python-multipart>=0.0.6"
-        "sqlalchemy>=2.0.0"
-        "aiosqlite>=0.19.0"
-        "paramiko>=3.3.0"
-        "croniter>=2.0.0"
-        "pydantic>=2.5.0"
-        "pydantic[email]>=2.5.0"
-        "python-dotenv>=1.0.0"
-        "python-jose[cryptography]>=3.3.0"
-        "passlib[bcrypt]>=1.7.4"
-        "bcrypt>=4.0.0"
-        "aiohttp>=3.9.0"
-        "aiosmtplib>=3.0.0"
-    )
-    
-    log_info "Installazione ${#deps[@]} pacchetti Python..."
-    
-    for dep in "${deps[@]}"; do
-        pip install "$dep" --quiet 2>/dev/null || {
-            log_warning "Errore installazione $dep, riprovo..."
-            pip install "$dep" 2>/dev/null || true
-        }
-    done
+    # Usa requirements.txt se disponibile
+    if [[ -f "$SCRIPT_DIR/backend/requirements.txt" ]]; then
+        log_info "Installazione da requirements.txt..."
+        pip install -r "$SCRIPT_DIR/backend/requirements.txt" --quiet 2>/dev/null || \
+            pip install -r "$SCRIPT_DIR/backend/requirements.txt"
+    else
+        # Fallback: lista dipendenze essenziali
+        log_info "requirements.txt non trovato, installazione dipendenze essenziali..."
+        local deps=(
+            "fastapi>=0.104.0"
+            "uvicorn[standard]>=0.24.0"
+            "python-multipart>=0.0.6"
+            "sqlalchemy>=2.0.0"
+            "aiosqlite>=0.19.0"
+            "paramiko>=3.3.0"
+            "croniter>=2.0.0"
+            "pydantic>=2.5.0"
+            "pydantic[email]>=2.5.0"
+            "python-dotenv>=1.0.0"
+            "python-jose[cryptography]>=3.3.0"
+            "bcrypt>=4.0.0"
+            "aiohttp>=3.9.0"
+            "aiosmtplib>=3.0.0"
+            "httpx>=0.25.0"
+            "cryptography>=41.0.0"
+        )
+        
+        for dep in "${deps[@]}"; do
+            pip install "$dep" --quiet 2>/dev/null || pip install "$dep" || true
+        done
+    fi
     
     deactivate
     log_success "Dipendenze Python installate"
