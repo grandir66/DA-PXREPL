@@ -112,8 +112,8 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
-import updatesService from '../services/updates';
-import type { UpdateCheckResult, UpdateStatus } from '../services/updates';
+import updatesService from '../../services/updates';
+import type { UpdateCheckResult, UpdateStatus } from '../../services/updates';
 
 const currentVersion = ref<string>('');
 const updateInfo = ref<UpdateCheckResult | null>(null);
