@@ -7,7 +7,7 @@ from typing import Dict, Any, List, Optional
 import json
 
 from sqlalchemy.orm import Session
-from database import SessionLocal
+from database import SessionLocal, Node
 
 # Add proxlb_lib to sys.path
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -40,6 +40,55 @@ class LoadBalancerService:
         self.running = False
         self._last_analysis = None
         
+    def _get_dynamic_config_from_db(self) -> Dict[str, Any]:
+        """Fetch nodes and credentials from DB"""
+        config_update = {
+            "proxmox_api": {}
+        }
+        db = SessionLocal()
+        try:
+            nodes = db.query(Node).filter(Node.is_active == True).all()
+            
+            hosts = []
+            token_id = None
+            token_secret = None
+            
+            for node in nodes:
+                # Add host
+                if node.hostname and node.hostname not in hosts:
+                    hosts.append(node.hostname)
+                
+                # Check for auth if we don't have it yet
+                if not token_id and node.proxmox_api_token:
+                    # Token format: user@pam!tokenid=secret or just user@pam!tokenid
+                    # dapx typically stores: user@pam!tokenid=secret
+                    if "=" in node.proxmox_api_token and "!" in node.proxmox_api_token:
+                        try:
+                            full_user, secret = node.proxmox_api_token.split("=", 1)
+                            token_id = full_user
+                            token_secret = secret
+                        except ValueError:
+                            pass
+            
+            # If nothing found in hosts, at least try standard IPs if known or container gateway
+            if not hosts:
+                hosts.append("192.168.40.4")
+            elif "192.168.40.4" not in hosts:
+                 hosts.append("192.168.40.4")
+
+            config_update["proxmox_api"]["hosts"] = hosts
+            
+            if token_id and token_secret:
+                config_update["proxmox_api"]["token_id"] = token_id
+                config_update["proxmox_api"]["token_secret"] = token_secret
+                
+        except Exception as e:
+            logger.error(f"Error fetching config from DB: {e}")
+        finally:
+            db.close()
+            
+        return config_update
+
     def _get_default_config(self) -> Dict[str, Any]:
         """Returns default configuration for ProxLB"""
         # In a real implementation, we would fetch credentials from DB or Vault
@@ -104,8 +153,23 @@ class LoadBalancerService:
         return config
 
     def _merge_config(self, user_config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Merges default config with user provided config"""
+        """Merges default config with dynamic DB config and user provided config"""
+        
+        # 1. Base defaults
         config = self._get_default_config()
+        
+        # 2. Dynamic DB config
+        db_config = self._get_dynamic_config_from_db()
+        
+        # Merge DB config into base
+        if db_config.get("proxmox_api", {}).get("hosts"):
+            config["proxmox_api"]["hosts"] = db_config["proxmox_api"]["hosts"]
+        
+        if db_config.get("proxmox_api", {}).get("token_id"):
+             config["proxmox_api"]["token_id"] = db_config["proxmox_api"]["token_id"]
+             config["proxmox_api"]["token_secret"] = db_config["proxmox_api"]["token_secret"]
+        
+        # 3. User overrides (highest priority)
         if user_config:
             # Deep merge simple implementation
             for k, v in user_config.items():
