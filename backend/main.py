@@ -94,6 +94,18 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    logger.info(f"Incoming Request: {request.method} {request.url.path}")
+    try:
+        response = await call_next(request)
+        logger.info(f"Response: {response.status_code}")
+        return response
+    except Exception as e:
+        logger.error(f"Request failed: {e}")
+        raise
+
+
 # Router API
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(nodes.router, prefix="/api/nodes", tags=["Nodes"])
