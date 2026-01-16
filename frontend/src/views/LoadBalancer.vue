@@ -224,9 +224,11 @@ const getGuestCount = (nodeName: string, guestType: 'qemu' | 'lxc') => {
     if (!lastAnalysis.value || !lastAnalysis.value.guests) return 0;
     const guests = lastAnalysis.value.guests;
     let count = 0;
+    // ProxLB uses 'vm'/'ct' as type, and 'node_current' as the node field
+    const proxlbType = guestType === 'qemu' ? 'vm' : 'ct';
     for (const id in guests) {
         const guest = guests[id];
-        if (guest.node === nodeName && guest.type === guestType) {
+        if (guest.node_current === nodeName && guest.type === proxlbType) {
             count++;
         }
     }
