@@ -129,8 +129,27 @@
                     <span v-if="loading" class="spinner-sm"></span>
                     {{ loading ? 'Refreshing...' : '🔄 Refresh Data' }}
                 </button>
+                
+                <!-- Auto-refresh controls -->
+                <div class="auto-refresh-controls">
+                    <label class="toggle-label">
+                        <input type="checkbox" v-model="autoRefreshEnabled" @change="toggleAutoRefresh">
+                        <span class="toggle-switch"></span>
+                        Auto-refresh
+                    </label>
+                    <select v-model="autoRefreshInterval" class="interval-select" :disabled="!autoRefreshEnabled">
+                        <option :value="10">10s</option>
+                        <option :value="30">30s</option>
+                        <option :value="60">60s</option>
+                        <option :value="120">2m</option>
+                    </select>
+                    <span v-if="autoRefreshEnabled && countdown > 0" class="countdown">
+                        ⏱️ {{ countdown }}s
+                    </span>
+                </div>
+                
                 <span v-if="lastAnalysis" class="last-update">
-                    Last update: {{ new Date().toLocaleTimeString() }}
+                    Last update: {{ lastUpdateTime }}
                 </span>
             </div>
 
@@ -486,7 +505,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, reactive, watch } from 'vue';
+import { ref, onMounted, onUnmounted, computed, reactive, watch } from 'vue';
 import loadBalancerService from '../services/loadBalancer';
 
 const activeTab = ref('analysis');
@@ -497,6 +516,14 @@ const lastAnalysis = ref<any>(null);
 const configJson = ref('{}');
 const executionLog = ref<string[]>([]);
 const showJsonPreview = ref(false);
+
+// Auto-refresh state
+const autoRefreshEnabled = ref(false);
+const autoRefreshInterval = ref(30); // seconds
+const countdown = ref(0);
+const lastUpdateTime = ref('');
+let autoRefreshTimer: ReturnType<typeof setInterval> | null = null;
+let countdownTimer: ReturnType<typeof setInterval> | null = null;
 
 // Reactive configuration object with defaults
 const config = reactive({
@@ -662,6 +689,9 @@ const runAnalysis = async () => {
         if (lastAnalysis.value.guests) {
             allGuests.value = Object.values(lastAnalysis.value.guests);
         }
+        
+        // Update last refresh time
+        lastUpdateTime.value = new Date().toLocaleTimeString();
     } catch (e: any) {
         error.value = e.response?.data?.detail || e.message;
     } finally {
@@ -684,6 +714,63 @@ const executeRun = async (dryRun: boolean) => {
         executing.value = false;
     }
 };
+
+// Auto-refresh functions
+const startAutoRefresh = () => {
+    stopAutoRefresh();
+    countdown.value = autoRefreshInterval.value;
+    
+    // Countdown timer (every second)
+    countdownTimer = setInterval(() => {
+        countdown.value--;
+        if (countdown.value <= 0) {
+            countdown.value = autoRefreshInterval.value;
+        }
+    }, 1000);
+    
+    // Refresh timer
+    autoRefreshTimer = setInterval(() => {
+        if (activeTab.value === 'health' && !loading.value) {
+            runAnalysis();
+        }
+    }, autoRefreshInterval.value * 1000);
+};
+
+const stopAutoRefresh = () => {
+    if (autoRefreshTimer) {
+        clearInterval(autoRefreshTimer);
+        autoRefreshTimer = null;
+    }
+    if (countdownTimer) {
+        clearInterval(countdownTimer);
+        countdownTimer = null;
+    }
+    countdown.value = 0;
+};
+
+const toggleAutoRefresh = () => {
+    if (autoRefreshEnabled.value) {
+        startAutoRefresh();
+    } else {
+        stopAutoRefresh();
+    }
+};
+
+// Watch for interval changes while enabled
+watch(autoRefreshInterval, () => {
+    if (autoRefreshEnabled.value) {
+        startAutoRefresh();
+    }
+});
+
+// Stop auto-refresh when leaving health tab
+watch(activeTab, (newTab) => {
+    if (newTab !== 'health' && autoRefreshEnabled.value) {
+        stopAutoRefresh();
+    } else if (newTab === 'health' && autoRefreshEnabled.value) {
+        startAutoRefresh();
+    }
+});
 
 const refreshConfig = async () => {
     try {
@@ -841,6 +928,10 @@ const totalCTs = computed(() => {
 onMounted(() => {
     refreshConfig();
 });
+
+onUnmounted(() => {
+    stopAutoRefresh();
+});
 </script>
 
 <style scoped>
@@ -889,6 +980,80 @@ onMounted(() => {
     align-items: center;
     margin-bottom: 24px;
     flex-wrap: wrap;
+}
+
+/* Auto-refresh controls */
+.auto-refresh-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.toggle-label input {
+    display: none;
+}
+
+.toggle-switch {
+    width: 40px;
+    height: 22px;
+    background: var(--border-color);
+    border-radius: 11px;
+    position: relative;
+    transition: background 0.3s;
+}
+
+.toggle-switch::after {
+    content: '';
+    width: 18px;
+    height: 18px;
+    background: white;
+    border-radius: 50%;
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    transition: transform 0.3s;
+}
+
+.toggle-label input:checked + .toggle-switch {
+    background: #22c55e;
+}
+
+.toggle-label input:checked + .toggle-switch::after {
+    transform: translateX(18px);
+}
+
+.interval-select {
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.interval-select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.countdown {
+    font-size: 0.85rem;
+    color: var(--accent-primary);
+    font-weight: 600;
+    min-width: 50px;
 }
 
 .analysis-actions {
