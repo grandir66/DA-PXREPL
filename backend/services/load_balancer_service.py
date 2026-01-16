@@ -298,7 +298,7 @@ class LoadBalancerService:
         result_log = []
         
         # Execute balancing
-        if proxlb_config["meta"]["balancing"].get("enable", False):
+        if proxlb_config["balancing"].get("enable", False):
             if not dry_run:
                 # Capture logs or output? 
                 # Balancing class prints to log. We might not capture it easily unless we mock logger.

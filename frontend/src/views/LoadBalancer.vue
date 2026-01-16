@@ -77,10 +77,10 @@
                         <tbody>
                             <tr v-for="(node, name) in lastAnalysis.nodes" :key="name">
                                 <td>{{ name }}</td>
-                                <td>{{ formatPercent(node.cpu_percent) }}</td>
-                                <td>{{ formatPercent(node.mem_percent) }}</td>
-                                <td>{{ node.qemu_count }}</td>
-                                <td>{{ node.lxc_count }}</td>
+                                <td>{{ formatPercentDirect(node.cpu_used_percent) }}</td>
+                                <td>{{ formatPercentDirect(node.memory_used_percent) }}</td>
+                                <td>{{ getGuestCount(name, 'qemu') }}</td>
+                                <td>{{ getGuestCount(name, 'lxc') }}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -211,6 +211,26 @@ const saveConfiguration = async () => {
 
 const formatPercent = (val: number) => {
     return (val * 100).toFixed(1) + '%';
+};
+
+// ProxLB already returns percentages as 0-100, not 0-1
+const formatPercentDirect = (val: number) => {
+    if (val === undefined || val === null || isNaN(val)) return 'N/A';
+    return val.toFixed(1) + '%';
+};
+
+// Count guests (VMs or CTs) on a specific node
+const getGuestCount = (nodeName: string, guestType: 'qemu' | 'lxc') => {
+    if (!lastAnalysis.value || !lastAnalysis.value.guests) return 0;
+    const guests = lastAnalysis.value.guests;
+    let count = 0;
+    for (const id in guests) {
+        const guest = guests[id];
+        if (guest.node === nodeName && guest.type === guestType) {
+            count++;
+        }
+    }
+    return count;
 };
 
 onMounted(() => {
