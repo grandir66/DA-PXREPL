@@ -3,7 +3,7 @@ DAPX-Unified - Configuration Backup & Restore
 Export/Import completo di configurazione, database, chiavi SSH e certificati
 """
 
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Query, Form, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
@@ -251,7 +251,7 @@ from routers.auth import get_current_user, User
 
 # ...
 
-from fastapi import Request
+
 
 @router.get("/download/{filename}")
 async def download_backup(
@@ -315,13 +315,15 @@ async def download_backup(
 
 
 
+
+
 @router.post("/import")
 async def restore_backup(
     file: UploadFile = File(...),
-    restore_database: bool = True,
-    restore_ssh_keys: bool = True,
-    restore_certificates: bool = True,
-    restore_config: bool = True,
+    restore_database: bool = Form(True),
+    restore_ssh_keys: bool = Form(True),
+    restore_certificates: bool = Form(True),
+    restore_config: bool = Form(True),
     user: User = Depends(require_admin)
 ) -> RestoreResult:
     """Importa un backup da file caricato"""

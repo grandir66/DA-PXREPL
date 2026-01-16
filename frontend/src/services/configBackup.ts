@@ -93,14 +93,14 @@ export default {
         const formData = new FormData();
         formData.append('file', file);
 
-        const params = new URLSearchParams();
-        if (options.restore_database !== undefined) params.append('restore_database', String(options.restore_database));
-        if (options.restore_ssh_keys !== undefined) params.append('restore_ssh_keys', String(options.restore_ssh_keys));
-        if (options.restore_certificates !== undefined) params.append('restore_certificates', String(options.restore_certificates));
-        if (options.restore_config !== undefined) params.append('restore_config', String(options.restore_config));
+        // Aggiungi opzioni come campi form
+        if (options.restore_database !== undefined) formData.append('restore_database', String(options.restore_database));
+        if (options.restore_ssh_keys !== undefined) formData.append('restore_ssh_keys', String(options.restore_ssh_keys));
+        if (options.restore_certificates !== undefined) formData.append('restore_certificates', String(options.restore_certificates));
+        if (options.restore_config !== undefined) formData.append('restore_config', String(options.restore_config));
 
         return apiClient.post<RestoreResult>(
-            `/config-backup/import?${params.toString()}`,
+            '/config-backup/import',
             formData,
             { headers: { 'Content-Type': 'multipart/form-data' } }
         );
