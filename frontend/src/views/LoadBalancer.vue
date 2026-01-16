@@ -21,6 +21,12 @@
         </button>
         <button 
             class="tab-btn" 
+            :class="{ active: activeTab === 'health' }" 
+            @click="activeTab = 'health'">
+            💓 Node Health
+        </button>
+        <button 
+            class="tab-btn" 
             :class="{ active: activeTab === 'config' }" 
             @click="activeTab = 'config'">
             ⚙️ Configuration
@@ -111,6 +117,121 @@
                     </div>
                     <div v-else class="empty-state">
                         ✅ Cluster is balanced. No migrations needed.
+                    </div>
+            </div>
+        </div>
+
+        <!-- Node Health Tab -->
+        <div v-if="activeTab === 'health'" class="health-panel">
+            <div class="control-bar">
+                <button class="btn btn-primary" @click="runAnalysis" :disabled="loading">
+                    <span v-if="loading" class="spinner-sm"></span>
+                    {{ loading ? 'Refreshing...' : '🔄 Refresh Data' }}
+                </button>
+                <span v-if="lastAnalysis" class="last-update">
+                    Last update: {{ new Date().toLocaleTimeString() }}
+                </span>
+            </div>
+
+            <div v-if="!lastAnalysis" class="empty-state">
+                <p>📊 Click "Refresh Data" to load node metrics</p>
+            </div>
+
+            <div v-else class="nodes-health-grid">
+                <div 
+                    v-for="(node, nodeName) in lastAnalysis.nodes" 
+                    :key="nodeName" 
+                    class="node-health-card"
+                    :class="getNodeHealthClass(node)"
+                >
+                    <div class="node-header">
+                        <h3 class="node-name">🖥️ {{ nodeName }}</h3>
+                        <span class="node-status" :class="getNodeStatusClass(node)">
+                            {{ getNodeStatus(node) }}
+                        </span>
+                    </div>
+
+                    <div class="metrics-grid">
+                        <!-- CPU -->
+                        <div class="metric-item">
+                            <div class="metric-label">
+                                <span>⚡ CPU</span>
+                                <span class="metric-value">{{ formatPercentDirect(node.cpu_used_percent) }}</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div 
+                                    class="progress-fill" 
+                                    :class="getProgressClass(node.cpu_used_percent)"
+                                    :style="{ width: (node.cpu_used_percent || 0) + '%' }"
+                                ></div>
+                            </div>
+                        </div>
+
+                        <!-- Memory -->
+                        <div class="metric-item">
+                            <div class="metric-label">
+                                <span>🧠 Memory</span>
+                                <span class="metric-value">{{ formatPercentDirect(node.memory_used_percent) }}</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div 
+                                    class="progress-fill" 
+                                    :class="getProgressClass(node.memory_used_percent)"
+                                    :style="{ width: (node.memory_used_percent || 0) + '%' }"
+                                ></div>
+                            </div>
+                            <div class="metric-detail">
+                                {{ formatBytes(node.memory_used) }} / {{ formatBytes(node.memory_total) }}
+                            </div>
+                        </div>
+
+                        <!-- Disk (if available) -->
+                        <div class="metric-item" v-if="node.disk_used_percent">
+                            <div class="metric-label">
+                                <span>💾 Disk</span>
+                                <span class="metric-value">{{ formatPercentDirect(node.disk_used_percent) }}</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div 
+                                    class="progress-fill" 
+                                    :class="getProgressClass(node.disk_used_percent)"
+                                    :style="{ width: (node.disk_used_percent || 0) + '%' }"
+                                ></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="node-footer">
+                        <div class="guest-counts">
+                            <span class="guest-badge vm">{{ getGuestCount(nodeName, 'qemu') }} VMs</span>
+                            <span class="guest-badge ct">{{ getGuestCount(nodeName, 'lxc') }} CTs</span>
+                        </div>
+                        <div class="node-pve-version" v-if="node.pve_version">
+                            PVE {{ node.pve_version }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cluster Summary -->
+            <div v-if="lastAnalysis" class="cluster-summary">
+                <h3>📈 Cluster Summary</h3>
+                <div class="summary-grid">
+                    <div class="summary-item">
+                        <span class="summary-label">Total Nodes</span>
+                        <span class="summary-value">{{ Object.keys(lastAnalysis.nodes || {}).length }}</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Total VMs</span>
+                        <span class="summary-value">{{ totalVMs }}</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Total CTs</span>
+                        <span class="summary-value">{{ totalCTs }}</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Balance Score</span>
+                        <span class="summary-value" :class="getScoreClass(balanciness)">{{ balanciness }}%</span>
                     </div>
                 </div>
             </div>
@@ -653,6 +774,69 @@ const getGuestCount = (nodeName: string, guestType: 'qemu' | 'lxc') => {
     return count;
 };
 
+// Format bytes to human readable
+const formatBytes = (bytes: number) => {
+    if (!bytes || isNaN(bytes)) return 'N/A';
+    const gb = bytes / (1024 * 1024 * 1024);
+    if (gb >= 1) return gb.toFixed(1) + ' GB';
+    const mb = bytes / (1024 * 1024);
+    return mb.toFixed(0) + ' MB';
+};
+
+// Get CSS class for progress bar based on percentage
+const getProgressClass = (percent: number) => {
+    if (!percent || isNaN(percent)) return 'low';
+    if (percent >= 85) return 'critical';
+    if (percent >= 70) return 'warning';
+    return 'normal';
+};
+
+// Get overall node health class
+const getNodeHealthClass = (node: any) => {
+    const mem = node.memory_used_percent || 0;
+    const cpu = node.cpu_used_percent || 0;
+    if (mem >= 85 || cpu >= 85) return 'health-critical';
+    if (mem >= 70 || cpu >= 70) return 'health-warning';
+    return 'health-good';
+};
+
+// Get node status text
+const getNodeStatus = (node: any) => {
+    const mem = node.memory_used_percent || 0;
+    if (mem >= 85) return '⚠️ Critical';
+    if (mem >= 70) return '⚡ High Load';
+    return '✅ Healthy';
+};
+
+// Get node status CSS class
+const getNodeStatusClass = (node: any) => {
+    const mem = node.memory_used_percent || 0;
+    if (mem >= 85) return 'status-critical';
+    if (mem >= 70) return 'status-warning';
+    return 'status-healthy';
+};
+
+// Get score CSS class
+const getScoreClass = (score: string | number) => {
+    const val = typeof score === 'string' ? parseFloat(score) : score;
+    if (isNaN(val)) return '';
+    if (val <= 5) return 'score-good';
+    if (val <= 15) return 'score-ok';
+    return 'score-bad';
+};
+
+// Total VMs across all nodes
+const totalVMs = computed(() => {
+    if (!lastAnalysis.value || !lastAnalysis.value.guests) return 0;
+    return Object.values(lastAnalysis.value.guests as any).filter((g: any) => g.type === 'vm').length;
+});
+
+// Total CTs across all nodes
+const totalCTs = computed(() => {
+    if (!lastAnalysis.value || !lastAnalysis.value.guests) return 0;
+    return Object.values(lastAnalysis.value.guests as any).filter((g: any) => g.type === 'ct').length;
+});
+
 onMounted(() => {
     refreshConfig();
 });
@@ -1109,5 +1293,232 @@ onMounted(() => {
 
 .btn-sm:hover {
     opacity: 0.8;
+}
+
+/* Node Health Dashboard */
+.health-panel {
+    padding-bottom: 40px;
+}
+
+.last-update {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    margin-left: 16px;
+}
+
+.nodes-health-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 20px;
+    margin-bottom: 24px;
+}
+
+.node-health-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+    transition: all 0.3s ease;
+}
+
+.node-health-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.node-health-card.health-good {
+    border-left: 4px solid #22c55e;
+}
+
+.node-health-card.health-warning {
+    border-left: 4px solid #f59e0b;
+}
+
+.node-health-card.health-critical {
+    border-left: 4px solid #ef4444;
+    animation: pulse-critical 2s ease-in-out infinite;
+}
+
+@keyframes pulse-critical {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.2); }
+    50% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+}
+
+.node-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.node-name {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.node-status {
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 12px;
+}
+
+.node-status.status-healthy {
+    background: rgba(34, 197, 94, 0.2);
+    color: #22c55e;
+}
+
+.node-status.status-warning {
+    background: rgba(245, 158, 11, 0.2);
+    color: #f59e0b;
+}
+
+.node-status.status-critical {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+}
+
+.metrics-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.metric-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.metric-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.9rem;
+}
+
+.metric-value {
+    font-weight: 600;
+}
+
+.progress-bar {
+    height: 8px;
+    background: var(--border-color);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.5s ease;
+}
+
+.progress-fill.normal {
+    background: linear-gradient(90deg, #22c55e, #4ade80);
+}
+
+.progress-fill.warning {
+    background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
+.progress-fill.critical {
+    background: linear-gradient(90deg, #ef4444, #f87171);
+}
+
+.progress-fill.low {
+    background: var(--text-muted);
+}
+
+.metric-detail {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.node-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+}
+
+.guest-counts {
+    display: flex;
+    gap: 8px;
+}
+
+.guest-badge {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 6px;
+}
+
+.guest-badge.vm {
+    background: rgba(59, 130, 246, 0.15);
+    color: #3b82f6;
+}
+
+.guest-badge.ct {
+    background: rgba(168, 85, 247, 0.15);
+    color: #a855f7;
+}
+
+.node-pve-version {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+/* Cluster Summary */
+.cluster-summary {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+}
+
+.cluster-summary h3 {
+    margin: 0 0 16px 0;
+    font-size: 1rem;
+}
+
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 16px;
+}
+
+.summary-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px;
+    background: var(--bg-primary);
+    border-radius: 8px;
+}
+
+.summary-label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.summary-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+}
+
+.summary-value.score-good {
+    color: #22c55e;
+}
+
+.summary-value.score-ok {
+    color: #f59e0b;
+}
+
+.summary-value.score-bad {
+    color: #ef4444;
 }
 </style>
