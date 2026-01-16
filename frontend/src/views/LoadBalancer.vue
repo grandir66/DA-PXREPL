@@ -33,6 +33,12 @@
         </button>
         <button 
             class="tab-btn" 
+            :class="{ active: activeTab === 'map' }" 
+            @click="activeTab = 'map'">
+            🗺️ Cluster Map
+        </button>
+        <button 
+            class="tab-btn" 
             :class="{ active: activeTab === 'config' }" 
             @click="activeTab = 'config'">
             ⚙️ Configuration
@@ -311,6 +317,114 @@
                         </tr>
                     </tbody>
                 </table>
+            </div>
+        </div>
+
+        <!-- Cluster Map Tab -->
+        <div v-if="activeTab === 'map'" class="map-panel">
+            <div class="control-bar">
+                <button class="btn btn-primary" @click="runAnalysis" :disabled="loading">
+                    <span v-if="loading" class="spinner-sm"></span>
+                    {{ loading ? 'Loading...' : '🔄 Refresh Map' }}
+                </button>
+                <div class="map-legend">
+                    <span class="legend-item"><span class="legend-dot healthy"></span> Healthy</span>
+                    <span class="legend-item"><span class="legend-dot warning"></span> High Load</span>
+                    <span class="legend-item"><span class="legend-dot critical"></span> Critical</span>
+                </div>
+            </div>
+
+            <div v-if="!lastAnalysis" class="empty-state">
+                <p>🗺️ Click "Refresh Map" to load cluster visualization</p>
+            </div>
+
+            <div v-else class="cluster-map">
+                <div 
+                    v-for="(node, nodeName) in lastAnalysis.nodes" 
+                    :key="nodeName" 
+                    class="map-node"
+                    :class="getNodeHealthClass(node)"
+                >
+                    <div class="map-node-header">
+                        <h3 class="map-node-name">🖥️ {{ nodeName }}</h3>
+                        <span class="map-node-status" :class="getNodeStatusClass(node)">
+                            {{ getNodeStatus(node) }}
+                        </span>
+                    </div>
+                    
+                    <div class="map-node-metrics">
+                        <div class="map-metric">
+                            <span class="map-metric-label">CPU</span>
+                            <div class="map-metric-bar">
+                                <div 
+                                    class="map-metric-fill"
+                                    :class="getProgressClass(node.cpu_used_percent)"
+                                    :style="{ width: (node.cpu_used_percent || 0) + '%' }"
+                                ></div>
+                            </div>
+                            <span class="map-metric-value">{{ formatPercentDirect(node.cpu_used_percent) }}</span>
+                        </div>
+                        <div class="map-metric">
+                            <span class="map-metric-label">MEM</span>
+                            <div class="map-metric-bar">
+                                <div 
+                                    class="map-metric-fill"
+                                    :class="getProgressClass(node.memory_used_percent)"
+                                    :style="{ width: (node.memory_used_percent || 0) + '%' }"
+                                ></div>
+                            </div>
+                            <span class="map-metric-value">{{ formatPercentDirect(node.memory_used_percent) }}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="map-guests-container">
+                        <div class="map-guests-header">
+                            <span>{{ getGuestsForNode(nodeName).length }} Guests</span>
+                        </div>
+                        <div class="map-guests-grid">
+                            <div 
+                                v-for="guest in getGuestsForNode(nodeName).slice(0, 20)" 
+                                :key="guest.id"
+                                class="map-guest"
+                                :class="guest.type"
+                                :title="getGuestTooltip(guest)"
+                            >
+                                <span class="map-guest-type">{{ guest.type === 'vm' ? '🖥' : '📦' }}</span>
+                                <span class="map-guest-id">{{ guest.id }}</span>
+                            </div>
+                            <div 
+                                v-if="getGuestsForNode(nodeName).length > 20" 
+                                class="map-guest more"
+                            >
+                                +{{ getGuestsForNode(nodeName).length - 20 }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Map Summary -->
+            <div v-if="lastAnalysis" class="map-summary">
+                <div class="map-summary-item">
+                    <span class="map-summary-icon">🖥️</span>
+                    <span class="map-summary-value">{{ Object.keys(lastAnalysis.nodes || {}).length }}</span>
+                    <span class="map-summary-label">Nodes</span>
+                </div>
+                <div class="map-summary-item">
+                    <span class="map-summary-icon">💻</span>
+                    <span class="map-summary-value">{{ totalVMs }}</span>
+                    <span class="map-summary-label">VMs</span>
+                </div>
+                <div class="map-summary-item">
+                    <span class="map-summary-icon">📦</span>
+                    <span class="map-summary-value">{{ totalCTs }}</span>
+                    <span class="map-summary-label">Containers</span>
+                </div>
+                <div class="map-summary-item">
+                    <span class="map-summary-icon">⚖️</span>
+                    <span class="map-summary-value" :class="getScoreClass(balanciness)">{{ balanciness }}%</span>
+                    <span class="map-summary-label">Imbalance</span>
+                </div>
             </div>
         </div>
 
@@ -617,6 +731,28 @@ const getStatusIcon = (status: string) => {
         'skipped': '⏭️'
     };
     return icons[status] || '❓';
+};
+
+// Cluster Map helpers
+const getGuestsForNode = (nodeName: string) => {
+    if (!lastAnalysis.value || !lastAnalysis.value.guests) return [];
+    const guests = lastAnalysis.value.guests;
+    const nodeGuests: any[] = [];
+    for (const id in guests) {
+        const guest = guests[id];
+        if (guest.node_current === nodeName) {
+            nodeGuests.push({ ...guest, id });
+        }
+    }
+    return nodeGuests.sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
+};
+
+const getGuestTooltip = (guest: any) => {
+    const name = guest.name || guest.id;
+    const type = guest.type === 'vm' ? 'VM' : 'Container';
+    const cpu = guest.cpu_allocated ? `CPU: ${guest.cpu_allocated}` : '';
+    const mem = guest.memory_allocated ? `RAM: ${(guest.memory_allocated / (1024*1024*1024)).toFixed(1)}GB` : '';
+    return `${type} ${guest.id}: ${name}\n${cpu} ${mem}`.trim();
 };
 
 // Reactive configuration object with defaults
@@ -1876,5 +2012,233 @@ onUnmounted(() => {
 
 .history-table tr.status-completed {
     background: rgba(34, 197, 94, 0.03);
+}
+
+/* Cluster Map Panel */
+.map-panel {
+    padding-bottom: 40px;
+}
+
+.map-legend {
+    display: flex;
+    gap: 16px;
+    margin-left: auto;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+}
+
+.legend-dot.healthy { background: #22c55e; }
+.legend-dot.warning { background: #f59e0b; }
+.legend-dot.critical { background: #ef4444; }
+
+.cluster-map {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 24px;
+    margin-bottom: 24px;
+}
+
+.map-node {
+    background: var(--bg-secondary);
+    border: 2px solid var(--border-color);
+    border-radius: 16px;
+    padding: 20px;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.map-node::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: var(--border-color);
+}
+
+.map-node.health-good::before { background: linear-gradient(90deg, #22c55e, #4ade80); }
+.map-node.health-warning::before { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+.map-node.health-critical::before { background: linear-gradient(90deg, #ef4444, #f87171); }
+
+.map-node:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+}
+
+.map-node-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.map-node-name {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 600;
+}
+
+.map-node-status {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 10px;
+}
+
+.map-node-metrics {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.map-metric {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.map-metric-label {
+    width: 35px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.map-metric-bar {
+    flex: 1;
+    height: 6px;
+    background: var(--border-color);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.map-metric-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.5s ease;
+}
+
+.map-metric-value {
+    width: 45px;
+    text-align: right;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.map-guests-container {
+    background: var(--bg-primary);
+    border-radius: 10px;
+    padding: 12px;
+}
+
+.map-guests-header {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+    font-weight: 500;
+}
+
+.map-guests-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.map-guest {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.map-guest.vm {
+    background: rgba(59, 130, 246, 0.15);
+    color: #3b82f6;
+}
+
+.map-guest.ct {
+    background: rgba(168, 85, 247, 0.15);
+    color: #a855f7;
+}
+
+.map-guest:hover {
+    transform: scale(1.05);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.map-guest.more {
+    background: rgba(107, 114, 128, 0.2);
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.map-guest-type {
+    font-size: 0.9rem;
+}
+
+.map-guest-id {
+    font-weight: 600;
+}
+
+/* Map Summary */
+.map-summary {
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    padding: 20px;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+}
+
+.map-summary-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+.map-summary-icon {
+    font-size: 1.5rem;
+}
+
+.map-summary-value {
+    font-size: 1.8rem;
+    font-weight: 700;
+}
+
+.map-summary-label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+@media (max-width: 768px) {
+    .cluster-map {
+        grid-template-columns: 1fr;
+    }
+    
+    .map-summary {
+        flex-wrap: wrap;
+        gap: 20px;
+    }
 }
 </style>
