@@ -1019,7 +1019,7 @@ const toggleBalanceType = (type: string) => {
 };
 
 // Nodes and Guests lists
-const availableNodes = ref<string[]>([]);
+// availableNodes is computed now
 const allGuests = ref<any[]>([]);
 const ignoredGuestIds = ref<string[]>([]); // IDs of guests to ignore
 
@@ -1102,7 +1102,7 @@ const runAnalysis = async () => {
         
         // Populate available nodes from analysis
         if (lastAnalysis.value.nodes) {
-            availableNodes.value = Object.keys(lastAnalysis.value.nodes);
+            // availableNodes is computed from lastAnalysis
         }
         
         // Populate guests list from analysis
