@@ -885,8 +885,8 @@ const filteredGuests = computed(() => {
     if (guestSearch.value) {
         const query = guestSearch.value.toLowerCase();
         guests = guests.filter(g => 
-            g.name?.toLowerCase().includes(query) || 
-            g.id.toString().includes(query)
+            (g.name && g.name.toLowerCase().includes(query)) || 
+            (g.id && g.id.toString().includes(query))
         );
     }
 
