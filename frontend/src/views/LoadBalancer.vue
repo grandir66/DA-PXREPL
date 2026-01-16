@@ -239,21 +239,84 @@
             <!-- Node Management -->
             <div class="config-section">
                 <h3 class="section-title">🖥️ Gestione Nodi</h3>
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label>Nodi in Manutenzione</label>
-                        <input type="text" v-model="maintenanceNodesStr" class="form-input" placeholder="es: node1, node3">
-                        <span class="help-text">Guest verranno evacuati da questi nodi</span>
+                
+                <div class="subsection">
+                    <h4>Nodi in Manutenzione</h4>
+                    <p class="help-text">I guest verranno evacuati da questi nodi</p>
+                    <div class="multi-select-grid" v-if="availableNodes.length > 0">
+                        <label v-for="node in availableNodes" :key="'maint-'+node" class="checkbox-item">
+                            <input type="checkbox" 
+                                :checked="config.proxmox_cluster.maintenance_nodes.includes(node)"
+                                @change="toggleNode('maintenance', node)">
+                            <span class="node-name">{{ node }}</span>
+                        </label>
                     </div>
-                    <div class="form-group">
-                        <label>Nodi da Ignorare</label>
-                        <input type="text" v-model="ignoreNodesStr" class="form-input" placeholder="es: node4">
-                        <span class="help-text">Questi nodi non parteciperanno al bilanciamento</span>
+                    <div v-else class="empty-hint">Esegui "Analyze Cluster" per caricare la lista nodi</div>
+                </div>
+                
+                <div class="subsection">
+                    <h4>Nodi da Ignorare</h4>
+                    <p class="help-text">Questi nodi non parteciperanno al bilanciamento</p>
+                    <div class="multi-select-grid" v-if="availableNodes.length > 0">
+                        <label v-for="node in availableNodes" :key="'ignore-'+node" class="checkbox-item">
+                            <input type="checkbox" 
+                                :checked="config.proxmox_cluster.ignore_nodes.includes(node)"
+                                @change="toggleNode('ignore', node)">
+                            <span class="node-name">{{ node }}</span>
+                        </label>
                     </div>
-                    <div class="form-group">
-                        <label>Riserva Memoria Default (GB)</label>
-                        <input type="number" v-model.number="defaultMemoryReserve" class="form-input" min="0" max="64">
+                    <div v-else class="empty-hint">Esegui "Analyze Cluster" per caricare la lista nodi</div>
+                </div>
+                
+                <div class="form-group" style="margin-top: 16px;">
+                    <label>Riserva Memoria Default (GB)</label>
+                    <input type="number" v-model.number="defaultMemoryReserve" class="form-input" min="0" max="64" style="max-width: 120px;">
+                </div>
+            </div>
+
+            <!-- Guest Management -->
+            <div class="config-section">
+                <h3 class="section-title">🖥️ Gestione Guest (VM/CT)</h3>
+                
+                <div class="guest-management-grid">
+                    <!-- Migratable Guests -->
+                    <div class="guest-list-panel">
+                        <h4>✅ Guest Migrabili</h4>
+                        <p class="help-text">Questi guest possono essere spostati tra i nodi</p>
+                        <div class="guest-list" v-if="migratableGuests.length > 0">
+                            <div v-for="guest in migratableGuests" :key="'mig-'+guest.id" class="guest-item">
+                                <span class="guest-type" :class="guest.type">{{ guest.type.toUpperCase() }}</span>
+                                <span class="guest-name">{{ guest.name || guest.id }}</span>
+                                <span class="guest-node">@ {{ guest.node_current }}</span>
+                                <button class="btn-sm btn-danger" @click="addToIgnoreList(guest)" title="Blocca migrazione">
+                                    🚫
+                                </button>
+                            </div>
+                        </div>
+                        <div v-else class="empty-hint">Nessun guest migrabile trovato</div>
                     </div>
+                    
+                    <!-- Non-Migratable Guests -->
+                    <div class="guest-list-panel">
+                        <h4>🔒 Guest NON Migrabili</h4>
+                        <p class="help-text">Questi guest sono esclusi dal bilanciamento</p>
+                        <div class="guest-list" v-if="ignoredGuests.length > 0">
+                            <div v-for="guest in ignoredGuests" :key="'ign-'+guest.id" class="guest-item ignored">
+                                <span class="guest-type" :class="guest.type">{{ guest.type.toUpperCase() }}</span>
+                                <span class="guest-name">{{ guest.name || guest.id }}</span>
+                                <span class="guest-node">@ {{ guest.node_current }}</span>
+                                <button class="btn-sm btn-success" @click="removeFromIgnoreList(guest)" title="Consenti migrazione">
+                                    ✅
+                                </button>
+                            </div>
+                        </div>
+                        <div v-else class="empty-hint">Nessun guest escluso</div>
+                    </div>
+                </div>
+                
+                <div class="info-box" style="margin-top: 16px;">
+                    <strong>💡 Suggerimento:</strong> I guest con tag <code>plb_ignore</code> in Proxmox verranno automaticamente esclusi.
+                    Qui puoi aggiungere esclusioni aggiuntive senza modificare i tag su Proxmox.
                 </div>
             </div>
 
@@ -292,7 +355,7 @@
                     {{ showJsonPreview ? '▼' : '▶' }} Anteprima JSON
                 </h3>
                 <div v-if="showJsonPreview" class="json-preview">
-                    <pre>{{ JSON.stringify(config, null, 2) }}</pre>
+                    <pre>{{ JSON.stringify(configForDisplay, null, 2) }}</pre>
                 </div>
             </div>
         </div>
@@ -386,6 +449,60 @@ const toggleBalanceType = (type: string) => {
     }
 };
 
+// Nodes and Guests lists
+const availableNodes = ref<string[]>([]);
+const allGuests = ref<any[]>([]);
+const ignoredGuestIds = ref<string[]>([]); // IDs of guests to ignore
+
+// Toggle node in maintenance or ignore list
+const toggleNode = (listType: 'maintenance' | 'ignore', nodeName: string) => {
+    const list = listType === 'maintenance' 
+        ? config.proxmox_cluster.maintenance_nodes 
+        : config.proxmox_cluster.ignore_nodes;
+    const idx = list.indexOf(nodeName);
+    if (idx >= 0) {
+        list.splice(idx, 1);
+    } else {
+        list.push(nodeName);
+    }
+};
+
+// Computed: guests that can be migrated (not in ignore list)
+const migratableGuests = computed(() => {
+    return allGuests.value.filter(g => !ignoredGuestIds.value.includes(String(g.id)));
+});
+
+// Computed: guests that are ignored
+const ignoredGuests = computed(() => {
+    return allGuests.value.filter(g => ignoredGuestIds.value.includes(String(g.id)));
+});
+
+// Add guest to ignore list
+const addToIgnoreList = (guest: any) => {
+    const id = String(guest.id);
+    if (!ignoredGuestIds.value.includes(id)) {
+        ignoredGuestIds.value.push(id);
+    }
+};
+
+// Remove guest from ignore list
+const removeFromIgnoreList = (guest: any) => {
+    const id = String(guest.id);
+    const idx = ignoredGuestIds.value.indexOf(id);
+    if (idx >= 0) {
+        ignoredGuestIds.value.splice(idx, 1);
+    }
+};
+
+// Computed: config for display (password masked)
+const configForDisplay = computed(() => {
+    const cfg = JSON.parse(JSON.stringify(config));
+    if (cfg.proxmox_api && cfg.proxmox_api.pass) {
+        cfg.proxmox_api.pass = '********';
+    }
+    return cfg;
+});
+
 const migrations = computed(() => {
     return []; // Placeholder until we verify structure
 });
@@ -412,6 +529,16 @@ const runAnalysis = async () => {
         lastAnalysis.value = res.data;
         if (lastAnalysis.value.log) {
              executionLog.value = lastAnalysis.value.log;
+        }
+        
+        // Populate available nodes from analysis
+        if (lastAnalysis.value.nodes) {
+            availableNodes.value = Object.keys(lastAnalysis.value.nodes);
+        }
+        
+        // Populate guests list from analysis
+        if (lastAnalysis.value.guests) {
+            allGuests.value = Object.values(lastAnalysis.value.guests);
         }
     } catch (e: any) {
         error.value = e.response?.data?.detail || e.message;
@@ -442,10 +569,22 @@ const refreshConfig = async () => {
         const saved = res.data.saved || {};
         
         // Merge saved config into reactive config
-        if (saved.proxmox_api) Object.assign(config.proxmox_api, saved.proxmox_api);
+        if (saved.proxmox_api) {
+            // Don't overwrite password if it's masked or empty in saved
+            const savedPass = saved.proxmox_api.pass;
+            Object.assign(config.proxmox_api, saved.proxmox_api);
+            if (!savedPass || savedPass === '********') {
+                config.proxmox_api.pass = '';
+            }
+        }
         if (saved.proxmox_cluster) Object.assign(config.proxmox_cluster, saved.proxmox_cluster);
         if (saved.balancing) Object.assign(config.balancing, saved.balancing);
         if (saved.service) Object.assign(config.service, saved.service);
+        
+        // Load ignored guests list
+        if (saved.ignored_guests && Array.isArray(saved.ignored_guests)) {
+            ignoredGuestIds.value = saved.ignored_guests;
+        }
         
         // Update helper refs
         maintenanceNodesStr.value = (config.proxmox_cluster.maintenance_nodes || []).join(', ');
@@ -463,17 +602,24 @@ const refreshConfig = async () => {
 const saveConfiguration = async () => {
     try {
         // Build full config object from reactive state
-        const fullConfig = {
+        const fullConfig: any = {
             proxmox_api: { ...config.proxmox_api },
             proxmox_cluster: { ...config.proxmox_cluster },
             balancing: { ...config.balancing },
-            service: { ...config.service }
+            service: { ...config.service },
+            ignored_guests: ignoredGuestIds.value // List of guest IDs to ignore
         };
         
         // Clean up hosts if it's a string
         if (typeof fullConfig.proxmox_api.hosts === 'string') {
             fullConfig.proxmox_api.hosts = (fullConfig.proxmox_api.hosts as string)
                 .split(',').map(s => s.trim()).filter(s => s);
+        }
+        
+        // Don't save the password in plain text if it wasn't changed
+        // (backend should handle encryption)
+        if (fullConfig.proxmox_api.pass === '') {
+            delete fullConfig.proxmox_api.pass;
         }
         
         await loadBalancerService.updateConfig(fullConfig);
@@ -807,5 +953,161 @@ onMounted(() => {
     color: #d4d4d4;
     font-size: 0.85rem;
     line-height: 1.5;
+}
+
+/* Multi-select and subsections */
+.subsection {
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.subsection:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+}
+
+.subsection h4 {
+    margin: 0 0 4px 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.multi-select-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 10px;
+}
+
+.checkbox-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.checkbox-item:hover {
+    border-color: var(--accent-primary);
+}
+
+.checkbox-item input:checked + .node-name {
+    color: var(--accent-primary);
+    font-weight: 600;
+}
+
+.node-name {
+    font-size: 0.9rem;
+}
+
+.empty-hint {
+    padding: 12px;
+    color: var(--text-muted);
+    font-style: italic;
+    font-size: 0.85rem;
+}
+
+/* Guest Management */
+.guest-management-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+@media (max-width: 900px) {
+    .guest-management-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.guest-list-panel {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 16px;
+}
+
+.guest-list-panel h4 {
+    margin: 0 0 8px 0;
+    font-size: 1rem;
+}
+
+.guest-list {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.guest-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.9rem;
+}
+
+.guest-item:last-child {
+    border-bottom: none;
+}
+
+.guest-item.ignored {
+    opacity: 0.7;
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.guest-type {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    min-width: 28px;
+    text-align: center;
+}
+
+.guest-type.vm {
+    background: rgba(59, 130, 246, 0.2);
+    color: #3b82f6;
+}
+
+.guest-type.ct {
+    background: rgba(34, 197, 94, 0.2);
+    color: #22c55e;
+}
+
+.guest-name {
+    flex: 1;
+    font-weight: 500;
+}
+
+.guest-node {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+.btn-sm {
+    padding: 4px 8px;
+    font-size: 0.8rem;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.btn-sm.btn-danger {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+}
+
+.btn-sm.btn-success {
+    background: rgba(34, 197, 94, 0.2);
+    color: #22c55e;
+}
+
+.btn-sm:hover {
+    opacity: 0.8;
 }
 </style>
