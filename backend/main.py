@@ -76,9 +76,9 @@ if not ALLOWED_ORIGINS or ALLOWED_ORIGINS == [""]:
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=["*"],  # DEBUG: Allow all origins to fix 405/Connection issues
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["X-Total-Count"],
 )
