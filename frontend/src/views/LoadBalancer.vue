@@ -152,7 +152,17 @@ const migrations = computed(() => {
 });
 
 const balanciness = computed(() => {
-    return lastAnalysis.value?.meta?.balanciness_score || 'N/A';
+    // Calculate balanciness as the difference between highest and lowest memory usage
+    if (!lastAnalysis.value || !lastAnalysis.value.nodes) return 'N/A';
+    const nodes = Object.values(lastAnalysis.value.nodes) as any[];
+    if (nodes.length === 0) return 'N/A';
+    
+    const memValues = nodes.map(n => n.memory_used_percent || 0);
+    const highest = Math.max(...memValues);
+    const lowest = Math.min(...memValues);
+    const spread = highest - lowest;
+    
+    return spread.toFixed(1);
 });
 
 const runAnalysis = async () => {
