@@ -191,71 +191,70 @@ class LoadBalancerService:
         return await asyncio.to_thread(self._run_analysis_sync, config_override)
 
     def _run_analysis_sync(self, config_override: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        proxlb_config = self._merge_config(config_override)
-        
-        # Force disable balancing execution for analysis only
-        proxlb_config["balancing"]["enable"] = False
-        
-        # Initialize API
         try:
+            proxlb_config = self._merge_config(config_override)
+            
+            # Force disable balancing execution for analysis only
+            proxlb_config["balancing"]["enable"] = False
+            
+            # Initialize API
+            # Note: ProxmoxApi init might fail if config is bad
             proxmox_api = ProxmoxApi(proxlb_config)
-        except Exception as e:
-            raise Exception(f"Failed to connect to Proxmox API: {e}")
+                
+            # Helper.get_version("integrated") 
             
-        # Helper.get_version("integrated") 
-        
-        # Core Logic extracted from main.py
-        meta = {"meta": proxlb_config}
-        
-        # 1. Get Nodes
-        nodes = Nodes.get_nodes(proxmox_api, proxlb_config)
-        if not nodes:
-            raise Exception("No nodes found or connection failed")
+            # Core Logic extracted from main.py
+            meta = {"meta": proxlb_config}
             
-        meta = Features.validate_any_non_pve9_node(meta, nodes)
-        
-        # 2. Get Pools
-        pools = Pools.get_pools(proxmox_api)
-        
-        # 3. Get HA Rules
-        ha_rules = HaRules.get_ha_rules(proxmox_api, meta)
-        
-        # 4. Get Guests
-        guests = Guests.get_guests(proxmox_api, pools, ha_rules, nodes, meta, proxlb_config)
-        
-        # 5. Get Groups
-        groups = Groups.get_groups(guests, nodes)
-        
-        # Merge data
-        proxlb_data = {**meta, **nodes, **guests, **pools, **ha_rules, **groups}
-        
-        # 6. Validate features
-        Features.validate_available_features(proxlb_data)
-        
-        # 7. Calculations
-        Calculations.set_node_assignments(proxlb_data)
-        Calculations.set_node_hot(proxlb_data)
-        Calculations.set_guest_hot(proxlb_data)
-        
-        # Arguments from CLI usually, here defaults
-        best_node_arg = False 
-        
-        Calculations.get_most_free_node(proxlb_data, best_node_arg)
-        Calculations.validate_affinity_map(proxlb_data)
-        Calculations.relocate_guests_on_maintenance_nodes(proxlb_data)
-        Calculations.get_balanciness(proxlb_data)
-        
-        # This calculates proposed moves
-        Calculations.relocate_guests(proxlb_data)
-        
-        # Store for cache
-        self._last_analysis = proxlb_data
-        
+            # 1. Get Nodes
+            nodes = Nodes.get_nodes(proxmox_api, proxlb_config)
+            if not nodes:
+                raise Exception("No nodes found or connection failed")
+                
+            meta = Features.validate_any_non_pve9_node(meta, nodes)
+            
+            # 2. Get Pools
+            pools = Pools.get_pools(proxmox_api)
+            
+            # 3. Get HA Rules
+            ha_rules = HaRules.get_ha_rules(proxmox_api, meta)
+            
+            # 4. Get Guests
+            guests = Guests.get_guests(proxmox_api, pools, ha_rules, nodes, meta, proxlb_config)
+            
+            # 5. Get Groups
+            groups = Groups.get_groups(guests, nodes)
+            
+            # Merge data
+            proxlb_data = {**meta, **nodes, **guests, **pools, **ha_rules, **groups}
+            
+            # 6. Validate features
+            Features.validate_available_features(proxlb_data)
+            
+            # 7. Calculations
+            Calculations.set_node_assignments(proxlb_data)
+            Calculations.set_node_hot(proxlb_data)
+            Calculations.set_guest_hot(proxlb_data)
+            
+            # Arguments from CLI usually, here defaults
+            best_node_arg = False 
+            
+            Calculations.get_most_free_node(proxlb_data, best_node_arg)
+            Calculations.validate_affinity_map(proxlb_data)
+            Calculations.relocate_guests_on_maintenance_nodes(proxlb_data)
+            Calculations.get_balanciness(proxlb_data)
+            
+            # This calculates proposed moves
+            Calculations.relocate_guests(proxlb_data)
+            
+            # Store for cache
+            self._last_analysis = proxlb_data
+            
+            return proxlb_data
+
         except Exception as e:
             logger.exception("Error during analysis")
             raise Exception(f"Analysis failed: {e}")
-            
-        return proxlb_data
 
     async def execute_balancing(self, config_override: Optional[Dict[str, Any]] = None, dry_run: bool = False) -> Dict[str, Any]:
         """
