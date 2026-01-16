@@ -205,7 +205,7 @@
               
               <div class="form-group">
                 <label>Suffisso Nome VM</label>
-                <input v-model="form.dest_name_suffix" class="form-control" placeholder="_replica">
+                <input v-model="form.dest_name_suffix" class="form-control" placeholder="-replica">
               </div>
               
               <div class="form-group">
@@ -333,7 +333,7 @@ const form = reactive({
   dest_storage: '',
   pbs_datastore: '',
   dest_vmid: null as number | null,
-  dest_name_suffix: '_replica',
+  dest_name_suffix: '-replica',
   register_vm: true,
   schedule: '',
   keep_snapshots: 7,
@@ -412,7 +412,7 @@ const openConfigModal = async (vm: any) => {
   form.vm_type = vm.type;
   form.vm_name = vm.name;
   form.dest_vmid = vm.vmid;
-  form.dest_name_suffix = '_replica';
+  form.dest_name_suffix = '-replica';
   
   // Load VM disks for Syncoid
   if (form.mode === 'syncoid' && form.source_node_id) {

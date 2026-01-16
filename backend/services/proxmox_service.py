@@ -659,6 +659,9 @@ class ProxmoxService:
                 warnings.append(f"Nome originale non trovato; assegnato nome: {final_name}")
             
             if final_name:
+                # Sanitize name: replace underscores with dashes for compatibility
+                final_name = final_name.replace('_', '-')
+
                 if match:
                     # Sostituisci linea esistente
                     config_content = name_pattern.sub(f'name: {final_name}', config_content)
