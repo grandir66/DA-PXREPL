@@ -317,7 +317,7 @@ async def download_backup(
 
 
 
-@router.post("/import")
+@router.post("/restore")
 async def restore_backup(
     file: UploadFile = File(...),
     restore_database: bool = Form(True),

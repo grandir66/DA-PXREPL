@@ -100,7 +100,7 @@ export default {
         if (options.restore_config !== undefined) formData.append('restore_config', String(options.restore_config));
 
         return apiClient.post<RestoreResult>(
-            '/config-backup/import',
+            '/config-backup/restore',
             formData,
             { headers: { 'Content-Type': 'multipart/form-data' } }
         );
