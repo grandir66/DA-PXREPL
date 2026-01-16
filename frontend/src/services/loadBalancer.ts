@@ -1,5 +1,5 @@
 
-import axios from '@/services/axios';
+import axios from '../services/api';
 
 export interface LoadBalancerConfig {
     saved: any;
