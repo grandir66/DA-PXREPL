@@ -118,6 +118,7 @@
                     <div v-else class="empty-state">
                         ✅ Cluster is balanced. No migrations needed.
                     </div>
+                </div>
             </div>
         </div>
 
