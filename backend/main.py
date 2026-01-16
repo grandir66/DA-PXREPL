@@ -98,26 +98,33 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # Router API
+dapx_mode = os.environ.get("DAPX_MODE", "full")
+
+# Core Routers (available in all modes)
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(nodes.router, prefix="/api/nodes", tags=["Nodes"])
-app.include_router(snapshots.router, prefix="/api/snapshots", tags=["Snapshots"])
-app.include_router(sync_jobs.router, prefix="/api/sync-jobs", tags=["Sync Jobs"])
-app.include_router(backup_jobs.router, prefix="/api/backup-jobs", tags=["Backup Jobs (PBS)"])
-app.include_router(recovery_jobs.router, prefix="/api/recovery-jobs", tags=["Recovery Jobs (PBS)"])
-app.include_router(vms.router, prefix="/api/vms", tags=["VMs"])
-app.include_router(logs.router, prefix="/api/logs", tags=["Logs"])
 app.include_router(settings.router, prefix="/api/settings", tags=["Settings"])
+app.include_router(logs.router, prefix="/api/logs", tags=["Logs"])
 app.include_router(ssh_keys.router, prefix="/api", tags=["SSH Keys"])
 app.include_router(host_info.router, prefix="/api", tags=["Host Info & Dashboard"])
-app.include_router(host_backup.router, prefix="/api/host-backup", tags=["Host Config Backup"])
-app.include_router(migration_jobs.router, prefix="/api/migration-jobs", tags=["Migration Jobs"])
 app.include_router(updates.router, tags=["Updates"])
-app.include_router(pve_replication_jobs.router, prefix="/api/pve-replication", tags=["PVE Replication"])
 app.include_router(load_balancer.router, tags=["Load Balancer"])
 
-# Configuration Backup/Restore
+# Conditionally include Configuration Backup (useful in both, but maybe simpler in LB mode?)
+# We keep it in both for now as it backs up the DB/Config
 from routers import config_backup
 app.include_router(config_backup.router, tags=["Configuration Backup"])
+
+# Full Mode Only Routers
+if dapx_mode == "full":
+    app.include_router(snapshots.router, prefix="/api/snapshots", tags=["Snapshots"])
+    app.include_router(sync_jobs.router, prefix="/api/sync-jobs", tags=["Sync Jobs"])
+    app.include_router(backup_jobs.router, prefix="/api/backup-jobs", tags=["Backup Jobs (PBS)"])
+    app.include_router(recovery_jobs.router, prefix="/api/recovery-jobs", tags=["Recovery Jobs (PBS)"])
+    app.include_router(vms.router, prefix="/api/vms", tags=["VMs"])
+    app.include_router(host_backup.router, prefix="/api/host-backup", tags=["Host Config Backup"])
+    app.include_router(migration_jobs.router, prefix="/api/migration-jobs", tags=["Migration Jobs"])
+    app.include_router(pve_replication_jobs.router, prefix="/api/pve-replication", tags=["PVE Replication"])
 
 
 # Health check (non richiede autenticazione)
@@ -127,7 +134,8 @@ async def health_check():
         "status": "healthy",
         "version": "3.5.9",
         "auth_enabled": True,
-        "features": ["zfs", "btrfs", "pbs"]
+        "mode": dapx_mode,
+        "features": ["zfs", "btrfs", "pbs", "load_balancer"] if dapx_mode == "full" else ["load_balancer"]
     }
 
 

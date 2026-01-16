@@ -126,6 +126,41 @@ confirm() {
 
 # ============== VERIFICHE PRELIMINARI ==============
 
+# ============== SELEZIONE MODALITÀ ==============
+
+select_mode() {
+    log_step "Selezione modalità installazione"
+    
+    # Check enviroment variable first (for non-interactive)
+    if [[ -n "$DAPX_MODE" ]]; then
+         INSTALL_MODE="$DAPX_MODE"
+         log_info "Modalità preimpostata: $INSTALL_MODE"
+         return 0
+    fi
+
+    if [[ "${NONINTERACTIVE:-false}" == "true" ]]; then
+        INSTALL_MODE="full"
+        log_info "Modalità non interattiva: uso default 'full'"
+        return 0
+    fi
+
+    echo -e "Seleziona la modalità di funzionamento:"
+    echo -e "  1) ${BOLD}Full${NC} (Default) - Backup, Replica & Load Balancer"
+    echo -e "  2) ${BOLD}Load Balancer Only${NC} - Autenticazione, Host & Load Balancer (No Backup/Replica)"
+    
+    read -p "Seleziona [1-2]: " choice
+    case "$choice" in
+        2)
+            INSTALL_MODE="lb"
+            log_info "Modalità selezionata: Load Balancer Only"
+            ;;
+        *)
+            INSTALL_MODE="full"
+            log_info "Modalità selezionata: Full"
+            ;;
+    esac
+}
+
 check_root() {
     if [[ $EUID -ne 0 ]]; then
         log_error "Questo script deve essere eseguito come root"
@@ -611,7 +646,11 @@ SANOID_MANAGER_TOKEN_EXPIRE=480
 SANOID_MANAGER_CORS_ORIGINS=
 
 # Log level
+# Log level
 SANOID_MANAGER_LOG_LEVEL=INFO
+
+# Operation Mode
+DAPX_MODE=$INSTALL_MODE
 ENV_FILE
 
     chmod 600 "$CONFIG_DIR/dapx-unified.env"
@@ -1117,6 +1156,7 @@ update_existing() {
 
 do_install() {
     check_existing_installation
+    select_mode
     
     echo ""
     if ! confirm "Procedere con l'installazione di Sanoid Manager v$VERSION?"; then

@@ -18,7 +18,7 @@
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/></svg>
             Nodi
           </router-link>
-          <router-link :to="{ name: 'vms' }" class="nav-item" active-class="active">
+          <router-link v-if="systemMode === 'full'" :to="{ name: 'vms' }" class="nav-item" active-class="active">
              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
              Virtual Machines
           </router-link>
@@ -28,7 +28,7 @@
           </router-link>
         </div>
 
-        <div class="nav-section">
+        <div class="nav-section" v-if="systemMode === 'full'">
           <div class="nav-section-title">Storage & Backup</div>
           <router-link :to="{ name: 'replication' }" class="nav-item" active-class="active">
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
@@ -92,31 +92,43 @@
 <script setup lang="ts">
 import { useAuthStore } from '../stores/auth';
 import { useRouter } from 'vue-router';
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import nodesService from '../services/nodes';
+import api from '../services/api'; // Assuming generic api client or import axios directly
 
 const authStore = useAuthStore();
 const router = useRouter();
 const refreshing = ref(false);
+const systemMode = ref('full'); // Default to full to avoid flashing hidden items
 
 const refreshData = async () => {
     refreshing.value = true;
     try {
-        await nodesService.refreshAllCache();
-        // Feedback visivo: mantieni spinner per 2 secondo
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        alert("Scansione in background avviata. I dati si aggiorneranno automaticamente.");
-    } catch (e) {
-        console.error("Errore refresh dati", e);
-        alert("Errore durante l'aggiornamento dati");
+        await nodesService.fetchNodes();
+        // Add other refreshes if needed, but gracefully fail if endpoint doesn't exist
     } finally {
         refreshing.value = false;
     }
 };
 
+const fetchSystemMode = async () => {
+  try {
+    const res = await api.get('/health'); // Use public health endpoint
+    if (res.data && res.data.mode) {
+      systemMode.value = res.data.mode;
+    }
+  } catch (e) {
+    console.warn("Could not fetch system mode, defaulting to full", e);
+  }
+};
+
+onMounted(() => {
+  fetchSystemMode();
+});
+
 const logout = () => {
   authStore.logout();
-  router.push({ name: 'login' });
+  router.push('/login');
 };
 </script>
 
