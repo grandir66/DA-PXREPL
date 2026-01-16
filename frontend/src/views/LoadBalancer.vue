@@ -131,7 +131,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
-import loadBalancerService from '../../services/loadBalancer';
+import loadBalancerService from '../services/loadBalancer';
 
 const activeTab = ref('analysis');
 const loading = ref(false);
