@@ -22,6 +22,10 @@
              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
              Virtual Machines
           </router-link>
+          <router-link :to="{ name: 'load-balancer' }" class="nav-item" active-class="active">
+             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6l3 11 11-3-3-11L3 6zm0 0l3 1m11 14l-3-1m0 0l-8-3m8 3l3 1-3-1m14-3l-3 1-3-1m0 0l-3-1"/></svg>
+             Load Balancer
+          </router-link>
         </div>
 
         <div class="nav-section">

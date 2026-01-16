@@ -88,6 +88,11 @@ const router = createRouter({
                     path: 'config-backup',
                     name: 'config-backup',
                     component: () => import('../views/settings/ConfigBackup.vue')
+                },
+                {
+                    path: 'load-balancer',
+                    name: 'load-balancer',
+                    component: () => import('../views/LoadBalancer.vue')
                 }
             ]
         },

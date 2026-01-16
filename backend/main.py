@@ -15,7 +15,7 @@ import logging
 
 from database import engine, Base, get_db, init_default_config, SessionLocal
 from routers import nodes, snapshots, sync_jobs, vms, logs, settings, auth, ssh_keys
-from routers import recovery_jobs, backup_jobs, host_info, host_backup, migration_jobs, updates, pve_replication_jobs
+from routers import recovery_jobs, backup_jobs, host_info, host_backup, migration_jobs, updates, pve_replication_jobs, load_balancer
 from services.scheduler import SchedulerService
 from services.logging_config import setup_logging, get_logger
 
@@ -113,6 +113,7 @@ app.include_router(host_backup.router, prefix="/api/host-backup", tags=["Host Co
 app.include_router(migration_jobs.router, prefix="/api/migration-jobs", tags=["Migration Jobs"])
 app.include_router(updates.router, tags=["Updates"])
 app.include_router(pve_replication_jobs.router, prefix="/api/pve-replication", tags=["PVE Replication"])
+app.include_router(load_balancer.router, tags=["Load Balancer"])
 
 # Configuration Backup/Restore
 from routers import config_backup
