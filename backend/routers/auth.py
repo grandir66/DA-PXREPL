@@ -3,7 +3,7 @@ Router per autenticazione e gestione utenti
 Supporta autenticazione locale e integrata Proxmox VE
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from typing import Optional, List
@@ -157,8 +157,36 @@ async def get_current_user(
     return user
 
 
+
+async def get_current_user_from_query(
+    token: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+) -> User:
+    """Ottiene utente da token in query param (per download file)"""
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token mancante"
+        )
+        
+    success, payload = auth_service.verify_token(token)
+    if not success or not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token non valido"
+        )
+        
+    user_id = payload.get("sub")
+    user = db.query(User).filter(User.id == int(user_id)).first()
+    
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="Utente non valido")
+    
+    return user
+
+
 async def get_current_user_optional(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: Session = Depends(get_db)
 ) -> Optional[User]:
     """Dipendenza opzionale per l'utente corrente"""

@@ -71,6 +71,13 @@ export default {
     },
 
     // Download backup
+    // Download backup
+    async downloadBackup(filename: string) {
+        return apiClient.get(`/config-backup/download/${filename}`, {
+            responseType: 'blob'
+        });
+    },
+
     getDownloadUrl(filename: string) {
         const token = localStorage.getItem('access_token');
         return `${apiClient.defaults.baseURL}/config-backup/download/${filename}?token=${token}`;

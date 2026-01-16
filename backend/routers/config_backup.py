@@ -17,6 +17,7 @@ from datetime import datetime
 import hashlib
 import base64
 
+from sqlalchemy.orm import Session
 from database import get_db, SessionLocal
 from routers.auth import require_admin, User
 
@@ -245,9 +246,53 @@ async def create_backup(
         }
 
 
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Query
+from routers.auth import get_current_user, User
+
+# ...
+
+from fastapi import Request
+
 @router.get("/download/{filename}")
-async def download_backup(filename: str, user: User = Depends(require_admin)):
-    """Scarica un file di backup"""
+async def download_backup(
+    request: Request,
+    filename: str, 
+    token: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """Scarica un file di backup (supporta Auth Header o Query Param)"""
+    
+    from routers.auth import get_current_user_from_query, get_current_user
+    from services.auth_service import auth_service
+    
+    user = None
+    
+    # 1. Prova Query Param
+    if token:
+        try:
+            user = await get_current_user_from_query(token, db)
+        except HTTPException:
+            pass
+        
+    # 2. Prova Header Authorization
+    if not user:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            bearer_token = auth_header.split(" ")[1]
+            success, payload = auth_service.verify_token(bearer_token)
+            if success and payload:
+                user_id = payload.get("sub")
+                user = db.query(User).filter(User.id == int(user_id)).first()
+
+    if not user:
+        raise HTTPException(status_code=401, detail="Autenticazione richiesta")
+    
+    if user.role != "admin":
+         raise HTTPException(status_code=403, detail="Richiesto ruolo admin")
+
+    
+    if user.role != "admin":
+         raise HTTPException(status_code=403, detail="Richiesto ruolo admin")
     
     # Valida nome file
     if not filename.endswith(".dapx-backup.tar.gz"):
@@ -255,7 +300,10 @@ async def download_backup(filename: str, user: User = Depends(require_admin)):
     
     backup_path = os.path.join(DATA_DIR, "backups", filename)
     
+    logger.info(f"Download backup da: {backup_path}")
+    
     if not os.path.exists(backup_path):
+        logger.error(f"Backup non trovato: {backup_path}")
         raise HTTPException(status_code=404, detail="Backup non trovato")
     
     return FileResponse(
@@ -263,6 +311,8 @@ async def download_backup(filename: str, user: User = Depends(require_admin)):
         media_type="application/gzip",
         filename=filename
     )
+
+
 
 
 @router.post("/import")

@@ -308,9 +308,25 @@ const createBackup = async () => {
     }
 };
 
-const downloadBackup = (filename: string) => {
-    const url = configBackupService.getDownloadUrl(filename);
-    window.open(url, '_blank');
+const downloadBackup = async (filename: string) => {
+    try {
+        const response = await configBackupService.downloadBackup(filename);
+        
+        // Crea URL blob e scarica
+        const url = window.URL.createObjectURL(new Blob([response.data]));
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', filename);
+        document.body.appendChild(link);
+        link.click();
+        
+        // Cleanup
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(link);
+    } catch (error) {
+        console.error('Errore download backup:', error);
+        alert('Errore durante il download del backup');
+    }
 };
 
 const handleFileSelect = (event: Event) => {
