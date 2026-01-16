@@ -101,8 +101,7 @@ export default {
 
         return apiClient.post<RestoreResult>(
             '/config-backup/restore',
-            formData,
-            { headers: { 'Content-Type': 'multipart/form-data' } }
+            formData
         );
     },
 
