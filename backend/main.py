@@ -196,4 +196,9 @@ else:
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("SANOID_MANAGER_PORT", 8420))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
+    # Auto-disable reload if running on non-standard port (e.g. Beta)
+    should_reload = port == 8420
+    
+    # Reload dirs (monitor specific directories if needed, or default)
+    # uvicorn.run detects changes in sys.path mainly
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=should_reload)
