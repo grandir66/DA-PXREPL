@@ -917,13 +917,14 @@ const toggleSelectAll = () => {
 };
 
 const isGuestIgnored = (guestId: string) => {
-    return config.proxmox_cluster.ignored_guests.includes(guestId);
+    return ignoredGuestIds.value.includes(guestId);
 };
 
 const bulkIgnoreGuests = async (ignore: boolean) => {
     if (selectedGuests.value.length === 0) return;
     
-    const currentIgnored = new Set(config.proxmox_cluster.ignored_guests);
+    // Sync with ignoredGuestIds
+    const currentIgnored = new Set(ignoredGuestIds.value);
     
     selectedGuests.value.forEach(id => {
         if (ignore) {
@@ -933,7 +934,8 @@ const bulkIgnoreGuests = async (ignore: boolean) => {
         }
     });
     
-    config.proxmox_cluster.ignored_guests = Array.from(currentIgnored);
+    ignoredGuestIds.value = Array.from(currentIgnored);
+    // Config will be updated in saveConfiguration using ignoredGuestIds.value
     
     loading.value = true;
     try {
@@ -956,6 +958,7 @@ const config = reactive({
     proxmox_cluster: {
         maintenance_nodes: [] as string[],
         ignore_nodes: [] as string[],
+        ignored_guests: [] as string[],
         overprovisioning: true
     },
     balancing: {
