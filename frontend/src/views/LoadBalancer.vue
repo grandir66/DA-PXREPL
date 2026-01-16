@@ -27,6 +27,12 @@
         </button>
         <button 
             class="tab-btn" 
+            :class="{ active: activeTab === 'history' }" 
+            @click="activeTab = 'history'; loadMigrationHistory()">
+            📜 History
+        </button>
+        <button 
+            class="tab-btn" 
             :class="{ active: activeTab === 'config' }" 
             @click="activeTab = 'config'">
             ⚙️ Configuration
@@ -254,6 +260,57 @@
                         <span class="summary-value" :class="getScoreClass(balanciness)">{{ balanciness }}%</span>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <!-- History Tab -->
+        <div v-if="activeTab === 'history'" class="history-panel">
+            <div class="control-bar">
+                <button class="btn btn-primary" @click="loadMigrationHistory" :disabled="historyLoading">
+                    <span v-if="historyLoading" class="spinner-sm"></span>
+                    {{ historyLoading ? 'Loading...' : '🔄 Refresh' }}
+                </button>
+                <span class="history-count" v-if="migrationHistory.length > 0">
+                    {{ migrationHistory.length }} migrations
+                </span>
+            </div>
+
+            <div v-if="migrationHistory.length === 0 && !historyLoading" class="empty-state">
+                <p>📜 No migration history yet. Migrations performed via ProxLB will appear here.</p>
+            </div>
+
+            <div v-else class="history-table-wrapper">
+                <table class="data-table history-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Guest</th>
+                            <th>From</th>
+                            <th>To</th>
+                            <th>Reason</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="mig in migrationHistory" :key="mig.id" :class="'status-' + mig.status">
+                            <td class="date-col">
+                                {{ formatDate(mig.proposed_at) }}
+                            </td>
+                            <td>
+                                <span class="guest-badge" :class="mig.guest_type">{{ mig.guest_type }}</span>
+                                {{ mig.guest_name || mig.guest_id }}
+                            </td>
+                            <td>{{ mig.source_node }}</td>
+                            <td>{{ mig.target_node }}</td>
+                            <td class="reason-col">{{ mig.reason || '-' }}</td>
+                            <td>
+                                <span class="status-badge" :class="mig.status">
+                                    {{ getStatusIcon(mig.status) }} {{ mig.status }}
+                                </span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
 
@@ -524,6 +581,43 @@ const countdown = ref(0);
 const lastUpdateTime = ref('');
 let autoRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let countdownTimer: ReturnType<typeof setInterval> | null = null;
+
+// Migration History state
+const migrationHistory = ref<any[]>([]);
+const historyLoading = ref(false);
+
+// Load migration history
+const loadMigrationHistory = async () => {
+    historyLoading.value = true;
+    try {
+        const res = await loadBalancerService.getMigrationHistory(100);
+        migrationHistory.value = res.data || [];
+    } catch (e) {
+        console.error('Failed to load migration history:', e);
+        migrationHistory.value = [];
+    } finally {
+        historyLoading.value = false;
+    }
+};
+
+// Format date for display
+const formatDate = (dateStr: string) => {
+    if (!dateStr) return '-';
+    const date = new Date(dateStr);
+    return date.toLocaleString();
+};
+
+// Get status icon
+const getStatusIcon = (status: string) => {
+    const icons: Record<string, string> = {
+        'proposed': '📝',
+        'executing': '⏳',
+        'completed': '✅',
+        'failed': '❌',
+        'skipped': '⏭️'
+    };
+    return icons[status] || '❓';
+};
 
 // Reactive configuration object with defaults
 const config = reactive({
@@ -1686,5 +1780,101 @@ onUnmounted(() => {
 
 .summary-value.score-bad {
     color: #ef4444;
+}
+
+/* Migration History Panel */
+.history-panel {
+    padding-bottom: 40px;
+}
+
+.history-count {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.history-table-wrapper {
+    overflow-x: auto;
+}
+
+.history-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.history-table th {
+    text-align: left;
+    padding: 12px;
+    background: var(--bg-primary);
+    border-bottom: 2px solid var(--border-color);
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.history-table td {
+    padding: 12px;
+    border-bottom: 1px solid var(--border-color);
+    vertical-align: middle;
+}
+
+.history-table tbody tr:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.date-col {
+    white-space: nowrap;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.reason-col {
+    max-width: 250px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.status-badge.proposed {
+    background: rgba(59, 130, 246, 0.2);
+    color: #3b82f6;
+}
+
+.status-badge.executing {
+    background: rgba(245, 158, 11, 0.2);
+    color: #f59e0b;
+}
+
+.status-badge.completed {
+    background: rgba(34, 197, 94, 0.2);
+    color: #22c55e;
+}
+
+.status-badge.failed {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+}
+
+.status-badge.skipped {
+    background: rgba(107, 114, 128, 0.2);
+    color: #9ca3af;
+}
+
+.history-table tr.status-failed {
+    background: rgba(239, 68, 68, 0.05);
+}
+
+.history-table tr.status-completed {
+    background: rgba(34, 197, 94, 0.03);
 }
 </style>

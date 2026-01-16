@@ -817,6 +817,46 @@ class APIKey(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+# ============== LOAD BALANCER MODELS ==============
+
+class LoadBalancerMigration(Base):
+    """History of migrations performed by ProxLB Load Balancer"""
+    __tablename__ = "lb_migrations"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Guest info
+    guest_id = Column(String(50), nullable=False)  # VM/CT ID (e.g., "100", "vm/100")
+    guest_name = Column(String(200), nullable=True)
+    guest_type = Column(String(10), default="vm")  # vm, ct
+    
+    # Migration details
+    source_node = Column(String(100), nullable=False)
+    target_node = Column(String(100), nullable=False)
+    reason = Column(String(500), nullable=True)  # Why the migration was suggested
+    
+    # Execution status
+    status = Column(String(20), default="proposed")  # proposed, executing, completed, failed, skipped
+    dry_run = Column(Boolean, default=False)  # Was this a dry run or actual migration?
+    
+    # Metrics at time of migration
+    source_cpu_percent = Column(Integer, nullable=True)
+    source_mem_percent = Column(Integer, nullable=True)
+    target_cpu_percent = Column(Integer, nullable=True)
+    target_mem_percent = Column(Integer, nullable=True)
+    
+    # Error info
+    error_message = Column(Text, nullable=True)
+    
+    # Timestamps
+    proposed_at = Column(DateTime, default=datetime.utcnow)
+    executed_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    
+    # Who initiated
+    triggered_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+
 # ============== HELPER FUNCTIONS ==============
 
 def init_default_config(db_session):

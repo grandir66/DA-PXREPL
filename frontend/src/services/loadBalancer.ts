@@ -29,5 +29,17 @@ export default {
 
     async updateConfig(config: any) {
         return axios.post('/load-balancer/config', config);
+    },
+
+    // Migration History
+    async getMigrationHistory(limit: number = 100, status?: string) {
+        const params = new URLSearchParams();
+        params.append('limit', limit.toString());
+        if (status) params.append('status', status);
+        return axios.get(`/load-balancer/migrations?${params.toString()}`);
+    },
+
+    async getMigration(id: number) {
+        return axios.get(`/load-balancer/migrations/${id}`);
     }
 }

@@ -89,3 +89,125 @@ async def update_config(config: Dict[str, Any], user: User = Depends(require_adm
     """Update configuration"""
     save_config(config)
     return {"status": "success", "config": config}
+
+
+# ============== Migration History API ==============
+
+from database import get_db, LoadBalancerMigration
+from sqlalchemy.orm import Session
+from pydantic import BaseModel
+from typing import Optional, List
+from datetime import datetime
+
+class MigrationHistoryResponse(BaseModel):
+    id: int
+    guest_id: str
+    guest_name: Optional[str] = None
+    guest_type: str
+    source_node: str
+    target_node: str
+    reason: Optional[str] = None
+    status: str
+    dry_run: bool
+    source_cpu_percent: Optional[int] = None
+    source_mem_percent: Optional[int] = None
+    target_cpu_percent: Optional[int] = None
+    target_mem_percent: Optional[int] = None
+    error_message: Optional[str] = None
+    proposed_at: datetime
+    executed_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
+
+class MigrationHistoryCreate(BaseModel):
+    guest_id: str
+    guest_name: Optional[str] = None
+    guest_type: str = "vm"
+    source_node: str
+    target_node: str
+    reason: Optional[str] = None
+    dry_run: bool = False
+    source_cpu_percent: Optional[int] = None
+    source_mem_percent: Optional[int] = None
+    target_cpu_percent: Optional[int] = None
+    target_mem_percent: Optional[int] = None
+
+@router.get("/migrations", response_model=List[MigrationHistoryResponse])
+async def list_migrations(
+    limit: int = 100,
+    status: Optional[str] = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin)
+):
+    """Get migration history"""
+    query = db.query(LoadBalancerMigration).order_by(LoadBalancerMigration.proposed_at.desc())
+    
+    if status:
+        query = query.filter(LoadBalancerMigration.status == status)
+    
+    return query.limit(limit).all()
+
+@router.get("/migrations/{migration_id}", response_model=MigrationHistoryResponse)
+async def get_migration(
+    migration_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin)
+):
+    """Get single migration by ID"""
+    migration = db.query(LoadBalancerMigration).filter(LoadBalancerMigration.id == migration_id).first()
+    if not migration:
+        raise HTTPException(status_code=404, detail="Migration not found")
+    return migration
+
+@router.post("/migrations", response_model=MigrationHistoryResponse)
+async def record_migration(
+    migration: MigrationHistoryCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin)
+):
+    """Record a new migration (called after analysis or execution)"""
+    db_migration = LoadBalancerMigration(
+        guest_id=migration.guest_id,
+        guest_name=migration.guest_name,
+        guest_type=migration.guest_type,
+        source_node=migration.source_node,
+        target_node=migration.target_node,
+        reason=migration.reason,
+        dry_run=migration.dry_run,
+        status="proposed" if migration.dry_run else "executing",
+        source_cpu_percent=migration.source_cpu_percent,
+        source_mem_percent=migration.source_mem_percent,
+        target_cpu_percent=migration.target_cpu_percent,
+        target_mem_percent=migration.target_mem_percent,
+        triggered_by=user.id
+    )
+    db.add(db_migration)
+    db.commit()
+    db.refresh(db_migration)
+    return db_migration
+
+@router.patch("/migrations/{migration_id}/status")
+async def update_migration_status(
+    migration_id: int,
+    status: str,
+    error_message: Optional[str] = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin)
+):
+    """Update migration status (completed, failed, skipped)"""
+    migration = db.query(LoadBalancerMigration).filter(LoadBalancerMigration.id == migration_id).first()
+    if not migration:
+        raise HTTPException(status_code=404, detail="Migration not found")
+    
+    migration.status = status
+    if status == "completed":
+        migration.completed_at = datetime.utcnow()
+    elif status == "executing":
+        migration.executed_at = datetime.utcnow()
+    if error_message:
+        migration.error_message = error_message
+    
+    db.commit()
+    return {"status": "updated", "migration_id": migration_id}
