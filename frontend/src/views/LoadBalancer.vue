@@ -39,6 +39,12 @@
         </button>
         <button 
             class="tab-btn" 
+            :class="{ active: activeTab === 'guests' }" 
+            @click="activeTab = 'guests'">
+            🧠 VM/CT Manager
+        </button>
+        <button 
+            class="tab-btn" 
             :class="{ active: activeTab === 'config' }" 
             @click="activeTab = 'config'">
             ⚙️ Configuration
@@ -428,7 +434,110 @@
             </div>
         </div>
 
-        <!-- Config Tab -->
+        <!-- Guest Manager Tab -->
+        <div v-if="activeTab === 'guests'" class="guests-panel">
+            <div class="control-bar">
+                <button class="btn btn-primary" @click="runAnalysis" :disabled="loading">
+                    <span v-if="loading" class="spinner-sm"></span>
+                    {{ loading ? 'Reloading...' : '🔄 Refresh List' }}
+                </button>
+                
+                <div class="search-box">
+                    <span class="search-icon">🔍</span>
+                    <input 
+                        type="text" 
+                        v-model="guestSearch" 
+                        placeholder="Search guests..." 
+                        class="search-input"
+                    >
+                </div>
+
+                <select v-model="guestTypeFilter" class="filter-select">
+                    <option value="all">All Types</option>
+                    <option value="vm">Virtual Machines</option>
+                    <option value="ct">Containers</option>
+                </select>
+
+                <select v-model="guestNodeFilter" class="filter-select">
+                    <option value="all">All Nodes</option>
+                    <option v-for="node in availableNodes" :key="node" :value="node">
+                        {{ node }}
+                    </option>
+                </select>
+            </div>
+
+            <!-- Bulk Actions Bar -->
+            <div v-if="selectedGuests.length > 0" class="bulk-actions-bar">
+                <span class="selection-count">{{ selectedGuests.length }} selected</span>
+                <div class="bulk-buttons">
+                    <button class="btn btn-warning btn-sm" @click="bulkIgnoreGuests(true)">
+                        🚫 Ignore Selected
+                    </button>
+                    <button class="btn btn-success btn-sm" @click="bulkIgnoreGuests(false)">
+                        ✅ Include Selected
+                    </button>
+                </div>
+                <button class="btn-text" @click="selectedGuests = []">Clear Selection</button>
+            </div>
+
+            <div class="table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th class="col-checkbox">
+                                <input 
+                                    type="checkbox" 
+                                    :checked="isAllSelected" 
+                                    @change="toggleSelectAll"
+                                >
+                            </th>
+                            <th>Status</th>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Node</th>
+                            <th>CPU</th>
+                            <th>Memory</th>
+                            <th>Ignored</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="guest in filteredGuests" :key="guest.id" :class="{ 'row-ignored': isGuestIgnored(guest.id) }">
+                            <td class="col-checkbox">
+                                <input 
+                                    type="checkbox" 
+                                    v-model="selectedGuests" 
+                                    :value="guest.id"
+                                >
+                            </td>
+                            <td>
+                                <span class="status-dot" :class="guest.status"></span>
+                            </td>
+                            <td class="font-mono">{{ guest.id }}</td>
+                            <td class="font-bold">{{ guest.name || '-' }}</td>
+                            <td>
+                                <span class="guest-badge" :class="guest.type">{{ guest.type }}</span>
+                            </td>
+                            <td>{{ guest.node_current }}</td>
+                            <td>{{ guest.cpu_allocated || '-' }}</td>
+                            <td>
+                                {{ guest.memory_allocated ? (guest.memory_allocated / (1024*1024*1024)).toFixed(1) + ' GB' : '-' }}
+                            </td>
+                            <td>
+                                <span v-if="isGuestIgnored(guest.id)" class="badge-ignored">IGNORED</span>
+                                <span v-else class="text-muted">-</span>
+                            </td>
+                        </tr>
+                        <tr v-if="filteredGuests.length === 0">
+                            <td colspan="9" class="text-center py-4">
+                                No guests found matching filters.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <div v-if="activeTab === 'config'" class="config-panel">
             <!-- Connection Section -->
             <div class="config-section">
@@ -753,6 +862,87 @@ const getGuestTooltip = (guest: any) => {
     const cpu = guest.cpu_allocated ? `CPU: ${guest.cpu_allocated}` : '';
     const mem = guest.memory_allocated ? `RAM: ${(guest.memory_allocated / (1024*1024*1024)).toFixed(1)}GB` : '';
     return `${type} ${guest.id}: ${name}\n${cpu} ${mem}`.trim();
+};
+
+// Guest Manager State
+const guestSearch = ref('');
+const guestTypeFilter = ref('all');
+const guestNodeFilter = ref('all');
+const selectedGuests = ref<string[]>([]);
+
+// Computed Guests for Manager
+const availableNodes = computed(() => {
+    if (!lastAnalysis.value || !lastAnalysis.value.nodes) return [];
+    return Object.keys(lastAnalysis.value.nodes).sort();
+});
+
+const filteredGuests = computed(() => {
+    if (!lastAnalysis.value || !lastAnalysis.value.guests) return [];
+    
+    let guests = Object.values(lastAnalysis.value.guests) as any[];
+
+    // Search filter
+    if (guestSearch.value) {
+        const query = guestSearch.value.toLowerCase();
+        guests = guests.filter(g => 
+            g.name?.toLowerCase().includes(query) || 
+            g.id.toString().includes(query)
+        );
+    }
+
+    // Type filter
+    if (guestTypeFilter.value !== 'all') {
+        guests = guests.filter(g => g.type === guestTypeFilter.value);
+    }
+
+    // Node filter
+    if (guestNodeFilter.value !== 'all') {
+        guests = guests.filter(g => g.node_current === guestNodeFilter.value);
+    }
+
+    // Sort by ID
+    return guests.sort((a, b) => parseInt(a.id) - parseInt(b.id));
+});
+
+const isAllSelected = computed(() => {
+    return filteredGuests.value.length > 0 && selectedGuests.value.length === filteredGuests.value.length;
+});
+
+const toggleSelectAll = () => {
+    if (isAllSelected.value) {
+        selectedGuests.value = [];
+    } else {
+        selectedGuests.value = filteredGuests.value.map(g => g.id);
+    }
+};
+
+const isGuestIgnored = (guestId: string) => {
+    return config.proxmox_cluster.ignored_guests.includes(guestId);
+};
+
+const bulkIgnoreGuests = async (ignore: boolean) => {
+    if (selectedGuests.value.length === 0) return;
+    
+    const currentIgnored = new Set(config.proxmox_cluster.ignored_guests);
+    
+    selectedGuests.value.forEach(id => {
+        if (ignore) {
+            currentIgnored.add(id);
+        } else {
+            currentIgnored.delete(id);
+        }
+    });
+    
+    config.proxmox_cluster.ignored_guests = Array.from(currentIgnored);
+    
+    loading.value = true;
+    try {
+        await saveConfiguration();
+        // Clear selection after success
+        selectedGuests.value = [];
+    } finally {
+        loading.value = false;
+    }
 };
 
 // Reactive configuration object with defaults
@@ -2229,6 +2419,129 @@ onUnmounted(() => {
 .map-summary-label {
     font-size: 0.8rem;
     color: var(--text-muted);
+}
+
+/* Guest Manager Panel */
+.guests-panel {
+    padding-bottom: 40px;
+}
+
+.search-box {
+    position: relative;
+    flex: 1;
+    min-width: 200px;
+    max-width: 300px;
+}
+
+.search-icon {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.search-input {
+    width: 100%;
+    padding: 8px 12px 8px 32px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    color: var(--text-color);
+    font-size: 0.9rem;
+}
+
+.search-input:focus {
+    border-color: var(--primary-color);
+    outline: none;
+}
+
+.filter-select {
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    color: var(--text-color);
+    cursor: pointer;
+    min-width: 120px;
+}
+
+/* Bulk Actions Bar */
+.bulk-actions-bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 10px 16px;
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: 8px;
+    margin-bottom: 16px;
+    animation: fadeIn 0.3s ease;
+}
+
+.selection-count {
+    font-weight: 600;
+    color: #3b82f6;
+    font-size: 0.9rem;
+}
+
+.bulk-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-text {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.85rem;
+    text-decoration: underline;
+    margin-left: auto;
+}
+
+.btn-text:hover {
+    color: var(--text-color);
+}
+
+.col-checkbox {
+    width: 40px;
+    text-align: center;
+}
+
+.status-dot {
+    display: block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #ccc;
+}
+
+.status-dot.running { background: #22c55e; }
+.status-dot.stopped { background: #9ca3af; }
+
+.badge-ignored {
+    background: #f59e0b;
+    color: #fff;
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 700;
+}
+
+.row-ignored {
+    opacity: 0.6;
+    background: rgba(245, 158, 11, 0.05);
+}
+
+.row-ignored:hover {
+    opacity: 0.9;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-5px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 @media (max-width: 768px) {
