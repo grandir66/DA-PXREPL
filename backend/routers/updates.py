@@ -284,23 +284,14 @@ async def run_update_process():
         
         # Backup database
         log("Creazione backup database...")
-        backup_dir = "/tmp/dapx-backup"
+        backup_dir = "/var/lib/dapx-unified/backups"
         os.makedirs(backup_dir, exist_ok=True)
         
-        db_paths = [
-            "/var/lib/dapx-backandrepl/dapx-backandrepl.db",
-            "/var/lib/sanoid-manager/sanoid-manager.db"
-        ]
-        for db_path in db_paths:
-            if os.path.exists(db_path):
-                backup_name = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
-                subprocess.run(["cp", db_path, os.path.join(backup_dir, backup_name)])
-                log(f"Backup creato: {backup_name}")
-                break
-        
-        # Ferma servizio temporaneamente (opzionale, per sicurezza)
-        # log("Fermata servizio...")
-        # subprocess.run(["systemctl", "stop", "dapx-backandrepl"], capture_output=True)
+        db_path = "/var/lib/dapx-unified/dapx.db"
+        if os.path.exists(db_path):
+            backup_name = f"backup_pre_update_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+            subprocess.run(["cp", db_path, os.path.join(backup_dir, backup_name)])
+            log(f"Backup creato: {backup_name}")
         
         # Aggiorna codice da Git
         log("Download aggiornamenti da GitHub...")
@@ -326,210 +317,100 @@ async def run_update_process():
                 raise Exception(f"Errore git reset: {result.stderr}")
             
             log("Codice aggiornato da Git")
-            
-            # Forza refresh filesystem e verifica file VERSION
-            import time
-            time.sleep(0.5)  # Piccola pausa per assicurare scrittura su disco
-            
-            # Cerca file VERSION in tutti i percorsi possibili
-            version_paths_to_check = [
-                os.path.join(INSTALL_DIR, "VERSION"),
-                "/opt/dapx-backandrepl/VERSION",
-                "/opt/sanoid-manager/VERSION",
-            ]
-            
-            version_found = None
-            for vpath in version_paths_to_check:
-                if os.path.exists(vpath):
-                    try:
-                        with open(vpath, 'r') as f:
-                            version_content = f.read().strip().split('\n')[0].strip()
-                        if version_content:
-                            version_found = version_content
-                            log(f"Versione letta da {vpath}: {version_content}")
-                            break
-                    except Exception as e:
-                        log(f"Warning: errore lettura {vpath}: {e}")
-                        continue
-            
-            if version_found:
-                log(f"✓ Versione aggiornata: {version_found}")
-            else:
-                log("Warning: file VERSION non trovato dopo aggiornamento")
-                # Prova a verificare se esiste il file
-                for vpath in version_paths_to_check:
-                    if os.path.exists(vpath):
-                        log(f"File VERSION esiste in {vpath} ma non è leggibile")
-                    else:
-                        log(f"File VERSION non esiste in {vpath}")
         else:
-            # Non è un repository Git
-            log("Download nuova versione...")
-            subprocess.run(["rm", "-rf", "/tmp/dapx-update"], capture_output=True)
+            raise Exception("La directory non è un repository Git")
+        
+        # Aggiorna dipendenze Python (usa venv se esiste)
+        log("Aggiornamento dipendenze Python...")
+        venv_pip = os.path.join(INSTALL_DIR, "venv", "bin", "pip")
+        requirements = os.path.join(INSTALL_DIR, "backend", "requirements.txt")
+        
+        if os.path.exists(venv_pip):
             result = subprocess.run(
-                ["git", "clone", "--depth", "1", "--branch", "main",
-                 f"https://github.com/{GITHUB_REPO}.git", "/tmp/dapx-update"],
+                [venv_pip, "install", "-r", requirements, "--quiet", "--upgrade"],
                 capture_output=True,
                 text=True
             )
             if result.returncode != 0:
-                raise Exception(f"Errore git clone: {result.stderr}")
-            
-            # Copia nuovi file
-            subprocess.run(
-                ["rsync", "-av", "--exclude=.git", "/tmp/dapx-update/", f"{INSTALL_DIR}/"],
-                capture_output=True
-            )
-            log("Nuova versione scaricata")
+                log(f"Warning dipendenze: {result.stderr[:200] if result.stderr else 'errore pip'}")
+            else:
+                log("Dipendenze Python aggiornate")
+        else:
+            log("Warning: venv non trovato, skip dipendenze Python")
         
-        # Aggiorna dipendenze Python
-        log("Aggiornamento dipendenze Python...")
-        backend_dir = os.path.join(INSTALL_DIR, "backend")
+        # Ricompila Frontend
+        log("Ricompilazione frontend...")
+        frontend_dir = os.path.join(INSTALL_DIR, "frontend")
         
-        # Prima prova con --break-system-packages (Debian 12+)
-        result = subprocess.run(
-            ["pip3", "install", "--no-cache-dir", "--break-system-packages", "-r", "requirements.txt", "--upgrade"],
-            cwd=backend_dir,
-            capture_output=True,
-            text=True
-        )
-        if result.returncode != 0:
-            # Riprova senza --break-system-packages (versioni più vecchie)
+        if os.path.exists(os.path.join(frontend_dir, "package.json")):
+            # npm install
             result = subprocess.run(
-                ["pip3", "install", "--no-cache-dir", "-r", "requirements.txt", "--upgrade"],
-                cwd=backend_dir,
+                ["npm", "install", "--silent"],
+                cwd=frontend_dir,
                 capture_output=True,
                 text=True
             )
-        if result.returncode != 0:
-            log(f"Warning dipendenze: {result.stderr[:200] if result.stderr else 'errore pip'}")
+            if result.returncode != 0:
+                log(f"Warning npm install: {result.stderr[:100] if result.stderr else ''}")
+            
+            # npm run build
+            result = subprocess.run(
+                ["npm", "run", "build"],
+                cwd=frontend_dir,
+                capture_output=True,
+                text=True
+            )
+            if result.returncode == 0:
+                log("Frontend ricompilato con successo")
+            else:
+                log(f"Warning build frontend: {result.stderr[:200] if result.stderr else 'errore build'}")
+        else:
+            log("Warning: frontend/package.json non trovato")
         
-        log("Dipendenze aggiornate")
-        
-        # Ricarica servizio
+        # Ricarica e riavvia servizio
         log("Ricarica configurazione systemd...")
         subprocess.run(["systemctl", "daemon-reload"], capture_output=True)
         
-        # Riavvia servizio - trova il servizio corretto
-        log("Riavvio servizio...")
-        service_names = ["dapx-backandrepl", "sanoid-manager"]
-        service_found = None
+        log("Riavvio servizio dapx-unified...")
+        result = subprocess.run(
+            ["systemctl", "restart", "dapx-unified"],
+            capture_output=True,
+            text=True
+        )
         
-        # Cerca quale servizio esiste
-        for service in service_names:
-            result = subprocess.run(
-                ["systemctl", "list-unit-files", f"{service}.service"],
-                capture_output=True,
-                text=True
-            )
-            if result.returncode == 0 and service in result.stdout:
-                service_found = service
-                log(f"Servizio trovato: {service}")
-                break
-        
-        if not service_found:
-            # Prova a cercare servizi che contengono "dapx" o "sanoid"
-            log("Ricerca servizio alternativo...")
-            result = subprocess.run(
-                ["systemctl", "list-unit-files", "--type=service", "--no-pager"],
-                capture_output=True,
-                text=True
-            )
-            if result.returncode == 0:
-                for line in result.stdout.splitlines():
-                    if "dapx" in line.lower() or "sanoid" in line.lower():
-                        # Estrai nome servizio
-                        parts = line.split()
-                        if parts and ".service" in parts[0]:
-                            service_found = parts[0].replace(".service", "")
-                            log(f"Servizio alternativo trovato: {service_found}")
-                            break
-        
-        if service_found:
-            # Riavvia il servizio trovato
-            result = subprocess.run(
-                ["systemctl", "restart", service_found],
-                capture_output=True,
-                text=True
-            )
-            if result.returncode == 0:
-                log(f"Servizio {service_found} riavviato")
-            else:
-                log(f"Warning: errore riavvio servizio {service_found}: {result.stderr}")
+        if result.returncode == 0:
+            log("Servizio dapx-unified riavviato")
         else:
-            log("Warning: nessun servizio systemd trovato. Il servizio potrebbe non essere installato come systemd service.")
-            log("Per installare il servizio, esegui: ./install.sh")
+            log(f"Warning riavvio servizio: {result.stderr}")
         
         # Attendi che il servizio sia pronto
         await asyncio.sleep(3)
         
         # Verifica servizio
-        if service_found:
-            log("Verifica servizio...")
-            result = subprocess.run(
-                ["systemctl", "is-active", service_found],
-                capture_output=True,
-                text=True
-            )
-            if result.returncode == 0:
-                log(f"Servizio {service_found} attivo")
-            else:
-                log(f"Warning: servizio {service_found} non risulta attivo")
-                log(f"Controlla con: systemctl status {service_found}")
+        log("Verifica servizio...")
+        result = subprocess.run(
+            ["systemctl", "is-active", "dapx-unified"],
+            capture_output=True,
+            text=True
+        )
+        if result.returncode == 0:
+            log("Servizio dapx-unified attivo")
         else:
-            log("Impossibile verificare servizio: servizio non trovato")
+            log("Warning: servizio dapx-unified non risulta attivo")
         
-        # Aggiorna versione (forza rilettura dopo aggiornamento)
+        # Leggi nuova versione
         log("Lettura versione aggiornata...")
-        old_version = update_status.get("current_version", "unknown")
-        
-        # Forza refresh chiamando get_current_version() più volte se necessario
         import time
-        time.sleep(0.5)  # Piccola pausa per assicurare scrittura su disco
+        time.sleep(0.5)
         
         new_version = get_current_version()
-        
-        # Se la versione è ancora "unknown" o un hash, prova a rileggere
-        if new_version == "unknown" or (len(new_version) == 7 and new_version.isalnum()):
-            log("Warning: versione non letta correttamente, riprovo...")
-            time.sleep(0.5)
-            new_version = get_current_version()
-        
-        # Verifica che il file VERSION sia stato aggiornato
-        version_paths_to_check = [
-            os.path.join(INSTALL_DIR, "VERSION"),
-            "/opt/dapx-backandrepl/VERSION",
-            "/opt/sanoid-manager/VERSION",
-        ]
-        
-        file_version = None
-        for vpath in version_paths_to_check:
-            if os.path.exists(vpath):
-                try:
-                    with open(vpath, 'r') as f:
-                        file_version = f.read().strip().split('\n')[0].strip()
-                    if file_version:
-                        log(f"Versione nel file VERSION ({vpath}): {file_version}")
-                        break
-                except Exception as e:
-                    log(f"Warning: impossibile leggere file VERSION da {vpath}: {e}")
-        
-        if file_version and file_version != new_version:
-            log(f"Warning: versione file ({file_version}) diversa da quella letta ({new_version})")
-            # Usa la versione del file se disponibile
-            if file_version and file_version != "unknown":
-                new_version = file_version
-                log(f"Usata versione dal file: {new_version}")
+        old_version = update_status.get("current_version", "unknown")
         
         update_status["current_version"] = new_version
         update_status["last_update"] = datetime.now().isoformat()
         update_status["update_available"] = False
         
-        if old_version != new_version:
-            log(f"Versione aggiornata: {old_version} → {new_version}")
-        else:
-            log(f"Versione corrente: {new_version}")
-        
+        log(f"Versione aggiornata: {old_version} → {new_version}")
         log("✓ Aggiornamento completato con successo!")
         
     except Exception as e:
