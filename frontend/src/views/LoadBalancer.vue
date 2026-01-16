@@ -118,11 +118,182 @@
 
         <!-- Config Tab -->
         <div v-if="activeTab === 'config'" class="config-panel">
-            <div class="config-editor-container">
-                <textarea v-model="configJson" class="json-editor" spellcheck="false"></textarea>
+            <!-- Connection Section -->
+            <div class="config-section">
+                <h3 class="section-title">🔌 Connessione Cluster</h3>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Host Proxmox</label>
+                        <input type="text" v-model="config.proxmox_api.hosts" class="form-input" placeholder="es: 192.168.1.10, 192.168.1.11">
+                        <span class="help-text">Separati da virgola. Lascia vuoto per usare i nodi registrati.</span>
+                    </div>
+                    <div class="form-group">
+                        <label>Utente API</label>
+                        <input type="text" v-model="config.proxmox_api.user" class="form-input" placeholder="root@pam">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" v-model="config.proxmox_api.pass" class="form-input" placeholder="(usa credenziali DB se vuoto)">
+                    </div>
+                    <div class="form-group checkbox">
+                        <label><input type="checkbox" v-model="config.proxmox_api.ssl_verification"> Verifica SSL</label>
+                    </div>
+                </div>
             </div>
-            <div class="help-text">
-                Edit the configuration (JSON format). See ProxLB documentation for options.
+
+            <!-- Balancing Parameters -->
+            <div class="config-section">
+                <h3 class="section-title">⚖️ Parametri Bilanciamento</h3>
+                <div class="form-grid">
+                    <div class="form-group checkbox">
+                        <label><input type="checkbox" v-model="config.balancing.enable"> Abilita Bilanciamento Automatico</label>
+                    </div>
+                    <div class="form-group">
+                        <label>Metrica principale</label>
+                        <select v-model="config.balancing.method" class="form-input">
+                            <option value="memory">Memoria</option>
+                            <option value="cpu">CPU</option>
+                            <option value="disk">Disco</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Modalità</label>
+                        <select v-model="config.balancing.mode" class="form-input">
+                            <option value="used">Risorse Usate</option>
+                            <option value="assigned">Risorse Assegnate</option>
+                            <option value="psi">PSI (Pressure)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Soglia Sbilanciamento (%)</label>
+                        <input type="range" v-model.number="config.balancing.balanciness" min="1" max="50" class="slider">
+                        <span class="slider-value">{{ config.balancing.balanciness }}%</span>
+                        <span class="help-text">Differenza massima tra nodi prima di triggerare il bilanciamento</span>
+                    </div>
+                    <div class="form-group">
+                        <label>Soglia Memoria Critica (%)</label>
+                        <input type="range" v-model.number="config.balancing.memory_threshold" min="50" max="95" class="slider">
+                        <span class="slider-value">{{ config.balancing.memory_threshold }}%</span>
+                    </div>
+                    <div class="form-group checkbox-group">
+                        <label>Tipi Guest:</label>
+                        <label><input type="checkbox" :checked="config.balancing.balance_types?.includes('vm')" @change="toggleBalanceType('vm')"> VMs</label>
+                        <label><input type="checkbox" :checked="config.balancing.balance_types?.includes('ct')" @change="toggleBalanceType('ct')"> Containers</label>
+                    </div>
+                    <div class="form-group checkbox">
+                        <label><input type="checkbox" v-model="config.balancing.balance_larger_guests_first"> Migra prima guest più grandi</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Migration Options -->
+            <div class="config-section">
+                <h3 class="section-title">🔄 Opzioni Migrazione</h3>
+                <div class="form-grid">
+                    <div class="form-group checkbox">
+                        <label><input type="checkbox" v-model="config.balancing.live"> Migrazione Live (senza downtime)</label>
+                    </div>
+                    <div class="form-group checkbox">
+                        <label><input type="checkbox" v-model="config.balancing.with_local_disks"> Migra guest con dischi locali</label>
+                        <span class="help-text">Richiede storage condiviso</span>
+                    </div>
+                    <div class="form-group checkbox">
+                        <label><input type="checkbox" v-model="config.balancing.with_conntrack_state"> Conserva stato connessioni (conntrack)</label>
+                    </div>
+                    <div class="form-group checkbox">
+                        <label><input type="checkbox" v-model="config.balancing.parallel"> Migrazioni parallele</label>
+                    </div>
+                    <div class="form-group" v-if="config.balancing.parallel">
+                        <label>Numero Job Paralleli</label>
+                        <input type="number" v-model.number="config.balancing.parallel_jobs" class="form-input" min="1" max="10">
+                    </div>
+                    <div class="form-group">
+                        <label>Timeout Validazione (sec)</label>
+                        <input type="number" v-model.number="config.balancing.max_job_validation" class="form-input" min="60" max="7200">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Affinity / Pinning -->
+            <div class="config-section">
+                <h3 class="section-title">🔗 Regole Affinità e Pinning</h3>
+                <div class="form-grid">
+                    <div class="form-group checkbox">
+                        <label><input type="checkbox" v-model="config.balancing.enforce_affinity"> Forza regole di affinità</label>
+                    </div>
+                    <div class="form-group checkbox">
+                        <label><input type="checkbox" v-model="config.balancing.enforce_pinning"> Forza pinning a nodi specifici</label>
+                    </div>
+                </div>
+                <div class="info-box">
+                    <strong>ℹ️ Tag supportati sui Guest (in Proxmox):</strong>
+                    <ul>
+                        <li><code>plb_affinity_&lt;nome&gt;</code> — Raggruppa guest sullo stesso nodo</li>
+                        <li><code>plb_anti_affinity_&lt;nome&gt;</code> — Separa guest su nodi diversi</li>
+                        <li><code>plb_pin_&lt;nodo&gt;</code> — Fissa guest su un nodo specifico</li>
+                        <li><code>plb_ignore</code> — Ignora guest dal bilanciamento</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Node Management -->
+            <div class="config-section">
+                <h3 class="section-title">🖥️ Gestione Nodi</h3>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Nodi in Manutenzione</label>
+                        <input type="text" v-model="maintenanceNodesStr" class="form-input" placeholder="es: node1, node3">
+                        <span class="help-text">Guest verranno evacuati da questi nodi</span>
+                    </div>
+                    <div class="form-group">
+                        <label>Nodi da Ignorare</label>
+                        <input type="text" v-model="ignoreNodesStr" class="form-input" placeholder="es: node4">
+                        <span class="help-text">Questi nodi non parteciperanno al bilanciamento</span>
+                    </div>
+                    <div class="form-group">
+                        <label>Riserva Memoria Default (GB)</label>
+                        <input type="number" v-model.number="defaultMemoryReserve" class="form-input" min="0" max="64">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Scheduling -->
+            <div class="config-section">
+                <h3 class="section-title">⏰ Schedulazione Automatica</h3>
+                <div class="form-grid">
+                    <div class="form-group checkbox">
+                        <label><input type="checkbox" v-model="config.service.daemon"> Esegui come Daemon</label>
+                    </div>
+                    <div class="form-group" v-if="config.service.daemon">
+                        <label>Intervallo</label>
+                        <div class="inline-inputs">
+                            <input type="number" v-model.number="scheduleInterval" class="form-input small" min="1">
+                            <select v-model="scheduleFormat" class="form-input small">
+                                <option value="hours">Ore</option>
+                                <option value="minutes">Minuti</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Log Level</label>
+                        <select v-model="config.service.log_level" class="form-input">
+                            <option value="DEBUG">DEBUG</option>
+                            <option value="INFO">INFO</option>
+                            <option value="WARNING">WARNING</option>
+                            <option value="ERROR">ERROR</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- JSON Preview (collapsible) -->
+            <div class="config-section">
+                <h3 class="section-title collapsible" @click="showJsonPreview = !showJsonPreview">
+                    {{ showJsonPreview ? '▼' : '▶' }} Anteprima JSON
+                </h3>
+                <div v-if="showJsonPreview" class="json-preview">
+                    <pre>{{ JSON.stringify(config, null, 2) }}</pre>
+                </div>
             </div>
         </div>
     </div>
@@ -130,7 +301,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, reactive, watch } from 'vue';
 import loadBalancerService from '../services/loadBalancer';
 
 const activeTab = ref('analysis');
@@ -140,19 +311,86 @@ const error = ref<string | null>(null);
 const lastAnalysis = ref<any>(null);
 const configJson = ref('{}');
 const executionLog = ref<string[]>([]);
+const showJsonPreview = ref(false);
+
+// Reactive configuration object with defaults
+const config = reactive({
+    proxmox_api: {
+        hosts: '',
+        user: 'root@pam',
+        pass: '',
+        ssl_verification: false
+    },
+    proxmox_cluster: {
+        maintenance_nodes: [] as string[],
+        ignore_nodes: [] as string[],
+        overprovisioning: true
+    },
+    balancing: {
+        enable: false,
+        enforce_affinity: false,
+        enforce_pinning: false,
+        parallel: false,
+        parallel_jobs: 1,
+        live: true,
+        with_local_disks: false,
+        with_conntrack_state: true,
+        balance_types: ['vm', 'ct'] as string[],
+        max_job_validation: 1800,
+        memory_threshold: 75,
+        balanciness: 5,
+        method: 'memory',
+        mode: 'used',
+        balance_larger_guests_first: false,
+        node_resource_reserve: {
+            defaults: { memory: 2 }
+        }
+    },
+    service: {
+        daemon: false,
+        log_level: 'INFO',
+        schedule: {
+            interval: 12,
+            format: 'hours'
+        }
+    }
+});
+
+// Helper refs for string-based inputs
+const maintenanceNodesStr = ref('');
+const ignoreNodesStr = ref('');
+const defaultMemoryReserve = ref(2);
+const scheduleInterval = ref(12);
+const scheduleFormat = ref('hours');
+
+// Sync helpers with config
+watch(maintenanceNodesStr, (val) => {
+    config.proxmox_cluster.maintenance_nodes = val.split(',').map(s => s.trim()).filter(s => s);
+});
+watch(ignoreNodesStr, (val) => {
+    config.proxmox_cluster.ignore_nodes = val.split(',').map(s => s.trim()).filter(s => s);
+});
+watch(defaultMemoryReserve, (val) => {
+    config.balancing.node_resource_reserve.defaults.memory = val;
+});
+watch([scheduleInterval, scheduleFormat], () => {
+    config.service.schedule = { interval: scheduleInterval.value, format: scheduleFormat.value };
+});
+
+const toggleBalanceType = (type: string) => {
+    const idx = config.balancing.balance_types.indexOf(type);
+    if (idx >= 0) {
+        config.balancing.balance_types.splice(idx, 1);
+    } else {
+        config.balancing.balance_types.push(type);
+    }
+};
 
 const migrations = computed(() => {
-    // This depends on ProxLB output structure. 
-    // We might need to inspect 'lastAnalysis' structure to find migration list.
-    // Assuming calculation results are in lastAnalysis... but ProxLB usually logs them or puts in structure
-    // Let's assume we find them in a specific key or list.
-    // Based on code reading: Calculations.relocate_guests modifies proxlb_data.
-    // It might add a 'relocate' key or similar logs.
     return []; // Placeholder until we verify structure
 });
 
 const balanciness = computed(() => {
-    // Calculate balanciness as the difference between highest and lowest memory usage
     if (!lastAnalysis.value || !lastAnalysis.value.nodes) return 'N/A';
     const nodes = Object.values(lastAnalysis.value.nodes) as any[];
     if (nodes.length === 0) return 'N/A';
@@ -172,7 +410,6 @@ const runAnalysis = async () => {
     try {
         const res = await loadBalancerService.analyzeCluster();
         lastAnalysis.value = res.data;
-        // Parse migrations from result log if possible, or result structure
         if (lastAnalysis.value.log) {
              executionLog.value = lastAnalysis.value.log;
         }
@@ -188,7 +425,6 @@ const executeRun = async (dryRun: boolean) => {
     error.value = null;
     try {
         const res = await loadBalancerService.executeBalancing(dryRun);
-        // Result is { data: ..., log: ... }
         lastAnalysis.value = res.data.data;
         if (res.data.log) {
             executionLog.value = res.data.log;
@@ -203,7 +439,22 @@ const executeRun = async (dryRun: boolean) => {
 const refreshConfig = async () => {
     try {
         const res = await loadBalancerService.getConfig();
-        configJson.value = JSON.stringify(res.data.saved, null, 2);
+        const saved = res.data.saved || {};
+        
+        // Merge saved config into reactive config
+        if (saved.proxmox_api) Object.assign(config.proxmox_api, saved.proxmox_api);
+        if (saved.proxmox_cluster) Object.assign(config.proxmox_cluster, saved.proxmox_cluster);
+        if (saved.balancing) Object.assign(config.balancing, saved.balancing);
+        if (saved.service) Object.assign(config.service, saved.service);
+        
+        // Update helper refs
+        maintenanceNodesStr.value = (config.proxmox_cluster.maintenance_nodes || []).join(', ');
+        ignoreNodesStr.value = (config.proxmox_cluster.ignore_nodes || []).join(', ');
+        defaultMemoryReserve.value = config.balancing.node_resource_reserve?.defaults?.memory || 2;
+        scheduleInterval.value = config.service.schedule?.interval || 12;
+        scheduleFormat.value = config.service.schedule?.format || 'hours';
+        
+        configJson.value = JSON.stringify(saved, null, 2);
     } catch (e) {
         console.error(e);
     }
@@ -211,11 +462,25 @@ const refreshConfig = async () => {
 
 const saveConfiguration = async () => {
     try {
-        const config = JSON.parse(configJson.value);
-        await loadBalancerService.updateConfig(config);
-        alert('Configuration saved');
+        // Build full config object from reactive state
+        const fullConfig = {
+            proxmox_api: { ...config.proxmox_api },
+            proxmox_cluster: { ...config.proxmox_cluster },
+            balancing: { ...config.balancing },
+            service: { ...config.service }
+        };
+        
+        // Clean up hosts if it's a string
+        if (typeof fullConfig.proxmox_api.hosts === 'string') {
+            fullConfig.proxmox_api.hosts = (fullConfig.proxmox_api.hosts as string)
+                .split(',').map(s => s.trim()).filter(s => s);
+        }
+        
+        await loadBalancerService.updateConfig(fullConfig);
+        alert('Configurazione salvata!');
     } catch (e) {
-        alert('Invalid JSON');
+        alert('Errore nel salvataggio della configurazione');
+        console.error(e);
     }
 };
 
@@ -223,18 +488,15 @@ const formatPercent = (val: number) => {
     return (val * 100).toFixed(1) + '%';
 };
 
-// ProxLB already returns percentages as 0-100, not 0-1
 const formatPercentDirect = (val: number) => {
     if (val === undefined || val === null || isNaN(val)) return 'N/A';
     return val.toFixed(1) + '%';
 };
 
-// Count guests (VMs or CTs) on a specific node
 const getGuestCount = (nodeName: string, guestType: 'qemu' | 'lxc') => {
     if (!lastAnalysis.value || !lastAnalysis.value.guests) return 0;
     const guests = lastAnalysis.value.guests;
     let count = 0;
-    // ProxLB uses 'vm'/'ct' as type, and 'node_current' as the node field
     const proxlbType = guestType === 'qemu' ? 'vm' : 'ct';
     for (const id in guests) {
         const guest = guests[id];
@@ -367,5 +629,183 @@ onMounted(() => {
 .data-table td {
     padding: 8px;
     border-bottom: 1px solid var(--border-color);
+}
+
+/* Configuration Panel Styles */
+.config-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    padding-bottom: 40px;
+}
+
+.config-section {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+}
+
+.section-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.section-title.collapsible {
+    cursor: pointer;
+    user-select: none;
+}
+
+.section-title.collapsible:hover {
+    color: var(--accent-primary);
+}
+
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.form-group label {
+    font-weight: 500;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.form-group.checkbox {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+}
+
+.form-group.checkbox label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.form-group.checkbox-group {
+    flex-direction: row;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.form-group.checkbox-group label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+}
+
+.form-input {
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 0.95rem;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+}
+
+.form-input.small {
+    width: 100px;
+}
+
+.inline-inputs {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.slider {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 6px;
+    background: var(--border-color);
+    border-radius: 3px;
+    outline: none;
+}
+
+.slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    background: var(--accent-primary);
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.slider::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    background: var(--accent-primary);
+    border-radius: 50%;
+    cursor: pointer;
+    border: none;
+}
+
+.slider-value {
+    font-weight: 600;
+    color: var(--accent-primary);
+    min-width: 50px;
+}
+
+.help-text {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.info-box {
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: 8px;
+    padding: 16px;
+    margin-top: 16px;
+}
+
+.info-box ul {
+    margin: 8px 0 0 20px;
+    padding: 0;
+}
+
+.info-box li {
+    margin: 4px 0;
+}
+
+.info-box code {
+    background: rgba(0, 0, 0, 0.3);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.85rem;
+}
+
+.json-preview {
+    background: #1a1a1a;
+    border-radius: 8px;
+    padding: 16px;
+    overflow-x: auto;
+    margin-top: 12px;
+}
+
+.json-preview pre {
+    margin: 0;
+    color: #d4d4d4;
+    font-size: 0.85rem;
+    line-height: 1.5;
 }
 </style>
