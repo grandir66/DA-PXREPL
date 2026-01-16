@@ -111,6 +111,10 @@ app.include_router(migration_jobs.router, prefix="/api/migration-jobs", tags=["M
 app.include_router(updates.router, tags=["Updates"])
 app.include_router(pve_replication_jobs.router, prefix="/api/pve-replication", tags=["PVE Replication"])
 
+# Configuration Backup/Restore
+from routers import config_backup
+app.include_router(config_backup.router, tags=["Configuration Backup"])
+
 
 # Health check (non richiede autenticazione)
 @app.get("/api/health")

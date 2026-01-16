@@ -83,6 +83,11 @@ const router = createRouter({
                     path: 'updates',
                     name: 'updates',
                     component: () => import('../views/settings/Updates.vue')
+                },
+                {
+                    path: 'config-backup',
+                    name: 'config-backup',
+                    component: () => import('../views/settings/ConfigBackup.vue')
                 }
             ]
         },
