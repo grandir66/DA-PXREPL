@@ -251,6 +251,10 @@ class LoadBalancerService:
         # Store for cache
         self._last_analysis = proxlb_data
         
+        except Exception as e:
+            logger.exception("Error during analysis")
+            raise Exception(f"Analysis failed: {e}")
+            
         return proxlb_data
 
     async def execute_balancing(self, config_override: Optional[Dict[str, Any]] = None, dry_run: bool = False) -> Dict[str, Any]:
