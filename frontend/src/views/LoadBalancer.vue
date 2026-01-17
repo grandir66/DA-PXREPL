@@ -497,7 +497,8 @@
                             <th>Type</th>
                             <th>Node</th>
                             <th>CPU</th>
-                            <th>Memory</th>
+                            <th>RAM</th>
+                            <th>Disk</th>
                             <th>Ignored</th>
                         </tr>
                     </thead>
@@ -519,9 +520,23 @@
                                 <span class="guest-badge" :class="guest.type">{{ guest.type }}</span>
                             </td>
                             <td>{{ guest.node_current }}</td>
-                            <td>{{ guest.cpu_allocated || '-' }}</td>
-                            <td>
-                                {{ guest.memory_allocated ? (guest.memory_allocated / (1024*1024*1024)).toFixed(1) + ' GB' : '-' }}
+                            <td class="mono-text">
+                                <div class="metric-cell">
+                                    <span>{{ formatPercent(guest.cpu_used || 0) }}</span>
+                                    <span class="sub-metric">{{ guest.cpu_total }} C</span>
+                                </div>
+                            </td>
+                            <td class="mono-text">
+                                <div class="metric-cell">
+                                    <span>{{ formatBytes(guest.memory_used || 0) }}</span>
+                                    <span class="sub-metric">/ {{ formatBytes(guest.memory_total || 0) }}</span>
+                                </div>
+                            </td>
+                            <td class="mono-text">
+                                <div class="metric-cell">
+                                    <span>{{ formatBytes(guest.disk_used || 0) }}</span>
+                                    <span class="sub-metric">/ {{ formatBytes(guest.disk_total || 0) }}</span>
+                                </div>
                             </td>
                             <td>
                                 <span v-if="isGuestIgnored(guest.id)" class="badge-ignored">IGNORED</span>
@@ -2556,5 +2571,21 @@ onUnmounted(() => {
         flex-wrap: wrap;
         gap: 20px;
     }
+}
+
+.metric-cell {
+    display: flex;
+    flex-direction: column;
+    font-size: 0.9rem;
+    line-height: 1.2;
+}
+
+.sub-metric {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.mono-text {
+    font-family: monospace;
 }
 </style>
