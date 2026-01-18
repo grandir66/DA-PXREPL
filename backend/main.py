@@ -16,6 +16,7 @@ import logging
 from database import engine, Base, get_db, init_default_config, SessionLocal
 from routers import nodes, snapshots, sync_jobs, vms, logs, settings, auth, ssh_keys
 from routers import recovery_jobs, backup_jobs, host_info, host_backup, migration_jobs, updates, pve_replication_jobs, load_balancer
+from routers import ha
 from services.scheduler import SchedulerService
 from services.logging_config import setup_logging, get_logger
 
@@ -109,6 +110,7 @@ app.include_router(ssh_keys.router, prefix="/api", tags=["SSH Keys"])
 app.include_router(host_info.router, prefix="/api", tags=["Host Info & Dashboard"])
 app.include_router(updates.router, tags=["Updates"])
 app.include_router(load_balancer.router, tags=["Load Balancer"])
+app.include_router(ha.router, prefix="/api/ha", tags=["High Availability & Cluster"])
 
 # Conditionally include Configuration Backup (useful in both, but maybe simpler in LB mode?)
 # We keep it in both for now as it backs up the DB/Config
