@@ -1210,18 +1210,27 @@ const bulkUnlockGuests = async () => {
         let totalFailed = 0;
         
         for (const [nodeName, guestIds] of guestsByNode) {
+            // Ensure we have registered nodes loaded
+            if (registeredNodes.value.length === 0) {
+                await fetchRegisteredNodes();
+            }
+            
             // Find node_id from registered nodes
-            const node = nodes.value?.find(n => n.name === nodeName);
+            const node = registeredNodes.value?.find(n => n.name === nodeName);
             if (!node) {
                 console.warn(`Node ${nodeName} not found in registered nodes`);
                 totalFailed += guestIds.length;
                 continue;
             }
             
-            // Call bulk unlock API
+            // Call bulk unlock API with auth
+            const token = localStorage.getItem('token');
             const response = await fetch(`/api/vms/node/${node.id}/bulk-unlock`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
                 body: JSON.stringify({ guest_ids: guestIds })
             });
             
@@ -1260,27 +1269,55 @@ const newNodeIP = ref('');
 const newNodeLink0 = ref('');
 const newNodeLink1 = ref('');
 
+// Registered nodes from DB for API calls
+const registeredNodes = ref<any[]>([]);
+
+// Fetch registered nodes from database
+const fetchRegisteredNodes = async () => {
+    try {
+        const token = localStorage.getItem('token');
+        const res = await fetch('/api/nodes', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            registeredNodes.value = await res.json();
+        }
+    } catch (err) {
+        console.error('Error fetching registered nodes:', err);
+    }
+};
+
 // Get first available PVE node ID for API calls
-const getFirstPVENodeId = () => {
-    if (nodes.value && nodes.value.length > 0) {
-        const pveNode = nodes.value.find(n => n.type === 'pve' || n.node_type === 'pve');
-        return pveNode?.id || nodes.value[0].id;
+const getFirstPVENodeId = async () => {
+    // Ensure we have nodes loaded
+    if (registeredNodes.value.length === 0) {
+        await fetchRegisteredNodes();
+    }
+    
+    if (registeredNodes.value.length > 0) {
+        const pveNode = registeredNodes.value.find(n => n.type === 'pve' || n.node_type === 'pve');
+        return pveNode?.id || registeredNodes.value[0].id;
     }
     return null;
 };
 
 const loadHAData = async () => {
-    const nodeId = getFirstPVENodeId();
+    const nodeId = await getFirstPVENodeId();
     if (!nodeId) {
         console.warn('No PVE node available for HA data');
         return;
     }
     
     haLoading.value = true;
+    const token = localStorage.getItem('token');
     try {
         const [resourcesRes, groupsRes] = await Promise.all([
-            fetch(`/api/ha/node/${nodeId}/resources`),
-            fetch(`/api/ha/node/${nodeId}/groups`)
+            fetch(`/api/ha/node/${nodeId}/resources`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            }),
+            fetch(`/api/ha/node/${nodeId}/groups`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
         ]);
         
         if (resourcesRes.ok) {
@@ -1297,17 +1334,22 @@ const loadHAData = async () => {
 };
 
 const loadClusterData = async () => {
-    const nodeId = getFirstPVENodeId();
+    const nodeId = await getFirstPVENodeId();
     if (!nodeId) {
         console.warn('No PVE node available for cluster data');
         return;
     }
     
     clusterLoading.value = true;
+    const token = localStorage.getItem('token');
     try {
         const [statusRes, nodesRes] = await Promise.all([
-            fetch(`/api/ha/node/${nodeId}/cluster/status`),
-            fetch(`/api/ha/node/${nodeId}/cluster/nodes`)
+            fetch(`/api/ha/node/${nodeId}/cluster/status`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            }),
+            fetch(`/api/ha/node/${nodeId}/cluster/nodes`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
         ]);
         
         if (statusRes.ok) {
@@ -1336,15 +1378,17 @@ const getHAStateClass = (state: string) => {
 const removeFromHA = async (resource: any) => {
     if (!confirm(`Remove ${resource.sid} from HA?`)) return;
     
-    const nodeId = getFirstPVENodeId();
+    const nodeId = await getFirstPVENodeId();
     if (!nodeId) return;
     
     // Parse SID (vm:100 or ct:200)
     const [type, vmid] = resource.sid.split(':');
     
     try {
+        const token = localStorage.getItem('token');
         const res = await fetch(`/api/ha/node/${nodeId}/resources/${vmid}?vm_type=${type}`, {
-            method: 'DELETE'
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await res.json();
         alert(data.message || 'Resource removed');
@@ -1357,12 +1401,14 @@ const removeFromHA = async (resource: any) => {
 const deleteHAGroup = async (groupName: string) => {
     if (!confirm(`Delete HA group "${groupName}"?`)) return;
     
-    const nodeId = getFirstPVENodeId();
+    const nodeId = await getFirstPVENodeId();
     if (!nodeId) return;
     
     try {
+        const token = localStorage.getItem('token');
         const res = await fetch(`/api/ha/node/${nodeId}/groups/${groupName}`, {
-            method: 'DELETE'
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await res.json();
         alert(data.message || 'Group deleted');
@@ -1375,12 +1421,14 @@ const deleteHAGroup = async (groupName: string) => {
 const removeNodeFromCluster = async (nodeName: string) => {
     if (!confirm(`⚠️ DANGEROUS: Remove node "${nodeName}" from cluster?\n\nThe node must be POWERED OFF before removal!`)) return;
     
-    const nodeId = getFirstPVENodeId();
+    const nodeId = await getFirstPVENodeId();
     if (!nodeId) return;
     
     try {
+        const token = localStorage.getItem('token');
         const res = await fetch(`/api/ha/node/${nodeId}/cluster/nodes/${nodeName}`, {
-            method: 'DELETE'
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await res.json();
         
@@ -1398,12 +1446,14 @@ const removeNodeFromCluster = async (nodeName: string) => {
 const cleanNodeReferences = async (nodeName: string) => {
     if (!confirm(`Clean leftover references for node "${nodeName}"?`)) return;
     
-    const nodeId = getFirstPVENodeId();
+    const nodeId = await getFirstPVENodeId();
     if (!nodeId) return;
     
     try {
+        const token = localStorage.getItem('token');
         const res = await fetch(`/api/ha/node/${nodeId}/cluster/nodes/${nodeName}/clean`, {
-            method: 'POST'
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await res.json();
         alert(`Cleanup complete for ${nodeName}`);
@@ -1417,14 +1467,18 @@ const addNodeToCluster = async () => {
     
     if (!confirm(`Add node ${newNodeIP.value} to cluster?\n\nThe new node must have:\n- Proxmox installed\n- SSH access configured\n- NOT already in a cluster`)) return;
     
-    const nodeId = getFirstPVENodeId();
+    const nodeId = await getFirstPVENodeId();
     if (!nodeId) return;
     
     loading.value = true;
     try {
+        const token = localStorage.getItem('token');
         const res = await fetch(`/api/ha/node/${nodeId}/cluster/nodes`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}` 
+            },
             body: JSON.stringify({
                 new_node_ip: newNodeIP.value,
                 link0: newNodeLink0.value || null,
