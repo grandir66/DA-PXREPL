@@ -765,6 +765,115 @@ echo "Configuration created"
             return True, f"VM {vmid} deregistrata (dati mantenuti)"
         return False, result.stderr
     
+    async def unlock_guest(
+        self,
+        hostname: str,
+        vmid: int,
+        vm_type: str = "qemu",
+        port: int = 22,
+        username: str = "root",
+        key_path: str = "/root/.ssh/id_rsa"
+    ) -> Tuple[bool, str]:
+        """
+        Sblocca una VM/CT bloccata.
+        Utile dopo operazioni fallite (backup, migration, snapshot).
+        Port of ProxmoxScripts/VirtualMachines/Operations/BulkUnlock.sh
+        """
+        cmd = "qm" if vm_type == "qemu" else "pct"
+        
+        # Prima verifica lo stato di lock
+        check_result = await ssh_service.execute(
+            hostname=hostname,
+            command=f"{cmd} config {vmid} 2>/dev/null | grep -E '^lock:'",
+            port=port,
+            username=username,
+            key_path=key_path
+        )
+        
+        if check_result.success and check_result.stdout.strip():
+            lock_type = check_result.stdout.strip().split(':')[1].strip() if ':' in check_result.stdout else "unknown"
+            logger.info(f"VM {vmid} is locked with: {lock_type}")
+        else:
+            return True, f"VM {vmid} non è bloccata"
+        
+        # Esegui unlock
+        result = await ssh_service.execute(
+            hostname=hostname,
+            command=f"{cmd} unlock {vmid}",
+            port=port,
+            username=username,
+            key_path=key_path
+        )
+        
+        if result.success:
+            return True, f"VM {vmid} sbloccata (era: {lock_type})"
+        else:
+            return False, f"Errore unlock: {result.stderr}"
+
+    async def bulk_unlock_guests(
+        self,
+        hostname: str,
+        guest_ids: list,
+        port: int = 22,
+        username: str = "root",
+        key_path: str = "/root/.ssh/id_rsa"
+    ) -> Dict[str, Any]:
+        """
+        Sblocca multiple VM/CT in bulk.
+        Ritorna risultato aggregato.
+        """
+        results = {
+            "success": [],
+            "failed": [],
+            "skipped": [],
+            "total": len(guest_ids)
+        }
+        
+        for guest_id in guest_ids:
+            # Determina tipo (VM o CT)
+            vmid = int(guest_id) if isinstance(guest_id, str) else guest_id
+            
+            # Prova prima come VM
+            vm_type = "qemu"
+            check = await ssh_service.execute(
+                hostname=hostname,
+                command=f"qm status {vmid} 2>/dev/null",
+                port=port,
+                username=username,
+                key_path=key_path
+            )
+            
+            if not check.success or "does not exist" in check.stderr:
+                # Prova come CT
+                vm_type = "lxc"
+                check = await ssh_service.execute(
+                    hostname=hostname,
+                    command=f"pct status {vmid} 2>/dev/null",
+                    port=port,
+                    username=username,
+                    key_path=key_path
+                )
+            
+            if not check.success:
+                results["skipped"].append({"id": vmid, "reason": "Guest not found"})
+                continue
+            
+            success, message = await self.unlock_guest(
+                hostname=hostname,
+                vmid=vmid,
+                vm_type=vm_type,
+                port=port,
+                username=username,
+                key_path=key_path
+            )
+            
+            if success:
+                results["success"].append({"id": vmid, "message": message})
+            else:
+                results["failed"].append({"id": vmid, "error": message})
+        
+        return results
+    
     async def get_next_vmid(
         self,
         hostname: str,

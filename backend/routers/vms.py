@@ -383,6 +383,87 @@ async def manage_vm_lifecycle(
     log_audit(db, user.id, f"vm_{action}", "vm", resource_id=vmid, details=f"{action} VM {vmid} on {node.name}")
     return {"message": msg}
 
+
+class BulkUnlockRequest(BaseModel):
+    guest_ids: List[int]
+
+
+@router.post("/node/{node_id}/vm/{vmid}/unlock")
+async def unlock_vm(
+    node_id: int,
+    vmid: int,
+    vm_type: str = "qemu",
+    request: Request = None,
+    user: User = Depends(require_operator),
+    db: Session = Depends(get_db)
+):
+    """
+    Sblocca una VM/CT bloccata.
+    Utile per sbloccare VM dopo operazioni fallite (backup, migration, snapshot).
+    Port of ProxmoxScripts/VirtualMachines/Operations/BulkUnlock.sh
+    """
+    node = db.query(Node).filter(Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    
+    if not check_node_access(user, node):
+        raise HTTPException(status_code=403, detail="Accesso negato")
+
+    success, msg = await proxmox_service.unlock_guest(
+        hostname=node.hostname,
+        vmid=vmid,
+        vm_type=vm_type,
+        port=node.ssh_port,
+        username=node.ssh_user,
+        key_path=node.ssh_key_path
+    )
+    
+    if success:
+        log_audit(
+            db, user.id, "vm_unlock", "vm",
+            resource_id=vmid,
+            details=f"Unlocked VM {vmid} on {node.name}",
+            ip_address=request.client.host if request and request.client else None
+        )
+    
+    return {"success": success, "message": msg}
+
+
+@router.post("/node/{node_id}/bulk-unlock")
+async def bulk_unlock_vms(
+    node_id: int,
+    data: BulkUnlockRequest,
+    request: Request = None,
+    user: User = Depends(require_operator),
+    db: Session = Depends(get_db)
+):
+    """
+    Sblocca multiple VM/CT in bulk su un nodo.
+    Port of ProxmoxScripts/VirtualMachines/Operations/BulkUnlock.sh
+    """
+    node = db.query(Node).filter(Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    
+    if not check_node_access(user, node):
+        raise HTTPException(status_code=403, detail="Accesso negato")
+
+    results = await proxmox_service.bulk_unlock_guests(
+        hostname=node.hostname,
+        guest_ids=data.guest_ids,
+        port=node.ssh_port,
+        username=node.ssh_user,
+        key_path=node.ssh_key_path
+    )
+    
+    log_audit(
+        db, user.id, "vm_bulk_unlock", "vm",
+        details=f"Bulk unlock {len(data.guest_ids)} guests on {node.name}: {len(results['success'])} OK, {len(results['failed'])} failed",
+        ip_address=request.client.host if request and request.client else None
+    )
+    
+    return results
+
 @router.get("/node/{node_id}/vm/{vmid}/full-details")
 async def get_vm_full_details_endpoint(
     node_id: int,

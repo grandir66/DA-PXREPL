@@ -466,7 +466,6 @@
                 </select>
             </div>
 
-            <!-- Bulk Actions Bar -->
             <div v-if="selectedGuests.length > 0" class="bulk-actions-bar">
                 <span class="selection-count">{{ selectedGuests.length }} selected</span>
                 <div class="bulk-buttons">
@@ -475,6 +474,9 @@
                     </button>
                     <button class="btn btn-success btn-sm" @click="bulkIgnoreGuests(false)">
                         ✅ Include Selected
+                    </button>
+                    <button class="btn btn-secondary btn-sm" @click="bulkUnlockGuests">
+                        🔓 Unlock Selected
                     </button>
                 </div>
                 <button class="btn-text" @click="selectedGuests = []">Clear Selection</button>
@@ -957,6 +959,72 @@ const bulkIgnoreGuests = async (ignore: boolean) => {
         await saveConfiguration();
         // Clear selection after success
         selectedGuests.value = [];
+    } finally {
+        loading.value = false;
+    }
+};
+
+// Unlock locked VMs/CTs (ported from ProxmoxScripts/BulkUnlock.sh)
+const bulkUnlockGuests = async () => {
+    if (selectedGuests.value.length === 0) return;
+    
+    // Find node for each guest and group by node
+    const guestsByNode = new Map<string, number[]>();
+    
+    allGuests.value.forEach(g => {
+        if (selectedGuests.value.includes(g.id)) {
+            const node = g.node_current;
+            if (!guestsByNode.has(node)) {
+                guestsByNode.set(node, []);
+            }
+            // Extract numeric ID from string
+            const numId = parseInt(g.id, 10);
+            if (!isNaN(numId)) {
+                guestsByNode.get(node)!.push(numId);
+            }
+        }
+    });
+    
+    loading.value = true;
+    try {
+        let totalSuccess = 0;
+        let totalFailed = 0;
+        
+        for (const [nodeName, guestIds] of guestsByNode) {
+            // Find node_id from registered nodes
+            const node = nodes.value?.find(n => n.name === nodeName);
+            if (!node) {
+                console.warn(`Node ${nodeName} not found in registered nodes`);
+                totalFailed += guestIds.length;
+                continue;
+            }
+            
+            // Call bulk unlock API
+            const response = await fetch(`/api/vms/node/${node.id}/bulk-unlock`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ guest_ids: guestIds })
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                totalSuccess += result.success?.length || 0;
+                totalFailed += result.failed?.length || 0;
+            } else {
+                totalFailed += guestIds.length;
+            }
+        }
+        
+        if (totalSuccess > 0) {
+            alert(`Unlocked ${totalSuccess} guests${totalFailed > 0 ? `, ${totalFailed} failed` : ''}`);
+        } else if (totalFailed > 0) {
+            alert(`Failed to unlock ${totalFailed} guests`);
+        }
+        
+        selectedGuests.value = [];
+    } catch (err) {
+        console.error('Bulk unlock error:', err);
+        alert('Error during bulk unlock');
     } finally {
         loading.value = false;
     }
