@@ -619,11 +619,56 @@
                         </tr>
                         <tr v-if="haResources.length === 0">
                             <td colspan="7" class="text-center py-4">
-                                No HA resources configured. Add VMs to HA from the VM/CT Manager.
+                                No HA resources configured. Use the form below to add resources.
                             </td>
                         </tr>
                     </tbody>
                 </table>
+            </div>
+
+            <!-- Add Resource to HA Form -->
+            <div class="card mt-3">
+                <h4>➕ Add Resource to HA</h4>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>VMID</label>
+                        <input type="number" v-model.number="newHAResource.vmid" class="form-input" placeholder="e.g. 100">
+                    </div>
+                    <div class="form-group">
+                        <label>Type</label>
+                        <select v-model="newHAResource.vm_type" class="form-input">
+                            <option value="vm">VM (QEMU)</option>
+                            <option value="ct">Container (LXC)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>HA Group</label>
+                        <select v-model="newHAResource.group" class="form-input">
+                            <option value="">-- No Group --</option>
+                            <option v-for="g in haGroups" :key="g.group" :value="g.group">{{ g.group }}</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>State</label>
+                        <select v-model="newHAResource.state" class="form-input">
+                            <option value="started">Started</option>
+                            <option value="stopped">Stopped</option>
+                            <option value="disabled">Disabled</option>
+                            <option value="ignored">Ignored</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Max Restart</label>
+                        <input type="number" v-model.number="newHAResource.max_restart" class="form-input" min="0" max="10">
+                    </div>
+                    <div class="form-group">
+                        <label>Max Relocate</label>
+                        <input type="number" v-model.number="newHAResource.max_relocate" class="form-input" min="0" max="10">
+                    </div>
+                </div>
+                <button class="btn btn-primary mt-2" @click="addResourceToHA" :disabled="!newHAResource.vmid || haLoading">
+                    ➕ Add to HA
+                </button>
             </div>
 
             <!-- HA Groups -->
@@ -653,11 +698,36 @@
                         </tr>
                         <tr v-if="haGroups.length === 0">
                             <td colspan="5" class="text-center py-4">
-                                No HA groups configured.
+                                No HA groups configured. Create one below.
                             </td>
                         </tr>
                     </tbody>
                 </table>
+            </div>
+
+            <!-- Create HA Group Form -->
+            <div class="card mt-3">
+                <h4>➕ Create HA Group</h4>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Group Name</label>
+                        <input type="text" v-model="newHAGroup.name" class="form-input" placeholder="e.g. primary-group">
+                    </div>
+                    <div class="form-group checkbox">
+                        <label><input type="checkbox" v-model="newHAGroup.restricted"> Restricted (only run on selected nodes)</label>
+                    </div>
+                    <div class="form-group checkbox">
+                        <label><input type="checkbox" v-model="newHAGroup.nofailback"> No Failback (don't auto-migrate back)</label>
+                    </div>
+                </div>
+                <div class="form-group mt-2">
+                    <label>Nodes (with optional priority, e.g. "node1:100, node2:50")</label>
+                    <input type="text" v-model="newHAGroup.nodesStr" class="form-input" placeholder="pve1:100, pve2:50, pve3:25">
+                    <span class="help-text">Enter comma-separated node names with optional :priority suffix</span>
+                </div>
+                <button class="btn btn-primary mt-2" @click="createHAGroup" :disabled="!newHAGroup.name || !newHAGroup.nodesStr || haLoading">
+                    ➕ Create Group
+                </button>
             </div>
         </div>
 
@@ -1269,6 +1339,24 @@ const newNodeIP = ref('');
 const newNodeLink0 = ref('');
 const newNodeLink1 = ref('');
 
+// New HA Resource form state
+const newHAResource = reactive({
+    vmid: null as number | null,
+    vm_type: 'vm',
+    group: '',
+    state: 'started',
+    max_restart: 1,
+    max_relocate: 1
+});
+
+// New HA Group form state
+const newHAGroup = reactive({
+    name: '',
+    nodesStr: '',
+    restricted: false,
+    nofailback: false
+});
+
 // Registered nodes from DB for API calls
 const registeredNodes = ref<any[]>([]);
 
@@ -1415,6 +1503,101 @@ const deleteHAGroup = async (groupName: string) => {
         loadHAData();
     } catch (err) {
         alert('Error deleting HA group');
+    }
+};
+
+const addResourceToHA = async () => {
+    if (!newHAResource.vmid) return;
+    
+    const nodeId = await getFirstPVENodeId();
+    if (!nodeId) {
+        alert('No PVE node available. Please ensure nodes are configured.');
+        return;
+    }
+    
+    haLoading.value = true;
+    try {
+        const token = localStorage.getItem('token');
+        const res = await fetch(`/api/ha/node/${nodeId}/resources`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}` 
+            },
+            body: JSON.stringify({
+                vmid: newHAResource.vmid,
+                vm_type: newHAResource.vm_type,
+                group: newHAResource.group || null,
+                state: newHAResource.state,
+                max_restart: newHAResource.max_restart,
+                max_relocate: newHAResource.max_relocate
+            })
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+            alert(`${newHAResource.vm_type.toUpperCase()} ${newHAResource.vmid} added to HA`);
+            // Reset form
+            newHAResource.vmid = null;
+            newHAResource.group = '';
+            loadHAData();
+        } else {
+            alert(`Error: ${data.message}`);
+        }
+    } catch (err) {
+        console.error('Error adding resource to HA:', err);
+        alert('Error adding resource to HA');
+    } finally {
+        haLoading.value = false;
+    }
+};
+
+const createHAGroup = async () => {
+    if (!newHAGroup.name || !newHAGroup.nodesStr) return;
+    
+    const nodeId = await getFirstPVENodeId();
+    if (!nodeId) {
+        alert('No PVE node available. Please ensure nodes are configured.');
+        return;
+    }
+    
+    // Parse nodes string: "node1:100, node2:50" -> ["node1:100", "node2:50"]
+    const nodes = newHAGroup.nodesStr.split(',').map(n => n.trim()).filter(n => n);
+    
+    haLoading.value = true;
+    try {
+        const token = localStorage.getItem('token');
+        const res = await fetch(`/api/ha/node/${nodeId}/groups`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}` 
+            },
+            body: JSON.stringify({
+                name: newHAGroup.name,
+                nodes: nodes,
+                restricted: newHAGroup.restricted,
+                nofailback: newHAGroup.nofailback
+            })
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+            alert(`HA Group "${newHAGroup.name}" created successfully`);
+            // Reset form
+            newHAGroup.name = '';
+            newHAGroup.nodesStr = '';
+            newHAGroup.restricted = false;
+            newHAGroup.nofailback = false;
+            loadHAData();
+        } else {
+            alert(`Error: ${data.message}`);
+        }
+    } catch (err) {
+        console.error('Error creating HA group:', err);
+        alert('Error creating HA group');
+    } finally {
+        haLoading.value = false;
     }
 };
 
