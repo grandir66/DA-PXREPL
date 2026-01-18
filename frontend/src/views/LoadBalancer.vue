@@ -45,6 +45,18 @@
         </button>
         <button 
             class="tab-btn" 
+            :class="{ active: activeTab === 'ha' }" 
+            @click="activeTab = 'ha'; loadHAData()">
+            🛡️ HA Manager
+        </button>
+        <button 
+            class="tab-btn" 
+            :class="{ active: activeTab === 'cluster' }" 
+            @click="activeTab = 'cluster'; loadClusterData()">
+            🖥️ Cluster
+        </button>
+        <button 
+            class="tab-btn" 
             :class="{ active: activeTab === 'config' }" 
             @click="activeTab = 'config'">
             ⚙️ Configuration
@@ -555,6 +567,213 @@
             </div>
         </div>
 
+        <!-- HA Manager Tab -->
+        <div v-if="activeTab === 'ha'" class="ha-panel">
+            <div class="section-header">
+                <h3>🛡️ High Availability Manager</h3>
+                <button class="btn btn-sm btn-primary" @click="loadHAData" :disabled="loading">
+                    🔄 Refresh
+                </button>
+            </div>
+
+            <div v-if="haLoading" class="loading-indicator">
+                <span class="spinner-sm"></span> Loading HA data...
+            </div>
+
+            <!-- HA Resources -->
+            <div class="card mt-3">
+                <h4>HA Managed Resources</h4>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>SID</th>
+                            <th>Type</th>
+                            <th>State</th>
+                            <th>Group</th>
+                            <th>Max Restart</th>
+                            <th>Max Relocate</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="res in haResources" :key="res.sid">
+                            <td><strong>{{ res.sid }}</strong></td>
+                            <td>
+                                <span :class="res.type === 'vm' ? 'badge-success' : 'badge-info'">
+                                    {{ res.type?.toUpperCase() }}
+                                </span>
+                            </td>
+                            <td>
+                                <span :class="getHAStateClass(res.state)">
+                                    {{ res.state }}
+                                </span>
+                            </td>
+                            <td>{{ res.group || '-' }}</td>
+                            <td>{{ res.max_restart || 1 }}</td>
+                            <td>{{ res.max_relocate || 1 }}</td>
+                            <td>
+                                <button class="btn btn-xs btn-danger" @click="removeFromHA(res)">
+                                    ❌ Remove
+                                </button>
+                            </td>
+                        </tr>
+                        <tr v-if="haResources.length === 0">
+                            <td colspan="7" class="text-center py-4">
+                                No HA resources configured. Add VMs to HA from the VM/CT Manager.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- HA Groups -->
+            <div class="card mt-3">
+                <h4>HA Groups</h4>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Group Name</th>
+                            <th>Nodes</th>
+                            <th>Restricted</th>
+                            <th>No Failback</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="grp in haGroups" :key="grp.group">
+                            <td><strong>{{ grp.group }}</strong></td>
+                            <td>{{ grp.nodes }}</td>
+                            <td>{{ grp.restricted ? '✅' : '❌' }}</td>
+                            <td>{{ grp.nofailback ? '✅' : '❌' }}</td>
+                            <td>
+                                <button class="btn btn-xs btn-danger" @click="deleteHAGroup(grp.group)">
+                                    🗑️ Delete
+                                </button>
+                            </td>
+                        </tr>
+                        <tr v-if="haGroups.length === 0">
+                            <td colspan="5" class="text-center py-4">
+                                No HA groups configured.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Cluster Tab -->
+        <div v-if="activeTab === 'cluster'" class="cluster-panel">
+            <div class="section-header">
+                <h3>🖥️ Cluster Node Management</h3>
+                <button class="btn btn-sm btn-primary" @click="loadClusterData" :disabled="loading">
+                    🔄 Refresh
+                </button>
+            </div>
+
+            <div v-if="clusterLoading" class="loading-indicator">
+                <span class="spinner-sm"></span> Loading cluster data...
+            </div>
+
+            <!-- Cluster Status -->
+            <div class="card mt-3" v-if="clusterStatus">
+                <h4>Cluster Status</h4>
+                <div class="cluster-status-grid">
+                    <div class="status-item">
+                        <span class="label">Cluster Name:</span>
+                        <strong>{{ clusterStatus.cluster_name || 'N/A' }}</strong>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Quorum:</span>
+                        <span :class="clusterStatus.quorum ? 'badge-success' : 'badge-danger'">
+                            {{ clusterStatus.quorum ? '✅ YES' : '❌ NO' }}
+                        </span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Expected Votes:</span>
+                        <strong>{{ clusterStatus.expected_votes || 0 }}</strong>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Total Votes:</span>
+                        <strong>{{ clusterStatus.total_votes || 0 }}</strong>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cluster Nodes -->
+            <div class="card mt-3">
+                <h4>Cluster Nodes</h4>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Node ID</th>
+                            <th>Name</th>
+                            <th>Votes</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="node in clusterNodes" :key="node.node_id">
+                            <td>{{ node.node_id }}</td>
+                            <td>
+                                <strong>{{ node.name }}</strong>
+                                <span v-if="node.is_local" class="badge-info ml-1">LOCAL</span>
+                            </td>
+                            <td>{{ node.votes }}</td>
+                            <td>
+                                <span :class="node.status === 'online' ? 'badge-success' : 'badge-danger'">
+                                    {{ node.status?.toUpperCase() }}
+                                </span>
+                            </td>
+                            <td>
+                                <button 
+                                    class="btn btn-xs btn-warning" 
+                                    @click="cleanNodeReferences(node.name)"
+                                    title="Clean leftover references">
+                                    🧹 Clean
+                                </button>
+                                <button 
+                                    class="btn btn-xs btn-danger" 
+                                    @click="removeNodeFromCluster(node.name)"
+                                    :disabled="node.is_local"
+                                    title="Remove node from cluster (must be offline)">
+                                    ❌ Remove
+                                </button>
+                            </td>
+                        </tr>
+                        <tr v-if="clusterNodes.length === 0">
+                            <td colspan="5" class="text-center py-4">
+                                No cluster nodes found or not in a cluster.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Add Node Panel -->
+            <div class="card mt-3">
+                <h4>➕ Add New Node</h4>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>New Node IP</label>
+                        <input type="text" v-model="newNodeIP" class="form-input" placeholder="192.168.1.100">
+                    </div>
+                    <div class="form-group">
+                        <label>Link0 (optional)</label>
+                        <input type="text" v-model="newNodeLink0" class="form-input" placeholder="Primary network IP">
+                    </div>
+                    <div class="form-group">
+                        <label>Link1 (optional)</label>
+                        <input type="text" v-model="newNodeLink1" class="form-input" placeholder="Secondary network IP">
+                    </div>
+                </div>
+                <button class="btn btn-primary mt-2" @click="addNodeToCluster" :disabled="!newNodeIP">
+                    ➕ Add Node to Cluster
+                </button>
+                <p class="help-text mt-2">⚠️ The new node must have Proxmox installed and SSH access configured.</p>
+            </div>
+        </div>
+
         <div v-if="activeTab === 'config'" class="config-panel">
             <!-- Connection Section -->
             <div class="config-section">
@@ -1025,6 +1244,206 @@ const bulkUnlockGuests = async () => {
     } catch (err) {
         console.error('Bulk unlock error:', err);
         alert('Error during bulk unlock');
+    } finally {
+        loading.value = false;
+    }
+};
+
+// ========== HA & Cluster Management ==========
+const haResources = ref<any[]>([]);
+const haGroups = ref<any[]>([]);
+const haLoading = ref(false);
+const clusterStatus = ref<any>(null);
+const clusterNodes = ref<any[]>([]);
+const clusterLoading = ref(false);
+const newNodeIP = ref('');
+const newNodeLink0 = ref('');
+const newNodeLink1 = ref('');
+
+// Get first available PVE node ID for API calls
+const getFirstPVENodeId = () => {
+    if (nodes.value && nodes.value.length > 0) {
+        const pveNode = nodes.value.find(n => n.type === 'pve' || n.node_type === 'pve');
+        return pveNode?.id || nodes.value[0].id;
+    }
+    return null;
+};
+
+const loadHAData = async () => {
+    const nodeId = getFirstPVENodeId();
+    if (!nodeId) {
+        console.warn('No PVE node available for HA data');
+        return;
+    }
+    
+    haLoading.value = true;
+    try {
+        const [resourcesRes, groupsRes] = await Promise.all([
+            fetch(`/api/ha/node/${nodeId}/resources`),
+            fetch(`/api/ha/node/${nodeId}/groups`)
+        ]);
+        
+        if (resourcesRes.ok) {
+            haResources.value = await resourcesRes.json();
+        }
+        if (groupsRes.ok) {
+            haGroups.value = await groupsRes.json();
+        }
+    } catch (err) {
+        console.error('Error loading HA data:', err);
+    } finally {
+        haLoading.value = false;
+    }
+};
+
+const loadClusterData = async () => {
+    const nodeId = getFirstPVENodeId();
+    if (!nodeId) {
+        console.warn('No PVE node available for cluster data');
+        return;
+    }
+    
+    clusterLoading.value = true;
+    try {
+        const [statusRes, nodesRes] = await Promise.all([
+            fetch(`/api/ha/node/${nodeId}/cluster/status`),
+            fetch(`/api/ha/node/${nodeId}/cluster/nodes`)
+        ]);
+        
+        if (statusRes.ok) {
+            clusterStatus.value = await statusRes.json();
+        }
+        if (nodesRes.ok) {
+            clusterNodes.value = await nodesRes.json();
+        }
+    } catch (err) {
+        console.error('Error loading cluster data:', err);
+    } finally {
+        clusterLoading.value = false;
+    }
+};
+
+const getHAStateClass = (state: string) => {
+    switch (state) {
+        case 'started': return 'badge-success';
+        case 'stopped': return 'badge-warning';
+        case 'disabled': return 'badge-secondary';
+        case 'error': return 'badge-danger';
+        default: return 'badge-info';
+    }
+};
+
+const removeFromHA = async (resource: any) => {
+    if (!confirm(`Remove ${resource.sid} from HA?`)) return;
+    
+    const nodeId = getFirstPVENodeId();
+    if (!nodeId) return;
+    
+    // Parse SID (vm:100 or ct:200)
+    const [type, vmid] = resource.sid.split(':');
+    
+    try {
+        const res = await fetch(`/api/ha/node/${nodeId}/resources/${vmid}?vm_type=${type}`, {
+            method: 'DELETE'
+        });
+        const data = await res.json();
+        alert(data.message || 'Resource removed');
+        loadHAData();
+    } catch (err) {
+        alert('Error removing resource from HA');
+    }
+};
+
+const deleteHAGroup = async (groupName: string) => {
+    if (!confirm(`Delete HA group "${groupName}"?`)) return;
+    
+    const nodeId = getFirstPVENodeId();
+    if (!nodeId) return;
+    
+    try {
+        const res = await fetch(`/api/ha/node/${nodeId}/groups/${groupName}`, {
+            method: 'DELETE'
+        });
+        const data = await res.json();
+        alert(data.message || 'Group deleted');
+        loadHAData();
+    } catch (err) {
+        alert('Error deleting HA group');
+    }
+};
+
+const removeNodeFromCluster = async (nodeName: string) => {
+    if (!confirm(`⚠️ DANGEROUS: Remove node "${nodeName}" from cluster?\n\nThe node must be POWERED OFF before removal!`)) return;
+    
+    const nodeId = getFirstPVENodeId();
+    if (!nodeId) return;
+    
+    try {
+        const res = await fetch(`/api/ha/node/${nodeId}/cluster/nodes/${nodeName}`, {
+            method: 'DELETE'
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+            alert(`Node ${nodeName} removed successfully`);
+            loadClusterData();
+        } else {
+            alert(`Error: ${data.message}`);
+        }
+    } catch (err) {
+        alert('Error removing node from cluster');
+    }
+};
+
+const cleanNodeReferences = async (nodeName: string) => {
+    if (!confirm(`Clean leftover references for node "${nodeName}"?`)) return;
+    
+    const nodeId = getFirstPVENodeId();
+    if (!nodeId) return;
+    
+    try {
+        const res = await fetch(`/api/ha/node/${nodeId}/cluster/nodes/${nodeName}/clean`, {
+            method: 'POST'
+        });
+        const data = await res.json();
+        alert(`Cleanup complete for ${nodeName}`);
+    } catch (err) {
+        alert('Error cleaning node references');
+    }
+};
+
+const addNodeToCluster = async () => {
+    if (!newNodeIP.value) return;
+    
+    if (!confirm(`Add node ${newNodeIP.value} to cluster?\n\nThe new node must have:\n- Proxmox installed\n- SSH access configured\n- NOT already in a cluster`)) return;
+    
+    const nodeId = getFirstPVENodeId();
+    if (!nodeId) return;
+    
+    loading.value = true;
+    try {
+        const res = await fetch(`/api/ha/node/${nodeId}/cluster/nodes`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                new_node_ip: newNodeIP.value,
+                link0: newNodeLink0.value || null,
+                link1: newNodeLink1.value || null
+            })
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+            alert(`Node ${newNodeIP.value} added successfully!`);
+            newNodeIP.value = '';
+            newNodeLink0.value = '';
+            newNodeLink1.value = '';
+            loadClusterData();
+        } else {
+            alert(`Error: ${data.message}`);
+        }
+    } catch (err) {
+        alert('Error adding node to cluster');
     } finally {
         loading.value = false;
     }
