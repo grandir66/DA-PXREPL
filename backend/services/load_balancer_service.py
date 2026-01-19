@@ -177,6 +177,17 @@ class LoadBalancerService:
                     config[k].update(v)
                 else:
                     config[k] = v
+        
+        # 4. Ensure hosts is always a list (fix for "hosts are not defined as a list type" error)
+        hosts = config.get("proxmox_api", {}).get("hosts")
+        if hosts is not None:
+            if isinstance(hosts, str):
+                # Convert comma-separated string to list
+                config["proxmox_api"]["hosts"] = [h.strip() for h in hosts.split(",") if h.strip()]
+            elif not isinstance(hosts, list):
+                # If it's something else, try to convert
+                config["proxmox_api"]["hosts"] = [str(hosts)]
+        
         return config
 
     async def analyze_cluster(self, config_override: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
