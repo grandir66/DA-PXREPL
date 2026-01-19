@@ -606,24 +606,68 @@ async def get_dashboard_job_stats(
 # Dashboard VM Endpoint (Moved from vms.py)
 @router.get("/dashboard/vms")
 async def get_all_dashboard_vms(
+    force_refresh: bool = False,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Ottiene lista di tutte le VM con dettagli real-time (cluster resources) e IP"""
+    """
+    Ottiene lista di tutte le VM con dettagli.
+    
+    - Se force_refresh=False (default): usa cache dal DB (veloce, < 100ms)
+    - Se force_refresh=True: richiede dati real-time via SSH/API (lento, ~5-30s)
+    
+    La cache viene aggiornata in background dal scheduler ogni minuto.
+    """
     from services.proxmox_service import proxmox_service
     from services.ssh_service import ssh_service
     from routers.nodes import filter_nodes_for_user
+    from database import VirtualMachine
     
     nodes_query = db.query(Node).filter(Node.is_active == True, Node.is_online == True)
     nodes = filter_nodes_for_user(db, user, nodes_query).all()
     
-    import asyncio
-    
-    # Crea mappa node_name -> node per lookup veloce
-    node_map = {}
+    # Mappa node_id -> node per lookup
+    node_map = {n.id: n for n in nodes}
+    node_name_map = {n.name: n for n in nodes}
     for n in nodes:
-        node_map[n.name] = n
-        node_map[n.hostname] = n  # Anche per hostname
+        node_name_map[n.hostname] = n  # Anche per hostname
+    
+    # ========= FAST PATH: Use DB Cache =========
+    if not force_refresh:
+        node_ids = [n.id for n in nodes]
+        cached_vms = db.query(VirtualMachine).filter(VirtualMachine.node_id.in_(node_ids)).all()
+        
+        # Se abbiamo dati in cache, restituiscili
+        if cached_vms:
+            result = []
+            for vm in cached_vms:
+                node = node_map.get(vm.node_id)
+                result.append({
+                    "vmid": vm.vmid,
+                    "name": vm.name,
+                    "type": vm.type,
+                    "status": vm.status,
+                    "node": node.name if node else "unknown",
+                    "node_id": vm.node_id,
+                    "maxmem": vm.memory or 0,
+                    "maxcpu": vm.cpus or 0,
+                    "uptime": vm.uptime or 0,
+                    "net0_ip": None,  # IP non cachato per velocità
+                    "cpu": 0,  # Usage non disponibile in cache
+                    "mem": 0,
+                    "disk": 0,
+                    "maxdisk": 0,
+                    "_cached": True,
+                    "_cache_time": vm.last_updated.isoformat() if vm.last_updated else None
+                })
+            logger.debug(f"Returning {len(result)} VMs from cache")
+            return result
+        
+        # Se cache vuota, fallback a real-time
+        logger.warning("VM cache empty, falling back to real-time fetch")
+    
+    # ========= SLOW PATH: Real-time SSH fetch =========
+    import asyncio
     
     async def get_node_vms_resources(node):
         try:
@@ -657,12 +701,12 @@ async def get_all_dashboard_vms(
                     
                     # Mappatura ID host corretto
                     host_node_name = item.get("node")
-                    if host_node_name and host_node_name in node_map:
-                        item["node_id"] = node_map[host_node_name].id
+                    if host_node_name and host_node_name in node_name_map:
+                        item["node_id"] = node_name_map[host_node_name].id
                     
                     all_vms[key] = item
     
-    # Fase 2: Fetch IP per VM running via QEMU agent (in parallelo)
+    # Fase 2: Fetch IP per VM running via QEMU agent (in parallelo) - Solo se force_refresh
     async def fetch_vm_ip(vm_key: str, vm_data: dict, node: Node) -> tuple:
         """Recupera IP via agent per una singola VM"""
         try:
@@ -704,7 +748,7 @@ async def get_all_dashboard_vms(
     for vm_key, vm_data in all_vms.items():
         if vm_data.get("status") == "running":
             host_node_name = vm_data.get("node")
-            node = node_map.get(host_node_name)
+            node = node_name_map.get(host_node_name)
             if node:
                 ip_fetch_tasks.append(fetch_vm_ip(vm_key, vm_data, node))
     

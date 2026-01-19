@@ -66,8 +66,8 @@ export interface ZFSSnapshot {
 }
 
 export default {
-    getVMs() {
-        return apiClient.get<VM[]>('/dashboard/vms');
+    getVMs(forceRefresh: boolean = false) {
+        return apiClient.get<VM[]>(`/dashboard/vms${forceRefresh ? '?force_refresh=true' : ''}`);
     },
 
     getVMDetails(node: number | string, vmid: number | string) {

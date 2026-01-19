@@ -264,23 +264,87 @@
                         <div v-else class="text-secondary text-sm">Nessun storage rilevato</div>
                     </div>
 
-                    <!-- Network (if available) -->
-                    <div class="detail-card full-width" v-if="selectedNode.host_info.network?.length">
-                        <h4>🌐 Network ({{ selectedNode.host_info.network.length }})</h4>
-                        <div class="storage-list">
-                            <div v-for="iface in selectedNode.host_info.network" :key="iface.name" class="pool-item">
-                                <div class="pool-header">
-                                    <strong>{{ iface.name }}</strong>
-                                    <span class="text-xs text-secondary">{{ iface.type }}</span>
-                                    <span :class="iface.status === 'UP' ? 'text-success' : 'text-secondary'" class="text-xs">{{ iface.status }}</span>
+                    <!-- Network Topology -->
+                    <div class="detail-card full-width" v-if="selectedNode.host_info?.network?.length">
+                        <h4>🕸️ Network Topology</h4>
+                        
+                        <!-- Bridges -->
+                        <div class="topology-bridges-list">
+                            <div v-for="bridge in getBridges(selectedNode.host_info.network)" 
+                                 :key="bridge.name" 
+                                 class="topology-bridge-box">
+                                
+                                <!-- Bridge Header -->
+                                <div class="topology-bridge-header">
+                                    <span class="bridge-name">{{ bridge.name }}</span>
+                                    <span class="bridge-cidr">{{ bridge.ip || 'L2 Switch' }}</span>
                                 </div>
-                                <div class="pool-stats text-sm">
-                                    <span v-if="iface.ip">IP: {{ iface.ip }}</span>
-                                    <span v-if="iface.mac" class="text-xs text-secondary ml-2">MAC: {{ iface.mac }}</span>
-                                    <span v-if="iface.gateway" class="text-xs text-secondary ml-2">GW: {{ iface.gateway }}</span>
+                                
+                                <!-- Bridge Ports (Physical NICs) -->
+                                <div v-if="bridge.bridge_ports" class="bridge-ports-info">
+                                    <span class="bridge-ports-label">Uplink:</span>
+                                    <div class="bridge-ports-list">
+                                        <template v-for="port in bridge.bridge_ports.split(' ').filter((p: string) => p)" :key="port">
+                                            <div class="bridge-port-group">
+                                                <span class="bridge-port-chip" :class="{ bond: port.startsWith('bond') }">
+                                                    {{ port }}
+                                                    <span v-if="getBondMode(selectedNode.host_info.network, port)" class="bond-mode-badge">
+                                                        {{ getBondMode(selectedNode.host_info.network, port) }}
+                                                    </span>
+                                                </span>
+                                                <!-- Show bond slaves -->
+                                                <div v-if="getBondSlaves(selectedNode.host_info.network, port)" class="bond-slaves">
+                                                    <span class="slaves-arrow">→</span>
+                                                    <span v-for="slave in getBondSlaves(selectedNode.host_info.network, port)" :key="slave" class="slave-nic">
+                                                        {{ slave }}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+
+                                <!-- Guests connected to this bridge -->
+                                <div class="topology-guests" v-if="selectedNode.host_info.guests?.length">
+                                    <div v-for="guest in getGuestsOnBridge(selectedNode.host_info.guests, bridge.name)" 
+                                         :key="guest.id" 
+                                         class="topology-guest-item"
+                                         :class="{ vm: guest.type === 'vm', ct: guest.type === 'ct' }">
+                                        <span class="guest-icon">{{ guest.type === 'vm' ? '💻' : '📦' }}</span>
+                                        <div class="guest-info">
+                                            <strong>{{ guest.name || guest.id }}</strong>
+                                            <span class="guest-id">ID: {{ guest.id }} - {{ guest.status }}</span>
+                                        </div>
+                                        <!-- VLAN tag -->
+                                        <span v-if="getGuestVlanOnBridge(guest, bridge.name)" class="badge badge-purple" style="margin-left: auto; font-size: 0.7rem;">
+                                            VLAN {{ getGuestVlanOnBridge(guest, bridge.name) }}
+                                        </span>
+                                    </div>
+                                    
+                                    <div v-if="getGuestsOnBridge(selectedNode.host_info.guests, bridge.name).length === 0" class="no-guests">
+                                        No guests connected
+                                    </div>
                                 </div>
                             </div>
                         </div>
+                        
+                        <!-- Other Interfaces (non-bridge) -->
+                        <details v-if="getNonBridgeInterfaces(selectedNode.host_info.network).length > 0" class="mt-3">
+                            <summary class="cursor-pointer text-secondary text-sm">📋 Other Interfaces ({{ getNonBridgeInterfaces(selectedNode.host_info.network).length }})</summary>
+                            <div class="storage-list mt-2">
+                                <div v-for="iface in getNonBridgeInterfaces(selectedNode.host_info.network)" :key="iface.name" class="pool-item">
+                                    <div class="pool-header">
+                                        <strong>{{ iface.name }}</strong>
+                                        <span class="text-xs text-secondary">{{ iface.type }}</span>
+                                        <span :class="iface.status === 'UP' ? 'text-success' : 'text-secondary'" class="text-xs">{{ iface.status }}</span>
+                                    </div>
+                                    <div class="pool-stats text-sm">
+                                        <span v-if="iface.ip">IP: {{ iface.ip }}</span>
+                                        <span v-if="iface.mac" class="text-xs text-secondary ml-2">MAC: {{ iface.mac }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </details>
                     </div>
 
                     <!-- Raw Data Toggle -->
@@ -611,6 +675,70 @@ const updateSanoid = async (node: Node) => {
         alert('Errore aggiornamento Sanoid: ' + (e.response?.data?.detail || e.message));
     }
 };
+
+// ===== Network Topology Helpers =====
+
+// Filter to get only bridge interfaces
+const getBridges = (interfaces: any[]): any[] => {
+    if (!interfaces) return [];
+    return interfaces.filter((i: any) => i.type === 'bridge');
+};
+
+// Filter to get non-bridge interfaces (for the collapsed section)
+const getNonBridgeInterfaces = (interfaces: any[]): any[] => {
+    if (!interfaces) return [];
+    return interfaces.filter((i: any) => i.type !== 'bridge');
+};
+
+// Get bond mode in human-readable format
+const getBondMode = (interfaces: any[], portName: string): string | null => {
+    if (!interfaces || !portName.startsWith('bond')) return null;
+    
+    const bondIface = interfaces.find((i: any) => i.name === portName && i.type === 'bond');
+    if (!bondIface || !bondIface.bond_mode) return null;
+    
+    const modeMap: Record<string, string> = {
+        'balance-rr': 'RR',
+        'active-backup': 'Active-Backup',
+        'balance-xor': 'XOR',
+        'broadcast': 'Broadcast',
+        '802.3ad': 'LACP',
+        'balance-tlb': 'TLB',
+        'balance-alb': 'ALB'
+    };
+    
+    return modeMap[bondIface.bond_mode] || bondIface.bond_mode;
+};
+
+// Get bond slave interfaces
+const getBondSlaves = (interfaces: any[], portName: string): string[] | null => {
+    if (!interfaces || !portName.startsWith('bond')) return null;
+    
+    const bondIface = interfaces.find((i: any) => i.name === portName && i.type === 'bond');
+    if (!bondIface) return null;
+    
+    if (bondIface.slaves) {
+        return bondIface.slaves.split(' ').filter((s: string) => s.trim());
+    }
+    
+    return null;
+};
+
+// Get guests connected to a specific bridge
+const getGuestsOnBridge = (guests: any[], bridgeName: string): any[] => {
+    if (!guests) return [];
+    return guests.filter((g: any) => {
+        if (!g.networks) return false;
+        return g.networks.some((n: any) => n.bridge === bridgeName);
+    });
+};
+
+// Get VLAN tag for a guest on a specific bridge
+const getGuestVlanOnBridge = (guest: any, bridgeName: string): string | null => {
+    if (!guest.networks) return null;
+    const net = guest.networks.find((n: any) => n.bridge === bridgeName);
+    return net?.tag || null;
+};
 </script>
 
 <style scoped>
@@ -723,5 +851,174 @@ const updateSanoid = async (node: Node) => {
 .pool-item { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; border-bottom: 1px solid var(--border-color); }
 .pool-header { display: flex; justify-content: space-between; }
 .pool-stats { font-size: 0.85rem; color: var(--text-secondary); }
+
+/* Network Topology Styles */
+.topology-bridges-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.topology-bridge-box {
+    background: var(--bg-hover);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.topology-bridge-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    background: rgba(234, 179, 8, 0.1);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.bridge-name {
+    font-weight: 600;
+    font-family: var(--font-mono);
+    color: #fbbf24;
+}
+
+.bridge-cidr {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.bridge-ports-info {
+    padding: 8px 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    background: rgba(0, 0, 0, 0.2);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.bridge-ports-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+}
+
+.bridge-ports-list {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.bridge-port-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.bridge-port-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75rem;
+    font-family: var(--font-mono);
+    padding: 2px 8px;
+    background: rgba(96, 165, 250, 0.1);
+    border: 1px solid rgba(96, 165, 250, 0.3);
+    border-radius: 4px;
+    color: #60a5fa;
+}
+
+.bridge-port-chip.bond {
+    background: rgba(96, 165, 250, 0.2);
+    color: #60a5fa;
+}
+
+.bond-mode-badge {
+    font-size: 0.65rem;
+    padding: 1px 4px;
+    background: rgba(16, 185, 129, 0.2);
+    color: #34d399;
+    border-radius: 3px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.bond-slaves {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.slaves-arrow {
+    color: var(--text-tertiary);
+    font-size: 0.8rem;
+}
+
+.slave-nic {
+    font-size: 0.7rem;
+    font-family: var(--font-mono);
+    padding: 1px 6px;
+    background: rgba(139, 92, 246, 0.1);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    border-radius: 3px;
+    color: #a78bfa;
+}
+
+.topology-guests {
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.topology-guest-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    background: var(--bg-body);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 0.8rem;
+}
+
+.topology-guest-item:hover {
+    border-color: var(--accent-primary);
+}
+
+.guest-icon {
+    font-size: 1.2rem;
+}
+
+.guest-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.guest-id {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+}
+
+.no-guests {
+    padding: 12px;
+    text-align: center;
+    color: var(--text-tertiary);
+    font-size: 0.8rem;
+}
+
+.badge-purple {
+    background: rgba(139, 92, 246, 0.2);
+    color: #a78bfa;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.mt-3 { margin-top: 12px; }
+.mt-2 { margin-top: 8px; }
+.ml-2 { margin-left: 8px; }
+.text-xs { font-size: 0.75rem; }
 
 </style>

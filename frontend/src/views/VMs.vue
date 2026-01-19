@@ -4,9 +4,12 @@
         <h1 class="page-title">🖥️ Virtual Machines</h1>
         <p class="page-subtitle">Gestione risorse, lifecycle, snapshot e backup</p>
         <div class="header-actions">
-            <button class="btn btn-secondary btn-sm" @click="loadVMs" :disabled="loading">
+            <button class="btn btn-secondary btn-sm" @click="loadVMs(false)" :disabled="loading">
                 <span v-if="loading" class="spinner-sm"></span>
                 <span v-else>🔄 Aggiorna</span>
+            </button>
+            <button class="btn btn-primary btn-sm" @click="loadVMs(true)" :disabled="loading" title="Forza refresh dati real-time (più lento)">
+                ⚡ Live
             </button>
             <input type="text" v-model="search" placeholder="Cerca VM o ID..." class="form-input search-input">
         </div>
@@ -694,16 +697,17 @@ onMounted(() => {
     loadVMs();
 });
 
-const loadVMs = async () => {
+const loadVMs = async (forceRefresh: boolean = false) => {
     loading.value = true;
     try {
-        const res = await vmsService.getVMs();
+        const res = await vmsService.getVMs(forceRefresh);
         vms.value = res.data;
     } catch (e) {
         console.error('Error loading VMs', e);
     } finally {
         loading.value = false;
-        fetchBackupCounts();
+        // Backup counts are NOT auto-fetched for performance
+        // User can click on a VM to see backup count on-demand
     }
 };
 

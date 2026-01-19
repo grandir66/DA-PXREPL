@@ -84,6 +84,12 @@ class HostInfoService:
             if network_list:
                 result["network"] = network_list
         
+        # Guests (VMs/CTs) - only for PVE nodes
+        if node_type == "pve":
+            guests_list = await self._get_guests_list(hostname, port, username, key_path)
+            if guests_list:
+                result["guests"] = guests_list
+        
         # Hardware info
         if include_hardware:
             hardware_info = await self._get_hardware_info(hostname, port, username, key_path)
@@ -140,7 +146,7 @@ class HostInfoService:
                 key_path=node.ssh_key_path,
                 include_hardware=True,
                 include_storage=True,
-                include_network=False,
+                include_network=True,
                 node_type=node.node_type
             )
             
@@ -687,8 +693,10 @@ class HostInfoService:
                         "netmask": None,
                         "gateway": None,
                         "bridge": pvesh_interfaces.get(iface_name, {}).get("bridge", ""),
+                        "bridge_ports": pvesh_interfaces.get(iface_name, {}).get("bridge_ports", ""),
                         "vlan_id": pvesh_interfaces.get(iface_name, {}).get("vlan-raw-device", ""),
                         "bond_mode": pvesh_interfaces.get(iface_name, {}).get("bond_mode", ""),
+                        "slaves": pvesh_interfaces.get(iface_name, {}).get("slaves", ""),
                         "comment": pvesh_interfaces.get(iface_name, {}).get("comments", "")
                     }
                     
@@ -735,6 +743,123 @@ class HostInfoService:
         except Exception as e:
             logger.error(f"Errore raccolta network: {e}")
             return []
+    
+    async def _get_guests_list(
+        self,
+        hostname: str,
+        port: int,
+        username: str,
+        key_path: str = None
+    ) -> List[Dict[str, Any]]:
+        """Ottiene lista VMs e CTs con configurazione di rete"""
+        guests = []
+        
+        try:
+            # Fetch VMs (qemu)
+            cmd = "pvesh get /nodes/$(hostname)/qemu --output-format json 2>/dev/null"
+            result = await ssh_service.execute(hostname, cmd, port, username, key_path)
+            
+            if result.success and result.stdout.strip():
+                try:
+                    vms = json.loads(result.stdout)
+                    for vm in vms:
+                        vmid = vm.get("vmid")
+                        guest_info = {
+                            "id": vmid,
+                            "name": vm.get("name", f"VM {vmid}"),
+                            "type": "vm",
+                            "status": vm.get("status", "unknown"),
+                            "networks": []
+                        }
+                        
+                        # Fetch VM config for network details
+                        config_cmd = f"pvesh get /nodes/$(hostname)/qemu/{vmid}/config --output-format json 2>/dev/null"
+                        cfg_result = await ssh_service.execute(hostname, config_cmd, port, username, key_path)
+                        
+                        if cfg_result.success and cfg_result.stdout.strip():
+                            try:
+                                cfg = json.loads(cfg_result.stdout)
+                                # Parse network interfaces (net0, net1, etc)
+                                for key, val in cfg.items():
+                                    if key.startswith("net") and isinstance(val, str):
+                                        net_info = self._parse_guest_network_config(key, val)
+                                        if net_info:
+                                            guest_info["networks"].append(net_info)
+                            except json.JSONDecodeError:
+                                pass
+                        
+                        guests.append(guest_info)
+                except json.JSONDecodeError:
+                    pass
+            
+            # Fetch CTs (lxc)
+            cmd = "pvesh get /nodes/$(hostname)/lxc --output-format json 2>/dev/null"
+            result = await ssh_service.execute(hostname, cmd, port, username, key_path)
+            
+            if result.success and result.stdout.strip():
+                try:
+                    cts = json.loads(result.stdout)
+                    for ct in cts:
+                        ctid = ct.get("vmid")
+                        guest_info = {
+                            "id": ctid,
+                            "name": ct.get("name", f"CT {ctid}"),
+                            "type": "ct",
+                            "status": ct.get("status", "unknown"),
+                            "networks": []
+                        }
+                        
+                        # Fetch CT config for network details
+                        config_cmd = f"pvesh get /nodes/$(hostname)/lxc/{ctid}/config --output-format json 2>/dev/null"
+                        cfg_result = await ssh_service.execute(hostname, config_cmd, port, username, key_path)
+                        
+                        if cfg_result.success and cfg_result.stdout.strip():
+                            try:
+                                cfg = json.loads(cfg_result.stdout)
+                                for key, val in cfg.items():
+                                    if key.startswith("net") and isinstance(val, str):
+                                        net_info = self._parse_guest_network_config(key, val)
+                                        if net_info:
+                                            guest_info["networks"].append(net_info)
+                            except json.JSONDecodeError:
+                                pass
+                        
+                        guests.append(guest_info)
+                except json.JSONDecodeError:
+                    pass
+            
+            return guests
+        except Exception as e:
+            logger.error(f"Errore raccolta guests: {e}")
+            return []
+    
+    def _parse_guest_network_config(self, net_key: str, net_val: str) -> Optional[Dict[str, str]]:
+        """Parsa configurazione network di una VM/CT"""
+        net_info = {"id": net_key, "raw": net_val, "bridge": "", "mac": "", "tag": ""}
+        
+        parts = net_val.split(",")
+        for p in parts:
+            if "=" in p:
+                pk, pv = p.split("=", 1)
+                pk = pk.strip()
+                pv = pv.strip()
+                
+                if pk == "bridge":
+                    net_info["bridge"] = pv
+                if pk == "tag":
+                    net_info["tag"] = pv
+                if pk in ["virtio", "e1000", "vmxnet3", "rtl8139"]:
+                    net_info["mac"] = pv
+                if pk == "hwaddr":  # CT
+                    net_info["mac"] = pv
+        
+        # Fallback regex for bridge
+        if not net_info["bridge"] and "bridge=" in net_val:
+            m = re.search(r'bridge=([^,\s]+)', net_val)
+            if m:
+                net_info["bridge"] = m.group(1)
+        
+        return net_info if net_info["bridge"] else None
     
     def _prefixlen_to_netmask(self, prefixlen: int) -> str:
         """Converte prefixlen (CIDR) in netmask"""
@@ -783,8 +908,10 @@ class HostInfoService:
                         "netmask": None,
                         "gateway": None,
                         "bridge": pvesh_interfaces.get(iface_name, {}).get("bridge", ""),
+                        "bridge_ports": pvesh_interfaces.get(iface_name, {}).get("bridge_ports", ""),
                         "vlan_id": pvesh_interfaces.get(iface_name, {}).get("vlan-raw-device", ""),
                         "bond_mode": pvesh_interfaces.get(iface_name, {}).get("bond_mode", ""),
+                        "slaves": pvesh_interfaces.get(iface_name, {}).get("slaves", ""),
                         "comment": pvesh_interfaces.get(iface_name, {}).get("comments", "")
                     }
                     # Estrai MAC
