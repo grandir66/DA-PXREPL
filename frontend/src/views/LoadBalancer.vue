@@ -1294,7 +1294,7 @@ const bulkUnlockGuests = async () => {
             }
             
             // Call bulk unlock API with auth
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('access_token');
             const response = await fetch(`/api/vms/node/${node.id}/bulk-unlock`, {
                 method: 'POST',
                 headers: { 
@@ -1363,7 +1363,7 @@ const registeredNodes = ref<any[]>([]);
 // Fetch registered nodes from database
 const fetchRegisteredNodes = async () => {
     try {
-        const token = localStorage.getItem('token');
+        const token = localStorage.getItem('access_token');
         const res = await fetch('/api/nodes/', {
             headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -1397,7 +1397,7 @@ const loadHAData = async () => {
     }
     
     haLoading.value = true;
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('access_token');
     try {
         const [resourcesRes, groupsRes] = await Promise.all([
             fetch(`/api/ha/node/${nodeId}/resources`, {
@@ -1429,7 +1429,7 @@ const loadClusterData = async () => {
     }
     
     clusterLoading.value = true;
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('access_token');
     try {
         const [statusRes, nodesRes] = await Promise.all([
             fetch(`/api/ha/node/${nodeId}/cluster/status`, {
@@ -1473,7 +1473,7 @@ const removeFromHA = async (resource: any) => {
     const [type, vmid] = resource.sid.split(':');
     
     try {
-        const token = localStorage.getItem('token');
+        const token = localStorage.getItem('access_token');
         const res = await fetch(`/api/ha/node/${nodeId}/resources/${vmid}?vm_type=${type}`, {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${token}` }
@@ -1493,7 +1493,7 @@ const deleteHAGroup = async (groupName: string) => {
     if (!nodeId) return;
     
     try {
-        const token = localStorage.getItem('token');
+        const token = localStorage.getItem('access_token');
         const res = await fetch(`/api/ha/node/${nodeId}/groups/${groupName}`, {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${token}` }
@@ -1517,7 +1517,7 @@ const addResourceToHA = async () => {
     
     haLoading.value = true;
     try {
-        const token = localStorage.getItem('token');
+        const token = localStorage.getItem('access_token');
         const res = await fetch(`/api/ha/node/${nodeId}/resources`, {
             method: 'POST',
             headers: { 
@@ -1566,7 +1566,7 @@ const createHAGroup = async () => {
     
     haLoading.value = true;
     try {
-        const token = localStorage.getItem('token');
+        const token = localStorage.getItem('access_token');
         const res = await fetch(`/api/ha/node/${nodeId}/groups`, {
             method: 'POST',
             headers: { 
@@ -1608,7 +1608,7 @@ const removeNodeFromCluster = async (nodeName: string) => {
     if (!nodeId) return;
     
     try {
-        const token = localStorage.getItem('token');
+        const token = localStorage.getItem('access_token');
         const res = await fetch(`/api/ha/node/${nodeId}/cluster/nodes/${nodeName}`, {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${token}` }
@@ -1633,7 +1633,7 @@ const cleanNodeReferences = async (nodeName: string) => {
     if (!nodeId) return;
     
     try {
-        const token = localStorage.getItem('token');
+        const token = localStorage.getItem('access_token');
         const res = await fetch(`/api/ha/node/${nodeId}/cluster/nodes/${nodeName}/clean`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}` }
@@ -1655,7 +1655,7 @@ const addNodeToCluster = async () => {
     
     loading.value = true;
     try {
-        const token = localStorage.getItem('token');
+        const token = localStorage.getItem('access_token');
         const res = await fetch(`/api/ha/node/${nodeId}/cluster/nodes`, {
             method: 'POST',
             headers: { 
