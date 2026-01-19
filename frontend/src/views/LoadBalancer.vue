@@ -651,25 +651,15 @@
         </div>
 
         <div v-if="activeTab === 'config'" class="config-panel">
-            <!-- Connection Section -->
-            <div class="config-section">
-                <h3 class="section-title">🔌 Connessione Cluster</h3>
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label>Host Proxmox</label>
-                        <input type="text" v-model="config.proxmox_api.hosts" class="form-input" placeholder="es: 192.168.1.10, 192.168.1.11">
-                        <span class="help-text">Separati da virgola. Lascia vuoto per usare i nodi registrati.</span>
-                    </div>
-                    <div class="form-group">
-                        <label>Utente API</label>
-                        <input type="text" v-model="config.proxmox_api.user" class="form-input" placeholder="root@pam">
-                    </div>
-                    <div class="form-group">
-                        <label>Password</label>
-                        <input type="password" v-model="config.proxmox_api.pass" class="form-input" placeholder="(usa credenziali DB se vuoto)">
-                    </div>
-                    <div class="form-group checkbox">
-                        <label><input type="checkbox" v-model="config.proxmox_api.ssl_verification"> Verifica SSL</label>
+            <!-- Connection Note -->
+            <div class="config-note">
+                <div class="note-content">
+                    <span class="note-icon">⚙️</span>
+                    <div>
+                        <strong>Cluster Connection</strong>
+                        <p>La connessione al cluster Proxmox è configurata centralmente nella sezione 
+                           <router-link to="/cluster" class="config-link">Cluster & HA → Config</router-link>
+                        </p>
                     </div>
                 </div>
             </div>
@@ -2103,6 +2093,45 @@ onUnmounted(() => {
     border: 1px solid var(--border-color);
     border-radius: 12px;
     padding: 20px;
+}
+
+.config-note {
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: 12px;
+    padding: 16px 20px;
+}
+
+.config-note .note-content {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.config-note .note-icon {
+    font-size: 1.5rem;
+}
+
+.config-note strong {
+    display: block;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+
+.config-note p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.config-note .config-link {
+    color: var(--accent-primary);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.config-note .config-link:hover {
+    text-decoration: underline;
 }
 
 .section-title {

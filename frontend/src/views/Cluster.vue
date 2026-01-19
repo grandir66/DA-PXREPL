@@ -83,28 +83,32 @@
         </div>
         
         <div class="card">
-          <h4>🔌 Cluster Entry Point</h4>
-          <p class="help-text mb-4">Define the primary entry point for cluster API access.</p>
+          <h4>🔌 Cluster Connection</h4>
+          <p class="help-text mb-4">Configure the primary entry point for cluster API access. This configuration is used by all cluster features.</p>
           
           <div class="form-grid">
-            <div class="form-group full-width">
-              <label>Cluster Hosts / API URL</label>
-              <input type="text" v-model="clusterConfig.hosts" class="form-input" placeholder="https://192.168.1.10:8006">
-              <small class="text-secondary">Comma separated list of hosts or full API URL.</small>
+            <div class="form-group">
+              <label>Cluster Name</label>
+              <input type="text" v-model="clusterConfig.name" class="form-input" placeholder="my-proxmox-cluster">
+              <small class="text-secondary">Friendly name to identify this cluster.</small>
             </div>
-            <div class="form-grid-2">
-                <div class="form-group">
-                    <label>Username</label>
-                    <input type="text" v-model="clusterConfig.user" class="form-input" placeholder="root@pam">
-                </div>
-                <div class="form-group">
-                    <label>Token / Password</label>
-                    <input type="password" v-model="clusterConfig.password" class="form-input" placeholder="Enter new password/token to update">
-                </div>
+            <div class="form-group">
+              <label>Cluster Hosts</label>
+              <input type="text" v-model="clusterConfig.hosts" class="form-input" placeholder="192.168.1.10, 192.168.1.11">
+              <small class="text-secondary">Comma separated list of Proxmox host IPs.</small>
+            </div>
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" v-model="clusterConfig.user" class="form-input" placeholder="root@pam">
+            </div>
+            <div class="form-group">
+                <label>API Token / Password</label>
+                <input type="password" v-model="clusterConfig.password" class="form-input" placeholder="Enter to update">
             </div>
           </div>
           
-          <div class="mt-4 flex justify-end">
+          <div class="mt-4 flex justify-end gap-2">
+              <button class="btn btn-secondary" @click="loadClusterConfig">🔄 Reload</button>
               <button class="btn btn-primary" @click="saveClusterConfig">💾 Save Configuration</button>
           </div>
         </div>
@@ -431,6 +435,7 @@ const loading = computed(() => store.loading);
 
 // API Config State for "Config" tab
 const clusterConfig = reactive({
+    name: '',
     hosts: '',
     user: '',
     password: ''
