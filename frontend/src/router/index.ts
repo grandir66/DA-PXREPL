@@ -93,7 +93,12 @@ const router = createRouter({
                     path: 'load-balancer',
                     name: 'load-balancer',
                     component: () => import('../views/LoadBalancer.vue')
-                }
+                },
+                {
+                    path: 'cluster',
+                    name: 'cluster',
+                    component: () => import('../views/Cluster.vue')
+                },
             ]
         },
         // Add other routes here

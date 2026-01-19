@@ -45,18 +45,6 @@
         </button>
         <button 
             class="tab-btn" 
-            :class="{ active: activeTab === 'ha' }" 
-            @click="activeTab = 'ha'; loadHAData()">
-            🛡️ HA Manager
-        </button>
-        <button 
-            class="tab-btn" 
-            :class="{ active: activeTab === 'cluster' }" 
-            @click="activeTab = 'cluster'; loadClusterData()">
-            🖥️ Cluster
-        </button>
-        <button 
-            class="tab-btn" 
             :class="{ active: activeTab === 'config' }" 
             @click="activeTab = 'config'">
             ⚙️ Configuration

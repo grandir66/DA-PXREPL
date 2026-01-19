@@ -7,13 +7,57 @@ import os
 import logging
 
 from services.load_balancer_service import load_balancer_service
+from services.ssh_service import ssh_service
 from routers.auth import require_admin, User
+import datetime
 
 router = APIRouter(prefix="/api/load-balancer", tags=["load-balancer"])
 logger = logging.getLogger(__name__)
 
 # Config persistence
 CONFIG_FILE = os.environ.get("DAPX_CONFIG_DIR", "config") + "/load_balancer_config.json"
+
+@router.post("/cluster/backup-config")
+async def backup_cluster_config(user: User = Depends(require_admin)):
+    """Backup PVE Cluster Config (/etc/pve and /etc/corosync) to node local storage"""
+    config = load_saved_config()
+    hosts_str = config.get("proxmox_api", {}).get("hosts", "")
+    
+    if not hosts_str:
+        # Fallback to default from service if available or error
+        # Try to guess or fail. 
+        # Attempt to use 'localhost' if running on a node, but usually this runs in container.
+        # Let's try to get nodes from load_balancer_service if analysis ran recently? No.
+        # Just fail if no config.
+        raise HTTPException(status_code=400, detail="No Proxmox hosts configured in Load Balancer settings")
+
+    hosts = [h.strip() for h in hosts_str.split(",") if h.strip()]
+    
+    backup_path = f"/var/lib/pve-cluster-backup/cluster-backup-{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}.tar.gz"
+    cmd = f"mkdir -p /var/lib/pve-cluster-backup && tar -czf {backup_path} /etc/pve /etc/corosync 2>/dev/null"
+    
+    for host in hosts:
+        # Try to strip protocol if present
+        hostname = host.replace("https://", "").replace("http://", "").split(":")[0]
+        
+        try:
+            logger.info(f"Attempting cluster backup on {hostname}...")
+            # Using default SSH key path from SSHService logic
+            res = await ssh_service.execute(hostname, cmd, timeout=30)
+            if res.success:
+                logger.info(f"Cluster backup created successfully on {hostname}: {backup_path}")
+                return {
+                    "success": True, 
+                    "message": f"Backup created on {hostname}", 
+                    "path": backup_path,
+                    "node": hostname
+                }
+            else:
+                logger.warning(f"Failed backup on {hostname}: {res.stderr}")
+        except Exception as e:
+            logger.warning(f"SSH error to {hostname}: {e}")
+            
+    raise HTTPException(status_code=500, detail="Could not create backup on any configured node")
 
 class LoadBalancerRunRequest(BaseModel):
     dry_run: bool = True

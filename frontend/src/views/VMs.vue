@@ -708,14 +708,22 @@ const loadVMs = async () => {
 };
 
 const fetchBackupCounts = async () => {
-    for (const vm of vms.value) {
-        if (vm.status !== 'running' && vm.status !== 'stopped') continue;
-        if (!vm.node_id) continue;
+    // Filter VMs that need backup count fetching
+    const vmsToFetch = vms.value.filter(vm => 
+        (vm.status === 'running' || vm.status === 'stopped') && vm.node_id
+    );
+    
+    // Fetch all backup counts in parallel for better performance
+    const promises = vmsToFetch.map(async (vm) => {
         try {
-            const res = await vmsService.getBackups(vm.node_id, vm.vmid);
+            const res = await vmsService.getBackups(vm.node_id!, vm.vmid);
             vm.backupCount = res.data ? res.data.length : 0;
-        } catch (e) { vm.backupCount = 0; }
-    }
+        } catch (e) { 
+            vm.backupCount = 0; 
+        }
+    });
+    
+    await Promise.allSettled(promises);
 };
 
 const manageState = async (vm: VM, action: any) => {

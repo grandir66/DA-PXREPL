@@ -65,7 +65,6 @@ class Tags:
             List: A list of all tags assoiciated with the given guest.
         """
         logger.debug("Starting: get_tags_from_guests.")
-        time.sleep(0.1)
         if guest_type == 'vm':
             guest_config = proxmox_api.nodes(node).qemu(guest_id).config.get()
             tags = guest_config.get("tags", [])

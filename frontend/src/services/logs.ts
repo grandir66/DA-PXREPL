@@ -42,6 +42,14 @@ export default {
 
     clearLogs() {
         return apiClient.delete('/logs/');
+    },
+
+    getSystemLogs(params?: { lines?: number; level?: string; search?: string; file?: string }) {
+        return apiClient.get('/logs/system', { params });
+    },
+
+    getSystemLogFiles() {
+        return apiClient.get('/logs/system/files');
     }
 }
 
