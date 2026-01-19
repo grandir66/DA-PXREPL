@@ -1165,6 +1165,7 @@ import { useHAStore } from '../stores/ha_store';
 import { storeToRefs } from 'pinia';
 import loadBalancerService from '../services/loadBalancer';
 
+const activeTab = ref('analysis'); // Default tab
 // Local UI state
 const loading = ref(false);
 const executing = ref(false);
