@@ -407,6 +407,85 @@ echo "Cleanup completed for {node_name}"
             return result.stdout.strip()
         return None
 
+    async def get_cluster_monitor_data(
+        self,
+        hostname: str,
+        port: int = 22,
+        username: str = "root",
+        key_path: str = "/root/.ssh/id_rsa"
+    ) -> Dict[str, Any]:
+        """
+        Ottiene dati di monitoraggio leggeri per il cluster.
+        Simile all'output di Proxmox LoadBalancer ma senza analisi complessa.
+        """
+        from services.proxmox_service import proxmox_service
+        
+        # 1. Get raw cluster resources
+        resources = await proxmox_service.get_cluster_resources(
+            hostname, port, username, key_path
+        )
+        
+        nodes_data = {}
+        guests_data = {}
+        
+        for res in resources:
+            res_type = res.get("type")
+            
+            if res_type == "node":
+                node_name = res.get("node")
+                
+                # Calculate percentages
+                max_cpu = res.get("maxcpu", 1) or 1
+                cpu_usage = res.get("cpu", 0) or 0
+                # PVE API returns CPU as fractional (0.05 = 5%) for resources?
+                # Actually for /cluster/resources, cpu is ratio 0.0-1.0
+                cpu_percent = cpu_usage * 100
+                
+                max_mem = res.get("maxmem", 1) or 1
+                mem_used = res.get("mem", 0) or 0
+                mem_percent = (mem_used / max_mem) * 100 if max_mem > 0 else 0
+                
+                nodes_data[node_name] = {
+                    "cpu_usage_percent": cpu_percent,
+                    "memory_usage_percent": mem_percent,
+                    "memory_used": mem_used,
+                    "memory_total": max_mem,
+                    "status": res.get("status", "unknown"),
+                    # Pressure score dummy for frontend compatibility
+                    "pressure_score": cpu_percent * 0.5 + mem_percent * 0.5,
+                    "network_in": 0,  # Not available in simple resource list
+                    "network_out": 0
+                }
+                
+            elif res_type in ["qemu", "lxc"]:
+                vmid = str(res.get("vmid"))
+                guest_type = "vm" if res_type == "qemu" else "ct"
+                
+                 # Similar calculation for guests
+                max_cpu = res.get("maxcpu", 1) or 1
+                cpu_usage = res.get("cpu", 0) or 0
+                cpu_percent = cpu_usage * 100
+                
+                max_mem = res.get("maxmem", 1) or 1
+                mem_used = res.get("mem", 0) or 0
+                
+                guests_data[vmid] = {
+                    "id": vmid,
+                    "name": res.get("name", f"VM-{vmid}"),
+                    "type": guest_type,
+                    "node_current": res.get("node"),
+                    "status": res.get("status"),
+                    "cpu_used": cpu_percent,
+                    "memory_used": mem_used,
+                    "disk_used": res.get("disk", 0),
+                    "networks": [] # Not available in simple scan
+                }
+                
+        return {
+            "nodes": nodes_data,
+            "guests": guests_data
+        }
+
 
 # Singleton instance
 cluster_service = ClusterService()

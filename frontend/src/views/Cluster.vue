@@ -444,9 +444,25 @@ const loadMonitorData = async () => {
     // If analysis data is stale (>60s) or missing, fetch it
     // Or just always fetch for now on refresh
     try {
-        const res = await loadBalancerService.analyzeCluster();
-        store.setAnalysisResult(res.data);
-    } catch(e) { console.error('Error loading analysis', e); }
+        // OLD: const res = await loadBalancerService.analyzeCluster();
+        // NEW: Use lightweight independent monitor
+        const nodeId = await getFirstPVENodeId();
+        if(!nodeId) return;
+
+        const token = localStorage.getItem('access_token');
+        const res = await fetch(`/api/ha/node/${nodeId}/monitor`, { 
+            headers: { 'Authorization': `Bearer ${token}` } 
+        });
+        
+        if(!res.ok) throw new Error("Monitor API failed");
+        
+        const data = await res.json();
+        
+        // Format matches what store expects enough to render?
+        // Store expects { nodes: {...}, guests: {...}, ... }
+        // Our new API returns exactly that structure.
+        store.setAnalysisResult(data);
+    } catch(e) { console.error('Error loading monitor data', e); }
 };
 
 const refreshAll = async () => {

@@ -312,6 +312,28 @@ async def get_cluster_status(
     )
     
     return status
+    
+@router.get("/node/{node_id}/monitor")
+async def get_cluster_monitor(
+    node_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Ottiene dati di monitoraggio cluster (simil-LoadBalancer) ma leggeri e indipendenti.
+    """
+    node = db.query(Node).filter(Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    
+    data = await cluster_service.get_cluster_monitor_data(
+        hostname=node.hostname,
+        port=node.ssh_port,
+        username=node.ssh_user,
+        key_path=node.ssh_key_path
+    )
+    
+    return data
 
 
 @router.get("/node/{node_id}/cluster/nodes")
