@@ -1159,7 +1159,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed, watch } from 'vue';
+import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { useHAStore } from '../stores/ha_store';
 import { storeToRefs } from 'pinia';
