@@ -386,7 +386,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed, watch } from 'vue';
 import { useHAStore } from '../stores/ha_store';
-import { loadBalancerService } from '../services/loadBalancer';
+import loadBalancerService from '../services/loadBalancer';
 
 const store = useHAStore();
 const activeTab = ref('monitor'); // Start on Monitor
