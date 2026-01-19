@@ -64,7 +64,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="DAPX-backandrepl",
     description="Sistema centralizzato di backup e replica per Proxmox VE. Supporta ZFS (Sanoid/Syncoid), BTRFS (btrfs send/receive) e PBS (Proxmox Backup Server).",
-    version="3.9.7",
+    version="3.9.8",
     lifespan=lifespan
 )
 
