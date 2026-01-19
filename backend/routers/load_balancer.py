@@ -1,10 +1,11 @@
-
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from typing import Dict, Any, Optional, List
 import json
 import os
 import logging
+from sqlalchemy.orm import Session
+from database import get_db, ProxmoxCluster, LoadBalancerMigration
 
 from services.load_balancer_service import load_balancer_service
 from services.ssh_service import ssh_service
@@ -80,15 +81,43 @@ def save_config(config: Dict[str, Any]):
     except Exception as e:
         logger.error(f"Failed to save config: {e}")
 
+
+
 @router.get("/analyze")
-async def analyze_cluster(user: User = Depends(require_admin)):
+async def analyze_cluster(
+    cluster_id: Optional[int] = None,
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
     """Run cluster analysis and return calculated moves"""
     try:
         saved_config = load_saved_config()
-        result = await load_balancer_service.analyze_cluster(config_override=saved_config)
         
-        # Clean up result for frontend (remove non-serializable objects if any)
-        # ProxLB data structure is mostly dicts/lists, should be fine.
+        # Override connection with selected cluster if provided
+        if cluster_id:
+            cluster = db.query(ProxmoxCluster).filter(ProxmoxCluster.id == cluster_id).first()
+            if not cluster:
+                raise HTTPException(status_code=404, detail="Cluster not found")
+            
+            if "proxmox_api" not in saved_config:
+                saved_config["proxmox_api"] = {}
+                
+            # Parse hosts
+            hosts = [h.strip() for h in cluster.hosts.split(",") if h.strip()]
+            saved_config["proxmox_api"]["hosts"] = hosts
+            
+            if cluster.api_user:
+                saved_config["proxmox_api"]["user"] = cluster.api_user
+            
+            if cluster.api_password:
+                saved_config["proxmox_api"]["pass"] = cluster.api_password
+            elif cluster.api_token_id and cluster.api_token_secret:
+                saved_config["proxmox_api"]["token_id"] = cluster.api_token_id
+                saved_config["proxmox_api"]["token_secret"] = cluster.api_token_secret
+                
+            saved_config["proxmox_api"]["ssl_verification"] = cluster.verify_ssl
+
+        result = await load_balancer_service.analyze_cluster(config_override=saved_config)
         return result
     except Exception as e:
         logger.exception("Analysis failed")
@@ -98,14 +127,34 @@ async def analyze_cluster(user: User = Depends(require_admin)):
 async def execute_balancing(
     req: LoadBalancerRunRequest, 
     background_tasks: BackgroundTasks,
-    user: User = Depends(require_admin)
+    cluster_id: Optional[int] = None, # Expect query param or we need to update model
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
 ):
     """Execute balancing (async)"""
-    # For now synchronous because of library design, but run in thread pool via service
     try:
         saved_config = load_saved_config()
         if req.config:
             saved_config.update(req.config)
+            
+        # Override connection if cluster_id provided (query param or could be in body)
+        if cluster_id:
+            cluster = db.query(ProxmoxCluster).filter(ProxmoxCluster.id == cluster_id).first()
+            if not cluster:
+                raise HTTPException(status_code=404, detail="Cluster not found")
+                
+            if "proxmox_api" not in saved_config:
+                saved_config["proxmox_api"] = {}
+                
+            hosts = [h.strip() for h in cluster.hosts.split(",") if h.strip()]
+            saved_config["proxmox_api"]["hosts"] = hosts
+            
+            if cluster.api_user:
+                saved_config["proxmox_api"]["user"] = cluster.api_user
+            if cluster.api_password:
+                saved_config["proxmox_api"]["pass"] = cluster.api_password
+            
+            saved_config["proxmox_api"]["ssl_verification"] = cluster.verify_ssl
             
         result = await load_balancer_service.execute_balancing(config_override=saved_config, dry_run=req.dry_run)
         return result
@@ -135,10 +184,8 @@ async def update_config(config: Dict[str, Any], user: User = Depends(require_adm
     return {"status": "success", "config": config}
 
 
-# ============== Migration History API ==============
+# Imports moved to top
 
-from database import get_db, LoadBalancerMigration
-from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime

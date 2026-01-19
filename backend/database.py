@@ -234,6 +234,42 @@ class NotificationConfig(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+# ============== CLUSTER MODELS ==============
+
+class ProxmoxCluster(Base):
+    """
+    Cluster Proxmox per gestione HA e Load Balancer.
+    Separato dal modello Node che è usato per sincronizzazioni SSH.
+    """
+    __tablename__ = "proxmox_clusters"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), unique=True, nullable=False)  # Friendly name (e.g., "Production Cluster")
+    
+    # Connection settings
+    hosts = Column(String(500), nullable=False)  # Comma-separated IPs (e.g., "192.168.1.10, 192.168.1.11")
+    api_user = Column(String(100), nullable=True)  # API user (e.g., root@pam)
+    api_token_id = Column(String(100), nullable=True)  # Token ID (e.g., pxmon)
+    api_token_secret = Column(String(500), nullable=True)  # Token secret (encrypted)
+    api_password = Column(String(500), nullable=True)  # Alternative: password instead of token
+    verify_ssl = Column(Boolean, default=False)
+    
+    # Status (cached from API)
+    is_initialized = Column(Boolean, default=False)
+    cluster_name = Column(String(100), nullable=True)  # Actual name from Proxmox API
+    node_count = Column(Integer, default=0)
+    quorum_ok = Column(Boolean, default=False)
+    last_check = Column(DateTime, nullable=True)
+    last_error = Column(Text, nullable=True)
+    
+    # Flags
+    is_active = Column(Boolean, default=True)
+    is_default = Column(Boolean, default=False)  # Default cluster for UI selection
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 # ============== NODE MODELS ==============
 
 class Node(Base):

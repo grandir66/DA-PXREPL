@@ -12,15 +12,20 @@ export interface AnalysisResult {
 }
 
 export default {
-    async analyzeCluster() {
-        return axios.get('/load-balancer/analyze');
+    async analyzeCluster(clusterId?: number) {
+        const config: any = {};
+        if (clusterId) config.params = { cluster_id: clusterId };
+        return axios.get('/load-balancer/analyze', config);
     },
 
-    async executeBalancing(dryRun: boolean = true, config: any = null) {
+    async executeBalancing(dryRun: boolean = true, config: any = null, clusterId?: number) {
+        const params: any = {};
+        if (clusterId) params.cluster_id = clusterId;
+
         return axios.post('/load-balancer/execute', {
             dry_run: dryRun,
             config: config
-        });
+        }, { params });
     },
 
     async getConfig() {

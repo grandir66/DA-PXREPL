@@ -16,7 +16,7 @@ import logging
 from database import engine, Base, get_db, init_default_config, SessionLocal
 from routers import nodes, snapshots, sync_jobs, vms, logs, settings, auth, ssh_keys
 from routers import recovery_jobs, backup_jobs, host_info, host_backup, migration_jobs, updates, pve_replication_jobs, load_balancer
-from routers import ha
+from routers import ha, clusters
 from services.scheduler import SchedulerService
 from services.logging_config import setup_logging, get_logger
 
@@ -64,7 +64,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="DAPX-backandrepl",
     description="Sistema centralizzato di backup e replica per Proxmox VE. Supporta ZFS (Sanoid/Syncoid), BTRFS (btrfs send/receive) e PBS (Proxmox Backup Server).",
-    version="3.9.12",
+    version="3.9.17",
     lifespan=lifespan
 )
 
@@ -111,6 +111,7 @@ app.include_router(host_info.router, prefix="/api", tags=["Host Info & Dashboard
 app.include_router(updates.router, tags=["Updates"])
 app.include_router(load_balancer.router, tags=["Load Balancer"])
 app.include_router(ha.router, prefix="/api/ha", tags=["High Availability & Cluster"])
+app.include_router(clusters.router, tags=["Clusters"])
 
 # Conditionally include Configuration Backup (useful in both, but maybe simpler in LB mode?)
 # We keep it in both for now as it backs up the DB/Config
@@ -134,7 +135,7 @@ if dapx_mode == "full":
 async def health_check():
     return {
         "status": "healthy",
-        "version": "3.9.12",
+        "version": "3.9.17",
         "auth_enabled": True,
         "mode": dapx_mode,
         "features": ["zfs", "btrfs", "pbs", "load_balancer"] if dapx_mode == "full" else ["load_balancer"]

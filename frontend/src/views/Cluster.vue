@@ -6,6 +6,20 @@
         <p class="page-subtitle">Manage Proxmox Cluster, HA, and Configuration</p>
       </div>
       <div class="actions">
+        <!-- Cluster Selector -->
+        <div class="cluster-selector mr-3" v-if="clusters.length > 0">
+             <select 
+                :value="selectedClusterId" 
+                @change="selectCluster(Number(($event.target as HTMLSelectElement).value))" 
+                class="form-select text-sm"
+                style="min-width: 200px;"
+            >
+                <option v-for="c in clusters" :key="c.id" :value="c.id">
+                    {{ c.name }} {{ c.is_default ? '(Default)' : '' }}
+                </option>
+            </select>
+        </div>
+
         <button class="btn btn-secondary btn-sm" @click="refreshAll" :disabled="loading">
             <span v-if="loading" class="spinner-sm"></span>
             {{ loading ? 'Updating...' : '🔄 Refresh All' }}
@@ -82,35 +96,85 @@
           </div>
         </div>
         
-        <div class="card">
-          <h4>🔌 Cluster Connection</h4>
-          <p class="help-text mb-4">Configure the primary entry point for cluster API access. This configuration is used by all cluster features.</p>
-          
-          <div class="form-grid">
-            <div class="form-group">
-              <label>Cluster Name</label>
-              <input type="text" v-model="clusterConfig.name" class="form-input" placeholder="my-proxmox-cluster">
-              <small class="text-secondary">Friendly name to identify this cluster.</small>
-            </div>
-            <div class="form-group">
-              <label>Cluster Hosts</label>
-              <input type="text" v-model="clusterConfig.hosts" class="form-input" placeholder="192.168.1.10, 192.168.1.11">
-              <small class="text-secondary">Comma separated list of Proxmox host IPs.</small>
-            </div>
-            <div class="form-group">
-                <label>Username</label>
-                <input type="text" v-model="clusterConfig.user" class="form-input" placeholder="root@pam">
-            </div>
-            <div class="form-group">
-                <label>API Token / Password</label>
-                <input type="password" v-model="clusterConfig.password" class="form-input" placeholder="Enter to update">
-            </div>
+        <!-- Multi-Cluster List View -->
+        <div class="card" v-if="!isEditingCluster">
+          <div class="flex justify-between items-center mb-4">
+               <div>
+                  <h4>🔌 Cluster Connections</h4>
+                  <p class="help-text">Manage connecting to one or more Proxmox clusters. These connections are used for Monitoring, HA, and Load Balancing.</p>
+               </div>
+               <button class="btn btn-primary btn-sm" @click="startEditCluster()">➕ Add Cluster</button>
           </div>
           
-          <div class="mt-4 flex justify-end gap-2">
-              <button class="btn btn-secondary" @click="loadClusterConfig">🔄 Reload</button>
-              <button class="btn btn-primary" @click="saveClusterConfig">💾 Save Configuration</button>
+          <div v-if="clusters.length === 0" class="text-center p-8 bg-custom-gray rounded text-secondary border border-dashed border-gray-600">
+               No clusters configured. Click "Add Cluster" to connect.
           </div>
+
+          <div v-else class="cluster-list">
+               <div v-for="cluster in clusters" :key="cluster.id" class="cluster-item p-4 border border-gray-700 rounded mb-2 flex justify-between items-center hover:bg-opacity-50 hover:bg-gray-800 transition-colors" :class="{'ring-2 ring-blue-500 bg-gray-800': selectedClusterId === cluster.id}">
+                   <div class="flex items-center gap-3 cursor-pointer flex-grow" @click="selectCluster(cluster.id)">
+                       <span class="text-2xl">{{ selectedClusterId === cluster.id ? '🟢' : '⚪' }}</span>
+                       <div>
+                           <div class="font-bold flex items-center gap-2 text-lg">
+                               {{ cluster.name }}
+                               <span v-if="cluster.is_default" class="px-2 py-0.5 text-xs bg-blue-900 text-blue-200 rounded">Default</span>
+                               <span v-if="cluster.is_initialized" class="px-2 py-0.5 text-xs bg-green-900 text-green-200 rounded">Online</span>
+                               <span v-else class="px-2 py-0.5 text-xs bg-yellow-900 text-yellow-200 rounded">Offline</span>
+                           </div>
+                           <div class="text-xs text-secondary mt-1 font-mono">
+                               {{ cluster.hosts }} • {{ cluster.api_user || 'Token' }}
+                           </div>
+                       </div>
+                   </div>
+                   <div class="flex gap-2">
+                       <button class="btn btn-sm btn-secondary" @click.stop="startEditCluster(cluster)">✏️ Edit</button>
+                       <button class="btn btn-sm btn-danger" @click.stop="deleteCluster(cluster.id)">🗑️ Delete</button>
+                   </div>
+               </div>
+          </div>
+        </div>
+
+        <!-- Add/Edit Cluster Form -->
+        <div class="card" v-if="isEditingCluster">
+           <h4 class="mb-6 pb-2 border-b border-gray-700">{{ editingClusterId ? 'Edit Cluster' : 'New Cluster Connection' }}</h4>
+           
+           <div class="form-grid">
+             <div class="form-group">
+               <label>Friendly Name</label>
+               <input type="text" v-model="clusterConfig.name" class="form-input" placeholder="e.g. Production Cluster">
+               <small class="text-secondary">Name used to identify this cluster in menus.</small>
+             </div>
+             <div class="form-group">
+               <label>Cluster Hosts / IPs</label>
+               <input type="text" v-model="clusterConfig.hosts" class="form-input" placeholder="192.168.1.10, 192.168.1.11">
+               <small class="text-secondary">Comma separated list of Proxmox node IPs.</small>
+             </div>
+             <div class="form-group">
+                 <label>Username</label>
+                 <input type="text" v-model="clusterConfig.user" class="form-input" placeholder="root@pam">
+             </div>
+             <div class="form-group">
+                 <label>API Token / Password</label>
+                 <input type="password" v-model="clusterConfig.password" class="form-input" placeholder="Enter only to change">
+             </div>
+             <div class="form-group checkbox col-span-2 mt-2">
+                  <label class="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" v-model="clusterConfig.verify_ssl">
+                      Verify SSL Certificate (Disable for self-signed)
+                  </label>
+             </div>
+             <div class="form-group checkbox col-span-2">
+                  <label class="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" v-model="clusterConfig.is_default">
+                      Set as Default Cluster
+                  </label>
+             </div>
+           </div>
+           
+           <div class="mt-8 flex justify-end gap-2 border-t border-gray-700 pt-4">
+               <button class="btn btn-secondary" @click="cancelEditCluster">Cancel</button>
+               <button class="btn btn-primary" @click="saveCluster">💾 {{ editingClusterId ? 'Update Connection' : 'Create Connection' }}</button>
+           </div>
         </div>
       </div>
 
@@ -428,20 +492,47 @@
 import { ref, reactive, onMounted, computed, watch } from 'vue';
 import { useHAStore } from '../stores/ha_store';
 import loadBalancerService from '../services/loadBalancer';
+import axios from 'axios';
 
 const store = useHAStore();
 const activeTab = ref('monitor'); // Start on Monitor
 const loading = computed(() => store.loading);
 
-// API Config State for "Config" tab
+// --- Cluster Management State ---
+interface ProxmoxCluster {
+    id: number;
+    name: string;
+    hosts: string;
+    api_user?: string;
+    verify_ssl: boolean;
+    is_default: boolean;
+    is_initialized: boolean;
+    cluster_name?: string;
+    node_count?: number;
+    quorum_ok?: boolean;
+}
+
+const clusters = ref<ProxmoxCluster[]>([]);
+const selectedClusterId = ref<number | null>(null);
+const isEditingCluster = ref(false);
+const editingClusterId = ref<number | null>(null);
+
+// Computed for current cluster (if managed via new API)
+const currentCluster = computed(() => {
+    return clusters.value.find(c => c.id === selectedClusterId.value);
+});
+
+// API Config State for "Config" tab (legacy + new form)
 const clusterConfig = reactive({
     name: '',
     hosts: '',
     user: '',
-    password: ''
+    password: '',
+    verify_ssl: false,
+    is_default: false
 });
 
-// Monitor State
+// --- Existing Monitor State ---
 const showTopology = ref<Record<string, boolean>>({});
 
 // New Node State
@@ -520,18 +611,122 @@ const loadMonitorData = async () => {
     } catch(e) { console.error('Error loading monitor data', e); }
 };
 
+// --- Cluster Management Functions ---
+
+const fetchClusters = async () => {
+    try {
+        const res = await axios.get('/api/clusters');
+        clusters.value = res.data;
+        
+        // Auto-select logic
+        if (clusters.value.length > 0) {
+            // Check if current selection is still valid
+            const exists = selectedClusterId.value && clusters.value.find(c => c.id === selectedClusterId.value);
+            
+            if (!exists) {
+                // Select default or first
+                const def = clusters.value.find(c => c.is_default);
+                selectedClusterId.value = def ? def.id : clusters.value[0].id;
+            }
+        } else {
+            selectedClusterId.value = null;
+        }
+    } catch (e) {
+        console.error("Failed to fetch clusters", e);
+    }
+};
+
+const selectCluster = (id: number) => {
+    selectedClusterId.value = id;
+    // Tell store to use this cluster context
+    // We assume the store has been updated to accept cluster ID, or we pass it
+    // For now, we set a property on the store instance if possible, or just rely on backend using default if not passed
+    // Ideally: store.setClusterId(id);
+    refreshAll();
+};
+
+const startEditCluster = (cluster?: ProxmoxCluster) => {
+    if (cluster) {
+        editingClusterId.value = cluster.id;
+        clusterConfig.name = cluster.name;
+        clusterConfig.hosts = cluster.hosts;
+        clusterConfig.user = cluster.api_user || '';
+        clusterConfig.password = ''; // Don't show password
+        clusterConfig.verify_ssl = cluster.verify_ssl;
+        clusterConfig.is_default = cluster.is_default;
+        isEditingCluster.value = true;
+    } else {
+        editingClusterId.value = null;
+        clusterConfig.name = '';
+        clusterConfig.hosts = '';
+        clusterConfig.user = 'root@pam';
+        clusterConfig.password = '';
+        clusterConfig.verify_ssl = false;
+        clusterConfig.is_default = clusters.value.length === 0;
+        isEditingCluster.value = true;
+    }
+};
+
+const cancelEditCluster = () => {
+    isEditingCluster.value = false;
+    editingClusterId.value = null;
+};
+
+const saveCluster = async () => {
+    const payload: any = {
+        name: clusterConfig.name,
+        hosts: clusterConfig.hosts,
+        api_user: clusterConfig.user,
+        verify_ssl: clusterConfig.verify_ssl,
+        is_default: clusterConfig.is_default
+    };
+    
+    if (clusterConfig.password) {
+        payload.api_password = clusterConfig.password;
+    }
+    
+    try {
+        if (editingClusterId.value) {
+            await axios.put(`/api/clusters/${editingClusterId.value}`, payload);
+        } else {
+            await axios.post('/api/clusters', payload);
+        }
+        await fetchClusters();
+        isEditingCluster.value = false;
+        editingClusterId.value = null;
+    } catch (e: any) {
+        console.error("Failed to save cluster", e);
+        const msg = e.response?.data?.detail || e.message;
+        alert("Failed to save cluster: " + msg);
+    }
+};
+
+const deleteCluster = async (id: number) => {
+    if (!confirm("Sei sicuro di voler eliminare questa configurazione cluster?\n\nI nodi Proxmox e le sincronizzazioni NON verranno toccati.\nVerrà rimossa solo la connessione per il monitoraggio e HA.")) return;
+    try {
+        await axios.delete(`/api/clusters/${id}`);
+        await fetchClusters();
+    } catch (e) {
+        console.error("Failed to delete cluster", e);
+    }
+};
+
+// --- CONFIG ACTIONS REPLACED BY MULTI-CLUSTER ---
+// Old loadClusterConfig/saveClusterConfig removed.
+
 const refreshAll = async () => {
+    // If we have selected cluster, we might want to pass it
     await store.fetchHAData(true);
-    // Also load config if on config tab
-    if(activeTab.value === 'config') await loadClusterConfig();
+    if(activeTab.value === 'config') {
+        await fetchClusters();
+    }
     if(activeTab.value === 'monitor') await loadMonitorData();
 };
 
-onMounted(() => {
+onMounted(async () => {
+    await fetchClusters();
     store.fetchHAData();
-    // Default tab is monitor, so load data
     loadMonitorData();
-    // Start background refresh
     store.startBackgroundRefresh();
 });
 

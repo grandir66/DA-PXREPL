@@ -7,7 +7,21 @@
             <p class="page-subtitle">Powered by ProxLB</p>
         </div>
         <div class="actions">
-            <button class="btn btn-secondary" @click="refreshConfig">❌ Reset</button>
+            <!-- Cluster Selector -->
+            <div class="cluster-selector mr-3" v-if="clusters.length > 0">
+                 <select 
+                    :value="selectedClusterId" 
+                    @change="selectCluster(Number(($event.target as HTMLSelectElement).value))" 
+                    class="form-select text-sm"
+                    style="min-width: 200px;"
+                >
+                    <option v-for="c in clusters" :key="c.id" :value="c.id">
+                         {{ c.name }} {{ c.is_default ? '(Default)' : '' }}
+                    </option>
+                </select>
+            </div>
+
+            <button class="btn btn-secondary" @click="refreshConfig" v-if="activeTab === 'config'">❌ Reset</button>
             <button class="btn btn-primary" @click="saveConfiguration" v-if="activeTab === 'config'">💾 Save Config</button>
         </div>
     </div>
@@ -892,6 +906,38 @@ import { useRoute } from 'vue-router';
 import { useHAStore } from '../stores/ha_store';
 import { storeToRefs } from 'pinia';
 import loadBalancerService from '../services/loadBalancer';
+import axios from 'axios';
+
+// Cluster State
+interface ProxmoxCluster {
+    id: number;
+    name: string;
+    is_default: boolean;
+}
+const clusters = ref<ProxmoxCluster[]>([]);
+const selectedClusterId = ref<number | null>(null);
+const haStore = useHAStore();
+
+const fetchClusters = async () => {
+    try {
+        const res = await axios.get('/api/clusters');
+        clusters.value = res.data;
+        if (clusters.value.length > 0) {
+             const exists = selectedClusterId.value && clusters.value.find(c => c.id === selectedClusterId.value);
+             if (!exists) {
+                const def = clusters.value.find(c => c.is_default);
+                selectedClusterId.value = def ? def.id : clusters.value[0].id;
+             }
+        }
+    } catch (e) { console.error(e); }
+};
+
+const selectCluster = (id: number) => {
+    selectedClusterId.value = id;
+    // Reset analysis result in store
+    haStore.setAnalysisResult(null); 
+    runAnalysis();
+};
 
 const activeTab = ref('analysis'); // Default tab
 // Local UI state
@@ -1096,7 +1142,7 @@ const bulkUnlockGuests = async () => {
 };
 
 // ========== HA & Cluster Management ==========
-const haStore = useHAStore();
+
 const { 
     haResources, 
     haGroups, 
@@ -1599,7 +1645,12 @@ const runAnalysis = async () => {
     
     try {
         const token = localStorage.getItem('access_token');
-        const res = await fetch('/api/load-balancer/analyze', {
+        const url = new URL('/api/load-balancer/analyze', window.location.origin);
+        if (selectedClusterId.value) {
+            url.searchParams.append('cluster_id', String(selectedClusterId.value));
+        }
+
+        const res = await fetch(url.toString(), {
             headers: { 
                 'Authorization': `Bearer ${token}` 
             }
@@ -1638,8 +1689,19 @@ const executeRun = async (dryRun: boolean) => {
     executing.value = true;
     error.value = null;
     try {
-        const res = await loadBalancerService.executeBalancing(dryRun);
-        lastAnalysis.value = res.data.data;
+        const res = await loadBalancerService.executeBalancing(dryRun, null, selectedClusterId.value || undefined);
+        // Assuming service returns axios response, data is in res.data
+        // But previously it seemed to invoke store or something? 
+        // Oh, wait, LoadBalancerService wrapper returns result directly?
+        // Let's check service definition again.
+        // It returns axios.post(...). So res is axios response object.
+        
+        // However lastAnalysis local ref is conflict with store usage?
+        // The original code was: lastAnalysis.value = res.data.data;
+        // But we rely on store.
+        
+        haStore.setAnalysisResult(res.data.data);
+        
         if (res.data.log) {
             executionLog.value = res.data.log;
         }
@@ -1878,7 +1940,8 @@ const totalCTs = computed(() => {
     return Object.values(lastAnalysis.value.guests as any).filter((g: any) => g.type === 'ct').length;
 });
 
-onMounted(() => {
+onMounted(async () => {
+    await fetchClusters();
     refreshConfig();
 });
 
