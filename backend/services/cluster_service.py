@@ -666,10 +666,20 @@ echo "Cleanup completed for {node_name}"
                         for p in parts:
                             if '=' in p:
                                 pk, pv = p.split('=', 1)
+                                pk = pk.strip()
+                                pv = pv.strip()
                                 if pk == 'bridge': net_info["bridge"] = pv
                                 if pk == 'tag': net_info["tag"] = pv
-                                if pk == 'virtio' or pk == 'e1000': net_info["mac"] = pv
+                                if pk in ['virtio', 'e1000', 'vmxnet3', 'rtl8139']: net_info["mac"] = pv
                                 if pk == 'hwaddr': net_info["mac"] = pv # CT
+                        
+                        # Fix for simple network definitions if any
+                        if not net_info["bridge"] and 'bridge=' in v:
+                             # Fallback regex search
+                             import re
+                             m = re.search(r'bridge=([^,\s]+)', v)
+                             if m: net_info["bridge"] = m.group(1)
+                             
                         nets.append(net_info)
                 metrics["networks"] = nets
                 metrics["name"] = cfg.get("name") # also capture name just in case
