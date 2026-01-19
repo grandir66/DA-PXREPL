@@ -895,8 +895,67 @@ class LoadBalancerMigration(Base):
 
 # ============== HELPER FUNCTIONS ==============
 
+def migrate_legacy_cluster(db):
+    """Migrates legacy node configuration to ProxmoxCluster"""
+    # Check if any cluster exists
+    try:
+        if db.query(ProxmoxCluster).first():
+            return
+    except Exception:
+        return
+
+    # Check for active nodes to migrate from
+    try:
+        nodes = db.query(Node).filter(Node.is_active == True).all()
+        if not nodes:
+            return
+
+        hosts = []
+        user = "root@pam"
+        token_name = None
+        token_value = None
+        
+        for node in nodes:
+            if node.hostname and node.hostname not in hosts:
+                hosts.append(node.hostname)
+            
+            # Try to find credentials
+            if node.proxmox_api_token and "=" in node.proxmox_api_token:
+                try:
+                    full_user, secret = node.proxmox_api_token.split("=", 1)
+                    if "!" in full_user:
+                        u, t = full_user.split("!", 1)
+                        user = u
+                        token_name = t
+                        token_value = secret
+                except:
+                    pass
+
+        if not hosts:
+            return
+        
+        cluster = ProxmoxCluster(
+            name="Imported Cluster",
+            hosts=",".join(hosts),
+            api_user=user,
+            api_token_id=token_name,
+            api_token_secret=token_value,
+            verify_ssl=False,
+            is_default=True,
+            is_active=True,
+            is_initialized=True
+        )
+        db.add(cluster)
+        db.commit()
+    except Exception as e:
+        print(f"Migration error: {e}")
+
+
 def init_default_config(db_session):
     """Inizializza configurazione di default se non esiste"""
+    
+    # Run migrations
+    migrate_legacy_cluster(db_session)
     
     defaults = [
         # Autenticazione
