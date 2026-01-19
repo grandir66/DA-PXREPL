@@ -23,9 +23,9 @@
       </button>
       <button 
         class="tab-btn" 
-        :class="{ active: activeTab === 'management' }" 
-        @click="activeTab = 'management'">
-        📊 Management
+        :class="{ active: activeTab === 'monitor' }" 
+        @click="activeTab = 'monitor'">
+        🖥️ Cluster Monitor
       </button>
       <button 
         class="tab-btn" 
@@ -73,82 +73,142 @@
         </div>
       </div>
 
-      <!-- MANAGEMENT TAB -->
-      <div v-if="activeTab === 'management'" class="management-panel">
-         <!-- Cluster Status -->
-         <div class="card mb-4" v-if="store.clusterStatus">
-            <div class="flex justify-between items-center mb-2">
-                <h4>Cluster Status</h4>
-                <span class="badge" :class="store.clusterStatus.quorum ? 'badge-success' : 'badge-danger'">
-                    {{ store.clusterStatus.quorum ? 'QUORUM OK' : 'NO QUORUM' }}
-                </span>
-            </div>
-            <div class="cluster-status-grid">
-                <div class="status-item">
-                    <span class="label">Cluster Name</span>
-                    <strong>{{ store.clusterStatus.cluster_name || 'N/A' }}</strong>
-                </div>
-                <div class="status-item">
-                    <span class="label">Nodes</span>
-                    <strong>{{ store.clusterNodes.length }}</strong>
-                </div>
-                <div class="status-item">
-                    <span class="label">Expected Votes</span>
-                    <strong>{{ store.clusterStatus.expected_votes || 0 }}</strong>
-                </div>
-                <div class="status-item">
-                    <span class="label">Total Votes</span>
-                    <strong>{{ store.clusterStatus.total_votes || 0 }}</strong>
-                </div>
-            </div>
-        </div>
+      <!-- CLUSTER MONITOR TAB -->
+      <div v-if="activeTab === 'monitor'" class="monitor-panel">
+         
+         <div v-if="loading && !lastAnalysis" class="flex justify-center p-12">
+             <span class="spinner-lg"></span>
+         </div>
+         
+         <div v-else-if="lastAnalysis">
+             <!-- Cluster Summary -->
+             <div class="monitor-summary mb-6">
+                 <div class="summary-card">
+                     <span class="summary-label">Nodes</span>
+                     <span class="summary-value">{{ Object.keys(lastAnalysis.nodes || {}).length }}</span>
+                 </div>
+                 <div class="summary-card">
+                     <span class="summary-label">VMs</span>
+                     <span class="summary-value">{{ totalVMs }}</span>
+                 </div>
+                 <div class="summary-card">
+                     <span class="summary-label">CTs</span>
+                     <span class="summary-value">{{ totalCTs }}</span>
+                 </div>
+                 <div class="summary-card" v-if="store.clusterStatus">
+                     <span class="summary-label">Quorum</span>
+                     <span class="summary-value" :class="store.clusterStatus.quorum ? 'text-success' : 'text-danger'">
+                         {{ store.clusterStatus.quorum ? 'OK' : 'NO' }}
+                     </span>
+                 </div>
+             </div>
 
-        <!-- Nodes List -->
-        <div class="card mb-4">
-            <h4>Cluster Nodes</h4>
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Name</th>
-                        <th>Votes</th>
-                        <th>Status</th>
-                        <th>Address</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr v-for="node in store.clusterNodes" :key="node.node_id">
-                        <td>{{ node.node_id }}</td>
-                        <td>
-                            <strong>{{ node.name }}</strong>
-                            <span v-if="node.is_local" class="badge-info ml-1 text-xs">LOCAL</span>
-                        </td>
-                        <td>{{ node.votes }}</td>
-                        <td>
-                            <span :class="node.status === 'online' ? 'badge-success' : 'badge-danger'">
-                                {{ node.status?.toUpperCase() }}
-                            </span>
-                        </td>
-                         <td>
-                            <span class="font-mono text-sm">{{ node.ip || '-' }}</span>
-                        </td>
-                    </tr>
-                    <tr v-if="store.clusterNodes.length === 0">
-                        <td colspan="5" class="text-center py-4">No nodes found.</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
+             <!-- Nodes Grid -->
+             <div class="nodes-grid">
+                <div v-for="(node, nodeName) in lastAnalysis.nodes" :key="nodeName" class="node-card" :class="getNodeHealthClass(node)">
+                    <div class="node-header">
+                        <div class="node-title">
+                            <h3>{{ nodeName }}</h3>
+                            <span class="node-status" :class="getNodeStatusClass(node)">{{ getNodeStatus(node) }}</span>
+                        </div>
+                        <div class="node-score" :class="getScoreClass(node.pressure_score)">
+                            Score: {{ node.pressure_score.toFixed(1) }}
+                        </div>
+                    </div>
 
-        <!-- Add Node -->
-        <div class="card">
+                    <div class="metrics-grid">
+                        <!-- CPU -->
+                        <div class="metric-item">
+                            <div class="metric-label">
+                                <span>CPU</span>
+                                <span class="metric-value">{{ formatPercentDirect(node.cpu_usage_percent) }}</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" :class="getProgressClass(node.cpu_usage_percent)" :style="{ width: node.cpu_usage_percent + '%' }"></div>
+                            </div>
+                        </div>
+                        <!-- Memory -->
+                        <div class="metric-item">
+                            <div class="metric-label">
+                                <span>RAM</span>
+                                <span class="metric-value">{{ formatPercentDirect(node.memory_usage_percent) }}</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" :class="getProgressClass(node.memory_usage_percent)" :style="{ width: node.memory_usage_percent + '%' }"></div>
+                            </div>
+                            <div class="metric-subtext">{{ formatBytes(node.memory_used) }} / {{ formatBytes(node.memory_total) }}</div>
+                        </div>
+                        <!-- Network -->
+                        <div class="metric-item">
+                            <div class="metric-label">
+                                <span>📉 Net In</span>
+                                <span class="metric-value">{{ formatBytes(node.network_in || 0) }}/s</span>
+                            </div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-label">
+                                <span>📈 Net Out</span>
+                                <span class="metric-value">{{ formatBytes(node.network_out || 0) }}/s</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Guest Indicators (Running Guests) -->
+                    <div class="guest-indicators">
+                        <div class="guest-indicators-header">
+                            <span class="indicator-title">Running Guests ({{ getGuestsForNode(nodeName).length }})</span>
+                            <button class="btn-xs btn-text" @click="toggleTopology(nodeName)">
+                                {{ showTopology[nodeName] ? 'Hide Topology' : 'Show Network Topology' }}
+                            </button>
+                        </div>
+                        <div class="guest-chips-grid">
+                            <div 
+                                v-for="guest in getGuestsForNode(nodeName)" 
+                                :key="guest.id"
+                                class="guest-chip"
+                                :class="guest.type"
+                                :title="getGuestTooltip(guest)"
+                            >
+                                <span class="chip-icon">{{ guest.type === 'vm' ? '🖥' : '📦' }}</span>
+                                <span class="chip-id">{{ guest.id }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Network Topology View -->
+                    <div v-if="showTopology[nodeName]" class="network-topology">
+                        <h4>🔌 Network Topology</h4>
+                        <div v-for="(bridge, bridgeName) in getNetworkTopology(nodeName)" :key="bridgeName" class="topology-bridge">
+                            <div class="bridge-header">🌉 {{ bridgeName }}</div>
+                            <div v-for="(vlan, vlanId) in bridge" :key="vlanId" class="topology-vlan">
+                                <div class="vlan-header">🏷️ VLAN {{ vlanId === 'untagged' ? 'Untagged' : vlanId }}</div>
+                                <div class="vlan-guests">
+                                    <div v-for="guest in vlan" :key="guest.id" class="topology-guest" :class="guest.type">
+                                        {{ guest.type === 'vm' ? '🖥' : '📦' }} <strong>{{ guest.id }}</strong> ({{ guest.iface }})
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="node-footer">
+                        <div class="guest-counts">
+                            <span class="guest-badge vm">{{ getGuestCount(nodeName, 'qemu') }} VMs</span>
+                            <span class="guest-badge ct">{{ getGuestCount(nodeName, 'lxc') }} CTs</span>
+                        </div>
+                    </div>
+                </div>
+             </div>
+         </div>
+
+         <!-- Add Node (Available if needed, or moved to Config) -->
+         <div class="card mt-6">
             <h4>➕ Join Node to Cluster</h4>
             <div class="form-grid">
                 <div class="form-group">
                     <label>New Node IP</label>
                     <input type="text" v-model="newNodeIP" class="form-input" placeholder="192.168.x.x">
                 </div>
-                <!-- Links defined but hidden for simplicity unless needed, or basic inputs -->
             </div>
             <div class="mt-3">
                 <button class="btn btn-primary" @click="addNodeToCluster" :disabled="!newNodeIP || loading">
@@ -326,9 +386,10 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed, watch } from 'vue';
 import { useHAStore } from '../stores/ha_store';
+import { loadBalancerService } from '../services/loadBalancer';
 
 const store = useHAStore();
-const activeTab = ref('management');
+const activeTab = ref('monitor'); // Start on Monitor
 const loading = computed(() => store.loading);
 
 // API Config State for "Config" tab
@@ -337,6 +398,9 @@ const clusterConfig = reactive({
     user: '',
     password: ''
 });
+
+// Monitor State
+const showTopology = ref<Record<string, boolean>>({});
 
 // New Node State
 const newNodeIP = ref('');
@@ -357,22 +421,52 @@ const newHAGroup = reactive({
 const selectedNodesForGroup = ref<{name: string, priority: number}[]>([]);
 
 // Computed
+// Computed
+const lastAnalysis = computed(() => store.lastAnalysis);
+
+const totalVMs = computed(() => {
+    if (!lastAnalysis.value || !lastAnalysis.value.guests) return 0;
+    return Object.values(lastAnalysis.value.guests).filter((g: any) => g.type === 'vm' || g.type === 'qemu').length;
+});
+
+const totalCTs = computed(() => {
+    if (!lastAnalysis.value || !lastAnalysis.value.guests) return 0;
+    return Object.values(lastAnalysis.value.guests).filter((g: any) => g.type === 'ct' || g.type === 'lxc').length;
+});
+
 const allGuestsSelected = computed(() => {
     const selectable = store.availableGuests.filter(g => !g.in_ha);
     return selectable.length > 0 && selectedGuestsForHA.value.length === selectable.length;
 });
 
 // Implementation
+const loadMonitorData = async () => {
+    // If analysis data is stale (>60s) or missing, fetch it
+    // Or just always fetch for now on refresh
+    try {
+        const res = await loadBalancerService.analyzeCluster();
+        store.setAnalysisResult(res.data);
+    } catch(e) { console.error('Error loading analysis', e); }
+};
+
 const refreshAll = async () => {
     await store.fetchHAData(true);
     // Also load config if on config tab
     if(activeTab.value === 'config') await loadClusterConfig();
+    if(activeTab.value === 'monitor') await loadMonitorData();
 };
 
 onMounted(() => {
     store.fetchHAData();
+    // Default tab is monitor, so load data
+    loadMonitorData();
     // Start background refresh
     store.startBackgroundRefresh();
+});
+
+watch(activeTab, (val) => {
+    if(val === 'config') loadClusterConfig();
+    if(val === 'monitor') loadMonitorData();
 });
 
 // Helper to get node ID
@@ -603,6 +697,124 @@ const cleanNodeReferences = async (name: string) => {
 watch(activeTab, (val) => {
     if(val === 'config') loadClusterConfig();
 });
+// --- HELPER FUNCTIONS ---
+
+const formatBytes = (bytes: number) => {
+    if (!bytes || isNaN(bytes)) return 'N/A';
+    const gb = bytes / (1024 * 1024 * 1024);
+    if (gb >= 1) return gb.toFixed(1) + ' GB';
+    const mb = bytes / (1024 * 1024);
+    return mb.toFixed(0) + ' MB';
+};
+
+const getGuestsForNode = (nodeName: string) => {
+    if (!lastAnalysis.value || !lastAnalysis.value.guests) return [];
+    const guests = lastAnalysis.value.guests;
+    const nodeGuests = [];
+    for (const id in guests) {
+        const guest = guests[id];
+        if (guest.node_current === nodeName) {
+            nodeGuests.push({ ...guest, id });
+        }
+    }
+    return nodeGuests.sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
+};
+
+const getGuestCount = (nodeName: string, guestType: 'qemu' | 'lxc') => {
+    if (!lastAnalysis.value || !lastAnalysis.value.guests) return 0;
+    const guests = lastAnalysis.value.guests;
+    let count = 0;
+    const proxlbType = guestType === 'qemu' ? 'vm' : 'ct';
+    for (const id in guests) {
+        const guest = guests[id];
+        if (guest.node_current === nodeName && guest.type === proxlbType) {
+            count++;
+        }
+    }
+    return count;
+};
+
+const getNodeStatus = (node: any) => {
+    if (node.pressure_score > 50) return 'Critical';
+    if (node.pressure_score > 20) return 'Warning';
+    return 'Healthy';
+};
+
+const getNodeStatusClass = (node: any) => {
+    if (node.pressure_score > 50) return 'status-critical';
+    if (node.pressure_score > 20) return 'status-warning';
+    return 'status-healthy';
+};
+
+const getScoreClass = (score: number) => {
+    if (score > 50) return 'score-critical';
+    if (score > 20) return 'score-warning';
+    return 'score-healthy';
+};
+
+const getNodeHealthClass = (node: any) => {
+   return getNodeStatusClass(node);
+};
+
+const getProgressClass = (percent: number) => {
+    if (percent > 80) return 'bg-danger';
+    if (percent > 60) return 'bg-warning';
+    return 'bg-success';
+};
+
+const getGuestTooltip = (guest: any) => {
+    const name = guest.name || guest.id;
+    const type = guest.type === 'vm' ? 'VM' : 'Container';
+    const cpu = guest.cpu_used ? (guest.cpu_used * 100).toFixed(1) + '%' : 'N/A';
+    const mem = guest.memory_used ? formatBytes(guest.memory_used) : 'N/A';
+    const disk = guest.disk_used ? formatBytes(guest.disk_used) : 'N/A';
+    const netIn = guest.network_in ? formatBytes(guest.network_in) : '0 B';
+    const netOut = guest.network_out ? formatBytes(guest.network_out) : '0 B';
+    return `${type}: ${name} (ID: ${guest.id})\nCPU: ${cpu}\nMem: ${mem}\nDisk: ${disk}\nNet In: ${netIn}/s\nNet Out: ${netOut}/s`;
+};
+
+const toggleTopology = (nodeName: string) => {
+    showTopology.value[nodeName] = !showTopology.value[nodeName];
+};
+
+const getNetworkTopology = (nodeName: string) => {
+    const topology: Record<string, Record<string, any[]>> = {};
+    const guests = getGuestsForNode(nodeName);
+    
+    guests.forEach(g => {
+        const networks = g.networks || [];
+        if (networks.length === 0) return;
+
+        networks.forEach((net: any) => {
+            const bridge = net.bridge || 'Unknown';
+            const vlan = net.tag || 'untagged';
+            
+            if (!topology[bridge]) topology[bridge] = {};
+            if (!topology[bridge][vlan]) topology[bridge][vlan] = [];
+            
+            topology[bridge][vlan].push({
+                id: g.id,
+                type: g.type,
+                iface: net.id || net.ifname || 'net?'
+            });
+        });
+    });
+    
+    // Sort keys
+    const sortedTopology: Record<string, any> = {};
+    Object.keys(topology).sort().forEach(bridge => {
+        sortedTopology[bridge] = {};
+        Object.keys(topology[bridge]).sort((a, b) => {
+            if (a === 'untagged') return -1;
+            if (b === 'untagged') return 1;
+            return parseInt(a) - parseInt(b);
+        }).forEach(vlan => {
+            sortedTopology[bridge][vlan] = topology[bridge][vlan];
+        });
+    });
+    
+    return sortedTopology;
+};
 </script>
 
 <style scoped>
@@ -644,4 +856,70 @@ watch(activeTab, (val) => {
 .text-xs { font-size: 0.75rem; }
 .text-sm { font-size: 0.875rem; }
 .font-mono { font-family: monospace; }
+/* Monitor Styles */
+.monitor-panel { animation: fadeIn 0.3s ease; }
+.monitor-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; }
+.summary-card { background: var(--bg-surface); border: 1px solid var(--border-color); padding: 16px; border-radius: 8px; display: flex; flex-direction: column; align-items: center; }
+.summary-label { font-size: 0.8rem; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 4px; }
+.summary-value { font-size: 1.8rem; font-weight: bold; }
+.text-success { color: #34d399; }
+.text-danger { color: #f87171; }
+
+.nodes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px; }
+.node-card { background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; transition: transform 0.2s, box-shadow 0.2s; }
+.node-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+.node-card.status-critical { border-color: #f87171; box-shadow: 0 0 0 1px #f87171 inset; }
+.node-card.status-warning { border-color: #fbbf24; }
+
+.node-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border-color); }
+.node-title h3 { margin: 0 0 4px 0; font-size: 1.1rem; }
+.node-status { font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; font-weight: 600; text-transform: uppercase; }
+.node-status.status-healthy { background: rgba(16, 185, 129, 0.1); color: #34d399; }
+.node-status.status-warning { background: rgba(245, 158, 11, 0.1); color: #fbbf24; }
+.node-status.status-critical { background: rgba(239, 68, 68, 0.1); color: #f87171; }
+
+.node-score { font-size: 0.8rem; font-weight: bold; padding: 4px 8px; border-radius: 4px; background: rgba(255,255,255,0.05); }
+.score-healthy { color: #34d399; }
+.score-warning { color: #fbbf24; }
+.score-critical { color: #f87171; }
+
+.metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.metric-item { background: var(--bg-secondary); padding: 8px 12px; border-radius: 6px; }
+.metric-label { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px; }
+.metric-value { color: var(--text-primary); font-weight: 600; }
+.progress-bar { height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden; margin-top: 4px; }
+.progress-fill { height: 100%; border-radius: 2px; transition: width 0.3s ease; background: #3b82f6; }
+.bg-success { background: #34d399; }
+.bg-warning { background: #fbbf24; }
+.bg-danger { background: #f87171; }
+.metric-subtext { font-size: 0.7rem; color: var(--text-disabled); margin-top: 2px; text-align: right; }
+
+/* Guest Indicators */
+.guest-indicators { margin-top: 16px; background: var(--bg-secondary); padding: 10px; border-radius: 8px; }
+.guest-indicators-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.indicator-title { font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); }
+.guest-chips-grid { display: flex; flex-wrap: wrap; gap: 4px; }
+.guest-chip { display: flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; cursor: help; border: 1px solid transparent; }
+.guest-chip.vm { background: rgba(59, 130, 246, 0.15); color: #3b82f6; border-color: rgba(59, 130, 246, 0.2); }
+.guest-chip.ct { background: rgba(168, 85, 247, 0.15); color: #a855f7; border-color: rgba(168, 85, 247, 0.2); }
+.guest-chip:hover { filter: brightness(1.1); }
+.btn-text { background: none; border: none; padding: 0; color: var(--accent-primary); cursor: pointer; font-size: 0.75rem; text-decoration: underline; }
+
+/* Network Topology */
+.network-topology { margin-top: 12px; padding: 12px; background: #0f172a; border-radius: 8px; border: 1px solid var(--border-color); }
+.network-topology h4 { margin: 0 0 10px 0; font-size: 0.9rem; color: var(--accent-primary); }
+.topology-bridge { margin-bottom: 12px; padding-left: 8px; border-left: 2px solid var(--border-color); }
+.bridge-header { font-weight: 600; font-size: 0.9rem; margin-bottom: 6px; color: var(--text-primary); }
+.topology-vlan { margin-left: 16px; margin-bottom: 8px; }
+.vlan-header { font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px; font-family: monospace; }
+.vlan-guests { display: flex; flex-wrap: wrap; gap: 6px; margin-left: 8px; }
+.topology-guest { font-size: 0.75rem; padding: 2px 6px; background: rgba(255, 255, 255, 0.05); border-radius: 4px; color: var(--text-muted); }
+.topology-guest.vm strong { color: #3b82f6; }
+.topology-guest.ct strong { color: #a855f7; }
+
+.node-footer { margin-top: 12px; border-top: 1px solid var(--border-color); padding-top: 12px; display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: var(--text-secondary); }
+.guest-counts { display: flex; gap: 8px; }
+.guest-badge { padding: 2px 6px; border-radius: 4px; background: var(--bg-secondary); border: 1px solid var(--border-color); }
+.guest-badge.vm { color: #3b82f6; }
+.guest-badge.ct { color: #a855f7; }
 </style>
