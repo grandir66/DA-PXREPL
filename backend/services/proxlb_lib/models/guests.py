@@ -96,6 +96,8 @@ class Guests:
                     guests['guests'][guest['name']]['node_target'] = node
                     guests['guests'][guest['name']]['processed'] = False
                     guests['guests'][guest['name']]['pressure_hot'] = False
+                    guests['guests'][guest['name']]['network_in'] = Guests.get_guest_rrd_data(proxmox_api, node, guest['vmid'], guest['name'], 'netin', None)
+                    guests['guests'][guest['name']]['network_out'] = Guests.get_guest_rrd_data(proxmox_api, node, guest['vmid'], guest['name'], 'netout', None)
                     guests['guests'][guest['name']]['tags'] = Tags.get_tags_from_guests(proxmox_api, node, guest['vmid'], 'vm')
                     guests['guests'][guest['name']]['pools'] = Pools.get_pools_for_guest(guest['name'], pools)
                     guests['guests'][guest['name']]['ha_rules'] = HaRules.get_ha_rules_for_guest(guest['name'], ha_rules, guest['vmid'])
@@ -143,6 +145,8 @@ class Guests:
                     guests['guests'][guest['name']]['node_target'] = node
                     guests['guests'][guest['name']]['processed'] = False
                     guests['guests'][guest['name']]['pressure_hot'] = False
+                    guests['guests'][guest['name']]['network_in'] = Guests.get_guest_rrd_data(proxmox_api, node, guest['vmid'], guest['name'], 'netin', None)
+                    guests['guests'][guest['name']]['network_out'] = Guests.get_guest_rrd_data(proxmox_api, node, guest['vmid'], guest['name'], 'netout', None)
                     guests['guests'][guest['name']]['tags'] = Tags.get_tags_from_guests(proxmox_api, node, guest['vmid'], 'ct')
                     guests['guests'][guest['name']]['pools'] = Pools.get_pools_for_guest(guest['name'], pools)
                     guests['guests'][guest['name']]['ha_rules'] = HaRules.get_ha_rules_for_guest(guest['name'], ha_rules, guest['vmid'])
@@ -203,11 +207,19 @@ class Guests:
             else:
                 # Calculate the average value from the RRD data entries
                 logger.debug(f"Getting RRD data (spike: {spikes}) of pressure for {object_name} {object_type} from guest: {vm_name}.")
-                rrd_data_value = sum(entry.get(lookup_key, 0.0) for entry in guest_data_rrd) / len(guest_data_rrd)
+                rrd_data_value = sum(entry.get(lookup_key, 0.0) for entry in guest_data_rrd if entry.get(lookup_key) is not None) / len(guest_data_rrd) if len(guest_data_rrd) > 0 else 0.0
 
+        elif object_name in ["netin", "netout"]:
+             # Network metrics
+            logger.debug(f"Getting RRD data of {object_name} from guest: {vm_name}.")
+            rrd_data_value = sum(entry.get(object_name, 0.0) for entry in guest_data_rrd if entry.get(object_name) is not None)
+            if len(guest_data_rrd) > 0:
+                rrd_data_value = rrd_data_value / len(guest_data_rrd)
+            else:
+                rrd_data_value = 0.0
         else:
             logger.debug(f"Getting RRD data of cpu usage from guest: {vm_name}.")
-            rrd_data_value = sum(entry.get("cpu", 0.0) for entry in guest_data_rrd) / len(guest_data_rrd)
+            rrd_data_value = sum(entry.get("cpu", 0.0) for entry in guest_data_rrd) / len(guest_data_rrd) if len(guest_data_rrd) > 0 else 0.0
 
         logger.debug(f"RRD data (spike: {spikes}) for {object_name} from guest: {vm_name}: {rrd_data_value}")
         logger.debug("Finished: get_guest_rrd_data.")

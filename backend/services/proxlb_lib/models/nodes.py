@@ -102,6 +102,8 @@ class Nodes:
                 nodes["nodes"][node["node"]]["disk_pressure_some_spikes_percent"] = Nodes.get_node_rrd_data(proxmox_api, node["node"], "disk", "some", spikes=True)
                 nodes["nodes"][node["node"]]["disk_pressure_full_spikes_percent"] = Nodes.get_node_rrd_data(proxmox_api, node["node"], "disk", "full", spikes=True)
                 nodes["nodes"][node["node"]]["disk_pressure_hot"] = False
+                nodes["nodes"][node["node"]]["network_in"] = Nodes.get_node_rrd_data(proxmox_api, node["node"], "netin", None)
+                nodes["nodes"][node["node"]]["network_out"] = Nodes.get_node_rrd_data(proxmox_api, node["node"], "netout", None)
 
                 # Evaluate if node should be set to maintenance mode
                 if Nodes.set_node_maintenance(proxmox_api, proxlb_config, node["node"]):
@@ -205,7 +207,15 @@ class Nodes:
             logger.debug("Finished: get_node_rrd_data.")
             return 0.0
 
-        lookup_key = f"pressure{object_name}{object_type}"
+        if object_type:
+            lookup_key = f"pressure{object_name}{object_type}"
+        elif object_name in ["netin", "netout"]:
+            lookup_key = object_name
+        else:
+            # Default lookup key logic if needed, but cpu/memory usage usually don't come via this method in this codebase except pressure
+            # However, looking at usage above, get_node_rrd_data is ONLY used for pressure OR this new network usage.
+            # Safety fallback
+            lookup_key = f"pressure{object_name}"
 
         if spikes:
             # RRD data is collected every minute, so we look at the last 6 entries
@@ -214,7 +224,12 @@ class Nodes:
             rrd_data_value = max(rrd_data_value[-6:], default=0.0)
         else:
             # Calculate the average value from the RRD data entries
-            rrd_data_value = sum(entry.get(lookup_key, 0.0) for entry in node_data_rrd) / len(node_data_rrd)
+            # Note: RRD netin/netout is usually in bytes/sec.
+            rrd_data_value = sum(entry.get(lookup_key, 0.0) for entry in node_data_rrd if entry.get(lookup_key) is not None)
+            if len(node_data_rrd) > 0:
+                rrd_data_value = rrd_data_value / len(node_data_rrd)
+            else:
+                 rrd_data_value = 0.0
 
         logger.debug(f"RRD data (spike: {spikes}) for {object_name} from node: {node_name}: {rrd_data_value}")
         logger.debug("Finished: get_node_rrd_data.")

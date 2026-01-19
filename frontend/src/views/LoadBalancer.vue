@@ -23,19 +23,13 @@
             class="tab-btn" 
             :class="{ active: activeTab === 'health' }" 
             @click="activeTab = 'health'">
-            💓 Node Health
+            🖥️ Cluster Monitor
         </button>
         <button 
             class="tab-btn" 
             :class="{ active: activeTab === 'history' }" 
             @click="activeTab = 'history'; loadMigrationHistory()">
             📜 History
-        </button>
-        <button 
-            class="tab-btn" 
-            :class="{ active: activeTab === 'map' }" 
-            @click="activeTab = 'map'">
-            🗺️ Cluster Map
         </button>
         <button 
             class="tab-btn" 
@@ -237,6 +231,20 @@
                                 ></div>
                             </div>
                         </div>
+
+                        <!-- Network -->
+                        <div class="metric-item">
+                            <div class="metric-label">
+                                <span>📉 Net In</span>
+                                <span class="metric-value">{{ formatBytes(node.network_in || 0) }}/s</span>
+                            </div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-label">
+                                <span>📈 Net Out</span>
+                                <span class="metric-value">{{ formatBytes(node.network_out || 0) }}/s</span>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="node-footer">
@@ -326,113 +334,7 @@
             </div>
         </div>
 
-        <!-- Cluster Map Tab -->
-        <div v-if="activeTab === 'map'" class="map-panel">
-            <div class="control-bar">
-                <button class="btn btn-primary" @click="runAnalysis" :disabled="loading">
-                    <span v-if="loading" class="spinner-sm"></span>
-                    {{ loading ? 'Loading...' : '🔄 Refresh Map' }}
-                </button>
-                <div class="map-legend">
-                    <span class="legend-item"><span class="legend-dot healthy"></span> Healthy</span>
-                    <span class="legend-item"><span class="legend-dot warning"></span> High Load</span>
-                    <span class="legend-item"><span class="legend-dot critical"></span> Critical</span>
-                </div>
-            </div>
 
-            <div v-if="!lastAnalysis" class="empty-state">
-                <p>🗺️ Click "Refresh Map" to load cluster visualization</p>
-            </div>
-
-            <div v-else class="cluster-map">
-                <div 
-                    v-for="(node, nodeName) in lastAnalysis.nodes" 
-                    :key="nodeName" 
-                    class="map-node"
-                    :class="getNodeHealthClass(node)"
-                >
-                    <div class="map-node-header">
-                        <h3 class="map-node-name">🖥️ {{ nodeName }}</h3>
-                        <span class="map-node-status" :class="getNodeStatusClass(node)">
-                            {{ getNodeStatus(node) }}
-                        </span>
-                    </div>
-                    
-                    <div class="map-node-metrics">
-                        <div class="map-metric">
-                            <span class="map-metric-label">CPU</span>
-                            <div class="map-metric-bar">
-                                <div 
-                                    class="map-metric-fill"
-                                    :class="getProgressClass(node.cpu_used_percent)"
-                                    :style="{ width: (node.cpu_used_percent || 0) + '%' }"
-                                ></div>
-                            </div>
-                            <span class="map-metric-value">{{ formatPercentDirect(node.cpu_used_percent) }}</span>
-                        </div>
-                        <div class="map-metric">
-                            <span class="map-metric-label">MEM</span>
-                            <div class="map-metric-bar">
-                                <div 
-                                    class="map-metric-fill"
-                                    :class="getProgressClass(node.memory_used_percent)"
-                                    :style="{ width: (node.memory_used_percent || 0) + '%' }"
-                                ></div>
-                            </div>
-                            <span class="map-metric-value">{{ formatPercentDirect(node.memory_used_percent) }}</span>
-                        </div>
-                    </div>
-                    
-                    <div class="map-guests-container">
-                        <div class="map-guests-header">
-                            <span>{{ getGuestsForNode(nodeName).length }} Guests</span>
-                        </div>
-                        <div class="map-guests-grid">
-                            <div 
-                                v-for="guest in getGuestsForNode(nodeName).slice(0, 20)" 
-                                :key="guest.id"
-                                class="map-guest"
-                                :class="guest.type"
-                                :title="getGuestTooltip(guest)"
-                            >
-                                <span class="map-guest-type">{{ guest.type === 'vm' ? '🖥' : '📦' }}</span>
-                                <span class="map-guest-id">{{ guest.id }}</span>
-                            </div>
-                            <div 
-                                v-if="getGuestsForNode(nodeName).length > 20" 
-                                class="map-guest more"
-                            >
-                                +{{ getGuestsForNode(nodeName).length - 20 }}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Map Summary -->
-            <div v-if="lastAnalysis" class="map-summary">
-                <div class="map-summary-item">
-                    <span class="map-summary-icon">🖥️</span>
-                    <span class="map-summary-value">{{ Object.keys(lastAnalysis.nodes || {}).length }}</span>
-                    <span class="map-summary-label">Nodes</span>
-                </div>
-                <div class="map-summary-item">
-                    <span class="map-summary-icon">💻</span>
-                    <span class="map-summary-value">{{ totalVMs }}</span>
-                    <span class="map-summary-label">VMs</span>
-                </div>
-                <div class="map-summary-item">
-                    <span class="map-summary-icon">📦</span>
-                    <span class="map-summary-value">{{ totalCTs }}</span>
-                    <span class="map-summary-label">Containers</span>
-                </div>
-                <div class="map-summary-item">
-                    <span class="map-summary-icon">⚖️</span>
-                    <span class="map-summary-value" :class="getScoreClass(balanciness)">{{ balanciness }}%</span>
-                    <span class="map-summary-label">Imbalance</span>
-                </div>
-            </div>
-        </div>
 
         <!-- Guest Manager Tab -->
         <div v-if="activeTab === 'guests'" class="guests-panel">
@@ -1216,7 +1118,11 @@ const getGuestTooltip = (guest: any) => {
     const type = guest.type === 'vm' ? 'VM' : 'Container';
     const cpu = guest.cpu_allocated ? `CPU: ${guest.cpu_allocated}` : '';
     const mem = guest.memory_allocated ? `RAM: ${(guest.memory_allocated / (1024*1024*1024)).toFixed(1)}GB` : '';
-    return `${type} ${guest.id}: ${name}\n${cpu} ${mem}`.trim();
+    let net = '';
+    if (guest.network_in !== undefined && guest.network_out !== undefined) {
+        net = `\nNet In: ${formatBytes(guest.network_in)}/s\nNet Out: ${formatBytes(guest.network_out)}/s`;
+    }
+    return `${type} ${guest.id}: ${name}\n${cpu} ${mem}${net}`.trim();
 };
 
 // Guest Manager State
