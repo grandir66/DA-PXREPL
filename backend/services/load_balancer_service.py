@@ -247,6 +247,29 @@ class LoadBalancerService:
             Calculations.set_node_hot(proxlb_data)
             Calculations.set_guest_hot(proxlb_data)
             
+            # --- Calculate Score Before ---
+            method = proxlb_data["meta"]["balancing"].get("method", "memory")
+            mode = proxlb_data["meta"]["balancing"].get("mode", "used")
+            
+            def calculate_score(data_nodes, m_method, m_mode):
+                loads = []
+                for n_val in data_nodes.values():
+                    if n_val.get("maintenance") or n_val.get("ignore"):
+                        continue
+                    # metric key e.g. memory_used_percent, cpu_assigned_percent
+                    k = f"{m_method}_{m_mode}_percent"
+                    # psi mode uses different keys
+                    if m_mode == "psi":
+                         k = f"{m_method}_pressure_full_spikes_percent"
+                    
+                    loads.append(n_val.get(k, 0.0))
+                
+                if not loads: return 0.0
+                return max(loads) - min(loads)
+
+            score_before = calculate_score(proxlb_data.get("nodes", {}), method, mode)
+            proxlb_data["score_before"] = round(score_before, 2)
+            
             # Arguments from CLI usually, here defaults
             best_node_arg = False 
             
@@ -255,9 +278,31 @@ class LoadBalancerService:
             Calculations.relocate_guests_on_maintenance_nodes(proxlb_data)
             Calculations.get_balanciness(proxlb_data)
             
-            # This calculates proposed moves
+            # This calculates proposed moves and updates node resources IN-PLACE
             Calculations.relocate_guests(proxlb_data)
             
+            # --- Calculate Score After ---
+            score_after = calculate_score(proxlb_data.get("nodes", {}), method, mode)
+            proxlb_data["score_after"] = round(score_after, 2)
+            
+            # Populate moves list for frontend convenience (it might be extracted from log or diff, 
+            # but usually frontend infers it from guests with 'node_target' != 'node_current')
+            # Actually frontend looks for 'moves' or just guests with pending moves.
+            # But let's check what frontend expects for moves. 
+            # Frontend uses: migrations.value = result.moves || [];
+            # We need to populate 'moves'.
+            
+            moves = []
+            for g_name, g_data in proxlb_data.get("guests", {}).items():
+                if g_data.get("node_target") and g_data["node_target"] != g_data["node_current"]:
+                    moves.append({
+                        "guest": g_name,
+                        "from": g_data["node_current"],
+                        "to": g_data["node_target"],
+                        "reason": "Balance" # simplified
+                    })
+            proxlb_data["moves"] = moves
+
             # Store for cache
             self._last_analysis = proxlb_data
             
