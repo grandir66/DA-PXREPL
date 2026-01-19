@@ -45,6 +45,43 @@
       
       <!-- CONFIG TAB -->
       <div v-if="activeTab === 'config'" class="config-panel">
+        
+        <!-- Cluster Status Card -->
+        <div class="card mb-4">
+          <div class="flex justify-between items-center">
+            <div>
+              <h4>📊 Cluster Status</h4>
+              <p class="help-text">Current cluster initialization and connection status.</p>
+            </div>
+            <div class="cluster-status-badge" :class="clusterStatusClass">
+              {{ clusterStatusText }}
+            </div>
+          </div>
+          <div v-if="store.clusterStatus" class="cluster-status-grid mt-4">
+            <div class="status-item">
+              <span class="label">Cluster Name</span>
+              <strong>{{ store.clusterStatus.cluster_name || 'N/A' }}</strong>
+            </div>
+            <div class="status-item">
+              <span class="label">Quorum</span>
+              <strong :class="store.clusterStatus.quorum ? 'text-success' : 'text-danger'">
+                {{ store.clusterStatus.quorum ? 'OK' : 'NO QUORUM' }}
+              </strong>
+            </div>
+            <div class="status-item">
+              <span class="label">Nodes</span>
+              <strong>{{ store.clusterNodes?.length || 0 }}</strong>
+            </div>
+            <div class="status-item">
+              <span class="label">Votes</span>
+              <strong>{{ store.clusterStatus.total_votes || 0 }} / {{ store.clusterStatus.expected_votes || 0 }}</strong>
+            </div>
+          </div>
+          <div v-else class="mt-4 text-secondary">
+            <em>⚠️ No cluster data available. Configure entry point below and refresh.</em>
+          </div>
+        </div>
+        
         <div class="card">
           <h4>🔌 Cluster Entry Point</h4>
           <p class="help-text mb-4">Define the primary entry point for cluster API access.</p>
@@ -170,7 +207,7 @@
                                 :title="getGuestTooltip(guest)"
                             >
                                 <span class="chip-icon">{{ guest.type === 'vm' ? '🖥' : '📦' }}</span>
-                                <span class="chip-id">{{ guest.id }}</span>
+                                <span class="chip-id">{{ guest.name || guest.id }}</span>
                             </div>
                         </div>
                     </div>
@@ -184,7 +221,7 @@
                                 <div class="vlan-header">🏷️ VLAN {{ vlanId === 'untagged' ? 'Untagged' : vlanId }}</div>
                                 <div class="vlan-guests">
                                     <div v-for="guest in vlan" :key="guest.id" class="topology-guest" :class="guest.type">
-                                        {{ guest.type === 'vm' ? '🖥' : '📦' }} <strong>{{ guest.id }}</strong> ({{ guest.iface }})
+                                        {{ guest.type === 'vm' ? '🖥' : '📦' }} <strong>{{ guest.name || guest.id }}</strong> ({{ guest.iface }})
                                     </div>
                                 </div>
                             </div>
@@ -432,6 +469,19 @@ const totalVMs = computed(() => {
 const totalCTs = computed(() => {
     if (!lastAnalysis.value || !lastAnalysis.value.guests) return 0;
     return Object.values(lastAnalysis.value.guests).filter((g: any) => g.type === 'ct' || g.type === 'lxc').length;
+});
+
+// Cluster status computed properties
+const clusterStatusText = computed(() => {
+    if (!store.clusterStatus) return 'Not Configured';
+    if (store.clusterStatus.quorum) return 'Initialized';
+    return 'No Quorum';
+});
+
+const clusterStatusClass = computed(() => {
+    if (!store.clusterStatus) return 'status-not-configured';
+    if (store.clusterStatus.quorum) return 'status-initialized';
+    return 'status-warning';
 });
 
 const allGuestsSelected = computed(() => {
@@ -865,6 +915,12 @@ const getNetworkTopology = (nodeName: string) => {
 .badge-success { background: rgba(16, 185, 129, 0.2); color: #34d399; }
 .badge-danger { background: rgba(239, 68, 68, 0.2); color: #f87171; }
 .badge-info { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+
+/* Cluster Status Badge */
+.cluster-status-badge { padding: 6px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; text-transform: uppercase; }
+.cluster-status-badge.status-initialized { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+.cluster-status-badge.status-warning { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+.cluster-status-badge.status-not-configured { background: rgba(100, 116, 139, 0.2); color: #94a3b8; border: 1px solid rgba(100, 116, 139, 0.3); }
 .data-table { width: 100%; border-collapse: collapse; }
 .data-table th { text-align: left; padding: 12px; color: var(--text-secondary); border-bottom: 2px solid var(--border-color); font-size: 0.85rem; }
 .data-table td { padding: 12px; border-bottom: 1px solid var(--border-color); vertical-align: middle; }
