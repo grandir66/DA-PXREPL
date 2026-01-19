@@ -7,10 +7,41 @@ import logging
 from typing import Dict, List, Optional, Any, Tuple
 import json
 import re
+import time
+import asyncio
 
 from services.ssh_service import ssh_service
 
 logger = logging.getLogger(__name__)
+
+# Simple in-memory cache with TTL
+class ClusterCache:
+    """Cache in-memory con TTL per dati Cluster"""
+    def __init__(self, default_ttl: int = 60):
+        self._cache: Dict[str, Tuple[Any, float]] = {}
+        self._default_ttl = default_ttl
+    
+    def get(self, key: str) -> Optional[Any]:
+        if key in self._cache:
+            value, expires = self._cache[key]
+            if time.time() < expires:
+                return value
+            else:
+                del self._cache[key]
+        return None
+    
+    def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
+        expires = time.time() + (ttl or self._default_ttl)
+        self._cache[key] = (value, expires)
+    
+    def invalidate(self, key: str = None) -> None:
+        if key:
+            self._cache.pop(key, None)
+        else:
+            self._cache.clear()
+
+# Global cache instance
+_cluster_cache = ClusterCache(default_ttl=60)
 
 
 class ClusterService:
@@ -21,11 +52,20 @@ class ClusterService:
         hostname: str,
         port: int = 22,
         username: str = "root",
-        key_path: str = "/root/.ssh/id_rsa"
+        key_path: str = "/root/.ssh/id_rsa",
+        use_cache: bool = True
     ) -> Dict[str, Any]:
         """
         Ottiene lo stato completo del cluster.
         """
+        cache_key = f"cluster_status:{hostname}"
+        
+        if use_cache:
+            cached = _cluster_cache.get(cache_key)
+            if cached is not None:
+                logger.debug(f"Cluster status cache HIT for {hostname}")
+                return cached
+        
         result = await ssh_service.execute(
             hostname=hostname,
             command="pvecm status 2>/dev/null",
@@ -48,6 +88,7 @@ class ClusterService:
         if result.success:
             status.update(self._parse_pvecm_status(result.stdout))
         
+        _cluster_cache.set(cache_key, status)
         return status
     
     def _parse_pvecm_status(self, text: str) -> Dict[str, Any]:
@@ -88,11 +129,20 @@ class ClusterService:
         hostname: str,
         port: int = 22,
         username: str = "root",
-        key_path: str = "/root/.ssh/id_rsa"
+        key_path: str = "/root/.ssh/id_rsa",
+        use_cache: bool = True
     ) -> List[Dict[str, Any]]:
         """
         Ottiene lista nodi del cluster con stato.
         """
+        cache_key = f"cluster_nodes:{hostname}"
+        
+        if use_cache:
+            cached = _cluster_cache.get(cache_key)
+            if cached is not None:
+                logger.debug(f"Cluster nodes cache HIT for {hostname}")
+                return cached
+        
         result = await ssh_service.execute(
             hostname=hostname,
             command="pvecm nodes 2>/dev/null",
@@ -105,6 +155,7 @@ class ClusterService:
         if result.success:
             nodes = self._parse_pvecm_nodes(result.stdout)
         
+        _cluster_cache.set(cache_key, nodes)
         return nodes
     
     def _parse_pvecm_nodes(self, text: str) -> List[Dict[str, Any]]:

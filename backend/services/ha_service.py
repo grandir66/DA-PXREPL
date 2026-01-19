@@ -7,10 +7,45 @@ import logging
 from typing import Dict, List, Optional, Any, Tuple
 import json
 import re
+import time
+import asyncio
 
 from services.ssh_service import ssh_service
 
 logger = logging.getLogger(__name__)
+
+# Simple in-memory cache with TTL
+class HACache:
+    """Cache in-memory con TTL per dati HA"""
+    def __init__(self, default_ttl: int = 60):
+        self._cache: Dict[str, Tuple[Any, float]] = {}
+        self._default_ttl = default_ttl
+        self._lock = asyncio.Lock()
+    
+    def get(self, key: str) -> Optional[Any]:
+        """Ottieni valore dalla cache se non scaduto"""
+        if key in self._cache:
+            value, expires = self._cache[key]
+            if time.time() < expires:
+                return value
+            else:
+                del self._cache[key]
+        return None
+    
+    def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
+        """Imposta valore in cache con TTL"""
+        expires = time.time() + (ttl or self._default_ttl)
+        self._cache[key] = (value, expires)
+    
+    def invalidate(self, key: str = None) -> None:
+        """Invalida una chiave specifica o tutta la cache"""
+        if key:
+            self._cache.pop(key, None)
+        else:
+            self._cache.clear()
+
+# Global cache instance (60 secondi TTL default)
+_ha_cache = HACache(default_ttl=60)
 
 
 class HAService:
@@ -77,11 +112,20 @@ class HAService:
         hostname: str,
         port: int = 22,
         username: str = "root",
-        key_path: str = "/root/.ssh/id_rsa"
+        key_path: str = "/root/.ssh/id_rsa",
+        use_cache: bool = True
     ) -> List[Dict[str, Any]]:
         """
         Lista risorse HA configurate.
         """
+        cache_key = f"ha_resources:{hostname}"
+        
+        if use_cache:
+            cached = _ha_cache.get(cache_key)
+            if cached is not None:
+                logger.debug(f"HA resources cache HIT for {hostname}")
+                return cached
+        
         result = await ssh_service.execute(
             hostname=hostname,
             command="pvesh get /cluster/ha/resources --output-format json 2>/dev/null",
@@ -97,6 +141,7 @@ class HAService:
             except json.JSONDecodeError:
                 logger.warning(f"Failed to parse HA resources JSON from {hostname}")
         
+        _ha_cache.set(cache_key, resources)
         return resources
     
     async def get_ha_groups(
@@ -104,11 +149,20 @@ class HAService:
         hostname: str,
         port: int = 22,
         username: str = "root",
-        key_path: str = "/root/.ssh/id_rsa"
+        key_path: str = "/root/.ssh/id_rsa",
+        use_cache: bool = True
     ) -> List[Dict[str, Any]]:
         """
         Lista gruppi HA configurati.
         """
+        cache_key = f"ha_groups:{hostname}"
+        
+        if use_cache:
+            cached = _ha_cache.get(cache_key)
+            if cached is not None:
+                logger.debug(f"HA groups cache HIT for {hostname}")
+                return cached
+        
         result = await ssh_service.execute(
             hostname=hostname,
             command="pvesh get /cluster/ha/groups --output-format json 2>/dev/null",
@@ -124,6 +178,7 @@ class HAService:
             except json.JSONDecodeError:
                 logger.warning(f"Failed to parse HA groups JSON from {hostname}")
         
+        _ha_cache.set(cache_key, groups)
         return groups
     
     async def add_resource_to_ha(
