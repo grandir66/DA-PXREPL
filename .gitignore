@@ -66,3 +66,6 @@ temp/
 
 # Package-lock (optional, can be removed if you want to track it)
 # frontend/package-lock.json
+
+# Allow frontend build artifacts
+!frontend/dist/
