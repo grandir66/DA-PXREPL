@@ -43,7 +43,7 @@ node_modules/
 frontend/node_modules/
 
 # Build artifacts
-frontend/dist/
+
 *.egg-info/
 dist/
 build/
