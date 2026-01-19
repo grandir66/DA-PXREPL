@@ -258,11 +258,13 @@ class Nodes:
         """
         logger.debug("Starting: get_node_pve_version.")
 
+        version = {"version": 0.0}
         try:
             logger.debug(f"Trying to get PVE version for node: {node_name}.")
             version = proxmox_api.nodes(node_name).version.get()
         except Exception:
             logger.error(f"Failed to get PVE version for node: {node_name}.")
+            return 0.0
 
         logger.debug(f"Got version {version['version']} for node {node_name}.")
         logger.debug("Finished: get_node_pve_version.")
