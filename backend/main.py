@@ -64,7 +64,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="DAPX-backandrepl",
     description="Sistema centralizzato di backup e replica per Proxmox VE. Supporta ZFS (Sanoid/Syncoid), BTRFS (btrfs send/receive) e PBS (Proxmox Backup Server).",
-    version="3.9.17",
+    version="3.9.18",
     lifespan=lifespan
 )
 
@@ -135,7 +135,7 @@ if dapx_mode == "full":
 async def health_check():
     return {
         "status": "healthy",
-        "version": "3.9.17",
+        "version": "3.9.18",
         "auth_enabled": True,
         "mode": dapx_mode,
         "features": ["zfs", "btrfs", "pbs", "load_balancer"] if dapx_mode == "full" else ["load_balancer"]

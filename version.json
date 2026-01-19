@@ -1,6 +1,6 @@
 {
     "name": "DA-PXREPL",
-    "version": "3.9.17",
+    "version": "3.9.18",
     "description": "Proxmox Backup & Replication Manager",
     "build_date": "2026-01-19",
     "min_python": "3.9",

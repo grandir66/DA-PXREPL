@@ -116,7 +116,7 @@
                        <span class="text-2xl">{{ selectedClusterId === cluster.id ? '🟢' : '⚪' }}</span>
                        <div>
                            <div class="font-bold flex items-center gap-2 text-lg">
-                               {{ cluster.name }}
+                               {{ cluster.name || `Cluster (${cluster.hosts.split(',')[0]})` }}
                                <span v-if="cluster.is_default" class="px-2 py-0.5 text-xs bg-blue-900 text-blue-200 rounded">Default</span>
                                <span v-if="cluster.is_initialized" class="px-2 py-0.5 text-xs bg-green-900 text-green-200 rounded">Online</span>
                                <span v-else class="px-2 py-0.5 text-xs bg-yellow-900 text-yellow-200 rounded">Offline</span>
@@ -768,33 +768,7 @@ const loadClusterConfig = async () => {
     } catch(e) {}
 };
 
-const saveClusterConfig = async () => {
-     try {
-        const token = localStorage.getItem('access_token');
-        // Retrieve current config first to merge
-        const res = await fetch('/api/load-balancer/config', { headers: { 'Authorization': `Bearer ${token}` } });
-        const currentMox = await res.json();
-        
-        const payload = {
-            ...currentMox,
-            proxmox_api: {
-                ...currentMox.proxmox_api,
-                hosts: clusterConfig.hosts,
-                user: clusterConfig.user
-            }
-        };
-        if(clusterConfig.password) {
-            payload.proxmox_api.pass = clusterConfig.password;
-        }
 
-        await fetch('/api/load-balancer/config', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify(payload)
-        });
-        alert('Configuration saved!');
-     } catch(e) { alert('Error: ' + e); }
-};
 
 // --- CLUSTER MGMT ACTIONS ---
 const addNodeToCluster = async () => {
