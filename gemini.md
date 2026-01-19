@@ -145,3 +145,14 @@ project-root/
 Ti posizioni tra intenzione umana (direttive) ed esecuzione deterministica (script Python). Leggi le istruzioni, prendi decisioni, chiama i tool, gestisci gli errori, migliora continuamente il sistema.
 
 Sii pragmatico. Sii affidabile. Auto-correggiti.
+
+## 4. Protocolli di Sviluppo e Rilascio (Appresi sul Campo)
+
+### 4.1. Gestione Versioni e Tag
+*   **Commit > Push > Tag:** Mai creare un tag di release prima che TUTTO il codice (inclusi refactoring dell'ultimo minuto) sia stato committato e pushato.
+*   **Versioning Sincronizzato:** Assicurarsi sempre che `version.json` (root), `backend/version.json`, `backend/main.py` e `frontend/package.json` siano allineati alla stessa versione.
+*   **Update Detection:** Il sistema di aggiornamento si basa sui tag git. Se modifichi codice dopo il tag, quell'aggiornamento sarà invisibile agli utenti finché non viene rilasciato un nuovo tag.
+
+### 4.2. Refactoring UI
+*   **Verifica Import:** Quando si sposta un componente (es. da `LoadBalancer.vue` a `Cluster.vue`), verificare sempre che le dipendenze (es. `services/loadBalancer.ts`) siano importate correttamente nel nuovo file (default vs named imports).
+*   **Cleanup:** Dopo aver spostato un componente, cercare e rimuovere accuratamente il codice "orfano" (HTML, script, CSS) nel file originale per evitare debiti tecnici. Usa `grep` per cercare funzioni non più utilizzate.
