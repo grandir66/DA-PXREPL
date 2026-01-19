@@ -191,7 +191,6 @@ class Nodes:
             float: The calculated average usage value for the specified resource.
         """
         logger.debug("Starting: get_node_rrd_data.")
-        time.sleep(0.1)
 
         try:
             if spikes:
@@ -243,7 +242,6 @@ class Nodes:
                     handle or propagate exceptions as appropriate.
         """
         logger.debug("Starting: get_node_pve_version.")
-        time.sleep(0.1)
 
         try:
             logger.debug(f"Trying to get PVE version for node: {node_name}.")

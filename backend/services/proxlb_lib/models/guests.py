@@ -178,7 +178,6 @@ class Guests:
             float: The calculated average usage value for the specified resource.
         """
         logger.debug("Starting: get_guest_rrd_data.")
-        time.sleep(0.1)
 
         try:
             if spikes:
