@@ -432,6 +432,11 @@ async def get_dashboard_nodes(
                     "memory": memory_data,
                     "storage": host_details.get("storage", []),
                     "temperature": temperature_data,
+                    # Network topology data
+                    "network": host_details.get("network", []),
+                    "guests": host_details.get("guests", []),
+                    # Full host_info for detailed modal
+                    "host_info": host_details,
                     # Campi aggiuntivi per compatibilità frontend
                     "storage_total_gb": round(storage_total_gb, 2) if storage_total_gb > 0 else 0,
                     "storage_used_gb": round(storage_used_gb, 2) if storage_used_gb > 0 else 0,

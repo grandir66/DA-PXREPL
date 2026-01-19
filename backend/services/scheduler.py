@@ -16,6 +16,7 @@ from services.proxmox_service import proxmox_service
 from services.notification_service import notification_service
 from services.host_backup_service import host_backup_service
 from services.host_info_service import host_info_service
+from services.cache_service import cache_service
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ class SchedulerService:
         self._task: Optional[asyncio.Task] = None
         self._jobs: Dict[int, datetime] = {}  # job_id -> next_run
         self._last_daily_summary: Optional[datetime] = None
+        self._last_vm_cache_refresh: Optional[datetime] = None
         self._daily_summary_hour: int = 8  # Ora predefinita: 08:00 UTC
         self._daily_summary_enabled: bool = True
     
@@ -90,6 +92,7 @@ class SchedulerService:
                 await self._check_and_run_jobs()
                 await self._check_daily_summary()
                 await self._check_host_info_updates()
+                await self._refresh_vm_cache()
                 await asyncio.sleep(60)  # Check ogni minuto
             except Exception as e:
                 logger.error(f"Errore nello scheduler: {e}")
@@ -163,6 +166,27 @@ class SchedulerService:
                     
         except Exception as e:
             logger.error(f"Errore check updates nodi: {e}")
+        finally:
+            db.close()
+    
+    async def _refresh_vm_cache(self):
+        """Aggiorna la cache VM ogni 5 minuti per velocizzare la pagina VM"""
+        now = datetime.utcnow()
+        
+        # Check se è passato abbastanza tempo dall'ultimo refresh (5 minuti)
+        if self._last_vm_cache_refresh:
+            delta = (now - self._last_vm_cache_refresh).total_seconds()
+            if delta < 300:  # 5 minuti
+                return
+        
+        logger.debug("Avvio refresh cache VMs...")
+        db = SessionLocal()
+        try:
+            await cache_service.refresh_all_nodes(db)
+            self._last_vm_cache_refresh = now
+            logger.info("Cache VM aggiornata con successo")
+        except Exception as e:
+            logger.error(f"Errore refresh cache VM: {e}")
         finally:
             db.close()
     
