@@ -280,6 +280,22 @@
                                               <span class="bridge-name">{{ bridge.iface }}</span>
                                               <span class="bridge-cidr">{{ bridge.cidr || 'L2 Switch' }}</span>
                                           </div>
+                                          
+                                          <!-- Bridge Ports (Physical NICs) -->
+                                          <div v-if="bridge.bridge_ports" class="bridge-ports-info">
+                                              <span class="bridge-ports-label">Uplink:</span>
+                                              <div class="bridge-ports-list">
+                                                  <span v-for="port in bridge.bridge_ports.split(' ').filter((p: string) => p)" 
+                                                        :key="port" 
+                                                        class="bridge-port-chip"
+                                                        :class="{ bond: port.startsWith('bond') }">
+                                                      {{ port }}
+                                                      <span v-if="getBondMode(nodeData, port)" class="bond-mode-badge">
+                                                          {{ getBondMode(nodeData, port) }}
+                                                      </span>
+                                                  </span>
+                                              </div>
+                                          </div>
 
                                           <!-- Guests connected -->
                                           <div class="topology-guests">
@@ -769,6 +785,27 @@ const getGuestVlanOnBridge = (guest: any, bridge: string) => {
     const targetBridge = bridge ? bridge.trim() : '';
     const netEntry = guest.networks.find((n: any) => n.bridge && n.bridge.trim() === targetBridge);
     return netEntry?.tag || null;
+};
+
+// Helper to get bond mode for a port (if it's a bond interface)
+const getBondMode = (nodeInterfaces: any[], portName: string) => {
+    if (!nodeInterfaces || !portName.startsWith('bond')) return null;
+    
+    const bondIface = nodeInterfaces.find((i: any) => i.iface === portName && i.type === 'bond');
+    if (!bondIface || !bondIface.bond_mode) return null;
+    
+    // Map bond mode to human-readable name
+    const modeMap: Record<string, string> = {
+        'balance-rr': 'RR',
+        'active-backup': 'Active-Backup',
+        'balance-xor': 'XOR',
+        'broadcast': 'Broadcast', 
+        '802.3ad': 'LACP',
+        'balance-tlb': 'TLB',
+        'balance-alb': 'ALB'
+    };
+    
+    return modeMap[bondIface.bond_mode] || bondIface.bond_mode;
 };
 
 // Implementation
@@ -1471,6 +1508,58 @@ const getNetworkTopology = (nodeName: string) => {
     border-radius: 4px;
     border: 1px solid var(--border-color);
     color: var(--text-secondary);
+}
+
+.bridge-ports-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: rgba(0,0,0,0.15);
+    border-bottom: 1px solid var(--border-color);
+    flex-wrap: wrap;
+}
+
+.bridge-ports-label {
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+.bridge-ports-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.bridge-port-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    font-size: 0.75rem;
+    font-family: var(--font-mono);
+    background: var(--bg-body);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-secondary);
+}
+
+.bridge-port-chip.bond {
+    background: rgba(59, 130, 246, 0.1);
+    border-color: rgba(59, 130, 246, 0.3);
+    color: #60a5fa;
+}
+
+.bond-mode-badge {
+    font-size: 0.65rem;
+    padding: 1px 4px;
+    background: rgba(16, 185, 129, 0.2);
+    color: #34d399;
+    border-radius: 3px;
+    font-weight: 600;
+    text-transform: uppercase;
 }
 
 .topology-guests {
