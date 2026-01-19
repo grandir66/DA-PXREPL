@@ -1165,13 +1165,13 @@ import { useHAStore } from '../stores/ha_store';
 import { storeToRefs } from 'pinia';
 import loadBalancerService from '../services/loadBalancer';
 
-const activeTab = ref('analysis');
+// Local UI state
 const loading = ref(false);
 const executing = ref(false);
 const error = ref<string | null>(null);
-const lastAnalysis = ref<any>(null);
-const configJson = ref('{}');
+const migrations = ref<any[]>([]);
 const executionLog = ref<string[]>([]);
+const balanciness = ref(0);
 const showJsonPreview = ref(false);
 
 // Auto-refresh state
@@ -1183,22 +1183,10 @@ let autoRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let countdownTimer: ReturnType<typeof setInterval> | null = null;
 
 // Migration History state
-const migrationHistory = ref<any[]>([]);
 const historyLoading = ref(false);
 
 // Load migration history
-const loadMigrationHistory = async () => {
-    historyLoading.value = true;
-    try {
-        const res = await loadBalancerService.getMigrationHistory(100);
-        migrationHistory.value = res.data || [];
-    } catch (e) {
-        console.error('Failed to load migration history:', e);
-        migrationHistory.value = [];
-    } finally {
-        historyLoading.value = false;
-    }
-};
+
 
 // Format date for display
 const formatDate = (dateStr: string) => {
@@ -1407,11 +1395,15 @@ const {
     availableGuests, 
     clusterNodes, 
     clusterStatus, 
-    loading: haStoreLoading 
+    loading: haStoreLoading,
+    lastAnalysis,
+    migrationHistory
 } = storeToRefs(haStore);
 
 const haLoading = computed(() => haStoreLoading.value);
 const clusterLoading = computed(() => haStoreLoading.value);
+// Use availableGuests from store instead of local allGuests
+const allGuests = computed(() => availableGuests.value || []);
 
 const newNodeIP = ref('');
 const newNodeLink0 = ref('');
@@ -1837,7 +1829,6 @@ const toggleBalanceType = (type: string) => {
 
 // Nodes and Guests lists
 // availableNodes is computed now
-const allGuests = ref<any[]>([]);
 const ignoredGuestIds = ref<string[]>([]); // IDs of guests to ignore
 
 // Toggle node in maintenance or ignore list
@@ -1889,48 +1880,47 @@ const configForDisplay = computed(() => {
     return cfg;
 });
 
-const migrations = computed(() => {
-    return []; // Placeholder until we verify structure
-});
+// Migrations and Balanciness are managed in runAnalysis logic
+// (removed duplicate computed props)
 
-const balanciness = computed(() => {
-    if (!lastAnalysis.value || !lastAnalysis.value.nodes) return 'N/A';
-    const nodes = Object.values(lastAnalysis.value.nodes) as any[];
-    if (nodes.length === 0) return 'N/A';
-    
-    const memValues = nodes.map(n => n.memory_used_percent || 0);
-    const highest = Math.max(...memValues);
-    const lowest = Math.min(...memValues);
-    const spread = highest - lowest;
-    
-    return spread.toFixed(1);
-});
 
 const runAnalysis = async () => {
     loading.value = true;
     error.value = null;
     executionLog.value = [];
+    
     try {
-        const res = await loadBalancerService.analyzeCluster();
-        lastAnalysis.value = res.data;
-        if (lastAnalysis.value.log) {
-             executionLog.value = lastAnalysis.value.log;
+        const token = localStorage.getItem('access_token');
+        const res = await fetch('/api/load-balancer/analyze', {
+            headers: { 
+                'Authorization': `Bearer ${token}` 
+            }
+        });
+        
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || 'Analysis failed');
         }
         
-        // Populate available nodes from analysis
-        if (lastAnalysis.value.nodes) {
-            // availableNodes is computed from lastAnalysis
-        }
+        const result = await res.json();
+        // Use store action to set analysis result (persists across tabs)
+        haStore.setAnalysisResult(result);
         
-        // Populate guests list from analysis
-        if (lastAnalysis.value.guests) {
-            allGuests.value = Object.values(lastAnalysis.value.guests);
-        }
+        migrations.value = result.moves || [];
+        balanciness.value = result.score_before || 0;
         
-        // Update last refresh time
-        lastUpdateTime.value = new Date().toLocaleTimeString();
-    } catch (e: any) {
-        error.value = e.response?.data?.detail || e.message;
+        // Also update local filteredGuests based on this analysis if needed,
+        // but now filteredGuests uses lastAnalysis from store, so it's reactive!
+        
+        if (migrations.value.length === 0) {
+            executionLog.value.push('✅ Cluster is balanced. No migrations proposed.');
+        } else {
+            executionLog.value.push(`🔍 Analysis complete. Proposed ${migrations.value.length} migrations.`);
+        }
+
+    } catch (err: any) {
+        console.error('Analysis error:', err);
+        error.value = err.message;
     } finally {
         loading.value = false;
     }
@@ -1949,6 +1939,24 @@ const executeRun = async (dryRun: boolean) => {
         error.value = e.response?.data?.detail || e.message;
     } finally {
         executing.value = false;
+    }
+};
+
+const loadMigrationHistory = async () => {
+    try {
+        const token = localStorage.getItem('access_token');
+        const res = await fetch('/api/load-balancer/migrations?limit=50', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            // Can also move migration history to store if needed
+            // For now keeps local or syncs to store if added
+            const hist = await res.json();
+            // migrationHistory is now a ref from store, so we can update it directly
+            migrationHistory.value = hist;
+        }
+    } catch (e) {
+        console.error(e);
     }
 };
 

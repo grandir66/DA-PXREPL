@@ -9,11 +9,21 @@ export const useHAStore = defineStore('ha_store', () => {
     const clusterNodes = ref<any[]>([]);
     const clusterStatus = ref<any>(null);
 
+    // Analysis State
+    const lastAnalysis = ref<any>(null);
+    const analysisTimestamp = ref<Date | null>(null);
+    const migrationHistory = ref<any[]>([]);
+
     const loading = ref(false);
     const lastUpdated = ref<Date | null>(null);
     const error = ref<string | null>(null);
 
     // Actions
+    const setAnalysisResult = (result: any) => {
+        lastAnalysis.value = result;
+        analysisTimestamp.value = new Date();
+    };
+
     const fetchHAData = async (force = false, background = false) => {
         // Se abbiamo dati recenti (meno di 60s) e non è force, non ricaricare
         if (!force && lastUpdated.value && (new Date().getTime() - lastUpdated.value.getTime() < 60000)) {
@@ -92,10 +102,14 @@ export const useHAStore = defineStore('ha_store', () => {
         availableGuests,
         clusterNodes,
         clusterStatus,
+        lastAnalysis,
+        analysisTimestamp,
+        migrationHistory,
         loading,
         lastUpdated,
         error,
         fetchHAData,
+        setAnalysisResult,
         startBackgroundRefresh,
         stopBackgroundRefresh
     };
