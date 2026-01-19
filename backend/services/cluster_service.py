@@ -566,7 +566,7 @@ echo "Cleanup completed for {node_name}"
             
         # 4. Guest Configs (Parallel)
         guest_tasks = []
-        guest_ids = []
+        guest_meta = []  # Store metadata for each guest
         for guest in guests:
             node = guest.get('node')
             vmid = str(guest.get('vmid'))
@@ -574,7 +574,12 @@ echo "Cleanup completed for {node_name}"
             
             # Skip guests on offline nodes if any
             if node:
-                guest_ids.append(vmid)
+                guest_meta.append({
+                    "id": vmid,
+                    "node": node,
+                    "type": "vm" if gtype == "qemu" else "ct",
+                    "name": guest.get('name', f"VM-{vmid}")
+                })
                 guest_tasks.append(self._get_guest_config(hostname, node, vmid, gtype, port, username, key_path))
             
         # Execute all details
@@ -587,9 +592,15 @@ echo "Cleanup completed for {node_name}"
         for i, node_name in enumerate(node_names):
             nodes_map[node_name] = node_results[i]
             
+        # Build guests_map with full metadata + network info
         guests_map = {}
-        for i, vmid in enumerate(guest_ids):
-            guests_map[vmid] = guest_results[i]
+        for i, meta in enumerate(guest_meta):
+            vmid = meta["id"]
+            network_data = guest_results[i]
+            guests_map[vmid] = {
+                **meta,
+                "networks": network_data.get("networks", [])
+            }
             
         return {
             "corosync": corosync_data,

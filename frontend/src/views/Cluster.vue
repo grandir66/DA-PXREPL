@@ -185,47 +185,45 @@
       </div>
 
       <!-- TOPOLOGY TAB -->
-      <div v-if="activeTab === 'topology'" class="topology-panel p-4">
-          <div v-if="loadingTopology" class="flex justify-center flex-col items-center p-20">
-             <span class="spinner-lg mb-4 text-blue-500"></span>
-             <h3 class="text-xl font-bold text-gray-300">Analyzing Network Topology...</h3>
-             <p class="text-gray-500 mt-2">Connecting to nodes and retrieving configuration</p>
+      <div v-if="activeTab === 'topology'" class="topology-panel" style="animation: fadeIn 0.3s ease;">
+          <div v-if="loadingTopology" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 80px 20px;">
+             <div class="spinner-sm" style="width: 40px; height: 40px; border-width: 3px; margin-bottom: 16px;"></div>
+             <h3 style="margin: 0 0 8px 0; font-size: 1.25rem;">Analyzing Network Topology...</h3>
+             <p class="text-secondary" style="margin: 0;">Connecting to nodes and retrieving configuration</p>
           </div>
           
-          <div v-else-if="topologyData" class="space-y-8">
+          <div v-else-if="topologyData">
               <!-- Corosync Status -->
-              <div class="card bg-gray-900 border border-gray-700 rounded-xl overflow-hidden shadow-sm">
-                  <div class="p-4 border-b border-gray-700 bg-gray-800 flex items-center gap-2">
-                       <span class="text-2xl">🔗</span>
-                       <h4 class="m-0 font-bold text-lg">Corosync Cluster Status</h4>
+              <div class="card" style="margin-bottom: 24px;">
+                  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border-color);">
+                       <span style="font-size: 1.5rem;">🔗</span>
+                       <h4 style="margin: 0; font-size: 1.1rem;">Corosync Cluster Status</h4>
                   </div>
-                  <div class="overflow-x-auto">
-                      <table class="w-full text-left border-collapse">
+                  <div class="table-container">
+                      <table class="data-table">
                           <thead>
-                              <tr class="bg-gray-800/50 text-gray-400 text-sm uppercase tracking-wider">
-                                  <th class="p-4 font-medium border-b border-gray-700">Node</th>
-                                  <th class="p-4 font-medium border-b border-gray-700 text-center" v-for="i in [0, 1]" :key="i">Ring {{ i }}</th>
-                                  <th class="p-4 font-medium border-b border-gray-700 text-right">Quorum Votes</th>
+                              <tr>
+                                  <th>Node</th>
+                                  <th v-for="i in [0, 1]" :key="i" style="text-align: center;">Ring {{ i }}</th>
+                                  <th style="text-align: right;">Quorum Votes</th>
                               </tr>
                           </thead>
                           <tbody>
-                              <tr v-for="(ringNode, name) in (topologyData.corosync?.rings || {})" :key="name" class="border-b border-gray-800 hover:bg-gray-800/50 transition-colors">
-                                  <td class="p-4 font-bold text-white">{{ name }}</td>
-                                  <td class="p-4 text-center">
-                                      <div v-if="ringNode.ring0_addr" class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-green-900/20 text-green-400 border border-green-800/30">
-                                          <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                              <tr v-for="(ringNode, name) in (topologyData.corosync?.rings || {})" :key="name">
+                                  <td style="font-weight: 600;">{{ name }}</td>
+                                  <td style="text-align: center;">
+                                      <span v-if="ringNode.ring0_addr" class="badge badge-success">
                                           {{ ringNode.ring0_addr }}
-                                      </div>
-                                      <span v-else class="text-gray-600">-</span>
+                                      </span>
+                                      <span v-else class="text-secondary">-</span>
                                   </td>
-                                  <td class="p-4 text-center">
-                                      <div v-if="ringNode.ring1_addr" class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-green-900/20 text-green-400 border border-green-800/30">
-                                          <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                                  <td style="text-align: center;">
+                                      <span v-if="ringNode.ring1_addr" class="badge badge-success">
                                           {{ ringNode.ring1_addr }}
-                                      </div>
-                                       <span v-else class="text-gray-600">-</span>
+                                      </span>
+                                      <span v-else class="text-secondary">-</span>
                                   </td>
-                                  <td class="p-4 text-right font-mono">{{ ringNode.quorum_votes || 1 }}</td>
+                                  <td style="text-align: right; font-family: monospace;">{{ ringNode.quorum_votes || 1 }}</td>
                               </tr>
                           </tbody>
                       </table>
@@ -234,85 +232,74 @@
 
               <!-- Network Map -->
               <div>
-                  <div class="flex items-center gap-2 mb-4 px-2">
-                      <span class="text-2xl">🕸️</span>
-                      <h4 class="text-xl font-bold m-0">Network Map</h4>
+                  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px;">
+                      <span style="font-size: 1.5rem;">🕸️</span>
+                      <h4 style="margin: 0; font-size: 1.1rem;">Network Map</h4>
                   </div>
                   
-                  <div class="flex gap-6 overflow-x-auto pb-8 pt-2 px-2 snap-x">
-                      <!-- COLONNA PER OGNI NODO -->
-                      <div v-for="(nodeData, nodeName) in topologyData.nodes" :key="nodeName" 
-                           class="topology-host-col flex-shrink-0 w-[340px] bg-gray-900 border border-gray-700 rounded-xl shadow-xl flex flex-col snap-start">
-                          
+                  <div class="topology-grid">
+                      <!-- CARD PER OGNI NODO -->
+                      <div v-for="(nodeData, nodeName) in topologyData.nodes" :key="nodeName" class="topology-node-card">
                           <!-- Header Host -->
-                          <div class="p-4 bg-gray-800 border-b border-gray-700 rounded-t-xl flex justify-between items-center shadow-md z-10">
-                              <div class="flex items-center gap-3">
-                                  <div class="w-10 h-10 rounded bg-blue-900/30 flex items-center justify-center text-xl border border-blue-800/50">🖥️</div>
+                          <div class="topology-node-header">
+                              <div style="display: flex; align-items: center; gap: 12px;">
+                                  <div class="topology-node-icon">🖥️</div>
                                   <div>
-                                      <h3 class="font-bold text-lg leading-tight">{{ nodeName }}</h3>
-                                      <div class="text-[10px] text-gray-400 uppercase tracking-widest mt-0.5">Proxmox Node</div>
+                                      <h3 style="margin: 0; font-size: 1.1rem;">{{ nodeName }}</h3>
+                                      <span class="text-xs text-secondary">Proxmox Node</span>
                                   </div>
                               </div>
-                              <span class="text-xs px-2 py-1 rounded bg-green-900/30 text-green-400 border border-green-800/50 font-medium">Online</span>
+                              <span class="badge badge-success">Online</span>
                           </div>
                           
-                          <div class="p-4 space-y-6 overflow-y-auto max-h-[700px] scrollbar-thin">
+                          <div class="topology-node-content">
                               <!-- Physical Ports -->
-                              <div class="phys-ports">
-                                  <h5 class="text-xs uppercase text-gray-500 font-bold mb-3 flex items-center gap-2">
-                                      <span>🔌</span> Physical Interfaces
-                                  </h5>
-                                  <div class="flex flex-wrap gap-2">
-                                      <div v-for="iface in (nodeData || []).filter((i: any) => i.type === 'eth' || i.type === 'bond')" :key="iface.iface" 
-                                           class="px-2.5 py-1.5 bg-gray-800 rounded-md border border-gray-600 text-xs font-mono flex items-center gap-2 transition-all hover:border-gray-400"
-                                           :class="{'border-green-700/50 bg-green-900/10 text-green-300': iface.active, 'opacity-60': !iface.active}">
-                                          <span class="w-1.5 h-1.5 rounded-full" :class="iface.active ? 'bg-green-500' : 'bg-gray-500'"></span>
+                              <div class="topology-section">
+                                  <h5 class="topology-section-title">🔌 Physical Interfaces</h5>
+                                  <div class="topology-iface-list">
+                                      <div v-for="iface in (nodeData || []).filter((i: any) => i.type === 'eth' || i.type === 'bond')" 
+                                           :key="iface.iface" 
+                                           class="topology-iface-chip"
+                                           :class="{ active: iface.active }">
+                                          <span class="iface-dot" :class="{ active: iface.active }"></span>
                                           {{ iface.iface }}
                                       </div>
                                   </div>
                               </div>
 
                               <!-- Bridges -->
-                              <div class="bridges">
-                                  <h5 class="text-xs uppercase text-gray-500 font-bold mb-3 flex items-center gap-2">
-                                      <span>🌉</span> Bridges & Virtual Machines
-                                  </h5>
-                                  <div class="space-y-4">
-                                      <div v-for="bridge in (nodeData || []).filter((i: any) => i.type === 'bridge')" :key="bridge.iface" 
-                                           class="bridge-box border border-gray-600 rounded-lg bg-gray-800/40 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                              <div class="topology-section">
+                                  <h5 class="topology-section-title">🌉 Bridges & Virtual Machines</h5>
+                                  <div class="topology-bridges-list">
+                                      <div v-for="bridge in (nodeData || []).filter((i: any) => i.type === 'bridge')" 
+                                           :key="bridge.iface" 
+                                           class="topology-bridge-box">
                                           
                                           <!-- Bridge Header -->
-                                          <div class="flex justify-between items-center p-2.5 bg-gray-800/80 border-b border-gray-700">
-                                              <div class="flex items-center gap-2 font-mono text-sm text-yellow-500 font-bold">
-                                                  <span class="text-xs opacity-70">BR</span>
-                                                  {{ bridge.iface }}
-                                              </div>
-                                              <div class="text-[10px] bg-gray-900 px-1.5 py-0.5 rounded text-gray-400 border border-gray-700">
-                                                  {{ bridge.cidr || 'L2 Switch' }}
-                                              </div>
+                                          <div class="topology-bridge-header">
+                                              <span class="bridge-name">{{ bridge.iface }}</span>
+                                              <span class="bridge-cidr">{{ bridge.cidr || 'L2 Switch' }}</span>
                                           </div>
 
                                           <!-- Guests connected -->
-                                          <div class="guest-list p-2 space-y-1.5">
-                                              <div v-for="guest in getGuestsOnBridge(String(nodeName), bridge.iface)" :key="guest.id || guest.name" 
-                                                   class="guest-item flex items-center justify-between text-xs p-2 rounded bg-gray-900/80 border border-gray-800 hover:border-blue-500/50 transition-colors group">
-                                                  <div class="flex items-center gap-2 overflow-hidden">
-                                                      <span v-if="guest.type==='vm' || guest.networks[0]?.id.startsWith('net')" title="VM" class="text-sm opacity-80 group-hover:opacity-100">💻</span>
-                                                      <span v-else title="CT" class="text-sm opacity-80 group-hover:opacity-100">📦</span>
-                                                      <div class="truncate">
-                                                          <div class="font-bold text-gray-300 group-hover:text-white transition-colors">{{ String(guest.name || guest.id).replace('VM-', '') }}</div>
-                                                          <div class="text-[10px] text-gray-600 group-hover:text-gray-500">ID: {{ guest.id.replace('vm:', '').replace('ct:', '') }}</div>
-                                                      </div>
+                                          <div class="topology-guests">
+                                              <div v-for="guest in getGuestsOnBridge(String(nodeName), bridge.iface)" 
+                                                   :key="guest.id" 
+                                                   class="topology-guest-item"
+                                                   :class="{ vm: guest.type === 'vm', ct: guest.type === 'ct' }">
+                                                  <span class="guest-icon">{{ guest.type === 'vm' ? '💻' : '📦' }}</span>
+                                                  <div class="guest-info">
+                                                      <strong>{{ guest.name || guest.id }}</strong>
+                                                      <span class="guest-id">ID: {{ guest.id }}</span>
                                                   </div>
-                                                  <!-- Show VLAN tag if any -->
-                                                  <div v-if="guest.networks.find((n:any) => (n.bridge && n.bridge.trim()) === bridge.iface.trim())?.tag" 
-                                                       class="px-1.5 py-0.5 bg-purple-900/30 text-purple-300 rounded text-[10px] border border-purple-800/50 font-mono">
-                                                      VLAN {{ guest.networks.find((n:any) => n.bridge.trim() === bridge.iface.trim())?.tag }}
-                                                  </div>
+                                                  <!-- VLAN tag -->
+                                                  <span v-if="getGuestVlanOnBridge(guest, bridge.iface)" class="badge badge-purple" style="margin-left: auto; font-size: 0.7rem;">
+                                                      VLAN {{ getGuestVlanOnBridge(guest, bridge.iface) }}
+                                                  </span>
                                               </div>
                                               
-                                              <div v-if="getGuestsOnBridge(String(nodeName), bridge.iface).length === 0" class="text-[11px] text-gray-600 italic text-center py-2 flex items-center justify-center gap-1 opacity-50">
-                                                  <span>🚫</span> No guests connected
+                                              <div v-if="getGuestsOnBridge(String(nodeName), bridge.iface).length === 0" class="no-guests">
+                                                  No guests connected
                                               </div>
                                           </div>
                                       </div>
@@ -774,6 +761,14 @@ const getGuestsOnBridge = (nodeName: string, bridge: string) => {
         if (!g.networks) return false;
         return g.node === nodeName && g.networks.some((n: any) => (n.bridge && n.bridge.trim()) === targetBridge);
     });
+};
+
+// Helper to get VLAN tag for a guest on a specific bridge
+const getGuestVlanOnBridge = (guest: any, bridge: string) => {
+    if (!guest || !guest.networks) return null;
+    const targetBridge = bridge ? bridge.trim() : '';
+    const netEntry = guest.networks.find((n: any) => n.bridge && n.bridge.trim() === targetBridge);
+    return netEntry?.tag || null;
 };
 
 // Implementation
@@ -1347,17 +1342,196 @@ const getNetworkTopology = (nodeName: string) => {
 .guest-chip:hover { filter: brightness(1.1); }
 .btn-text { background: none; border: none; padding: 0; color: var(--accent-primary); cursor: pointer; font-size: 0.75rem; text-decoration: underline; }
 
-/* Network Topology */
-.network-topology { margin-top: 12px; padding: 12px; background: #0f172a; border-radius: 8px; border: 1px solid var(--border-color); }
-.network-topology h4 { margin: 0 0 10px 0; font-size: 0.9rem; color: var(--accent-primary); }
-.topology-bridge { margin-bottom: 12px; padding-left: 8px; border-left: 2px solid var(--border-color); }
-.bridge-header { font-weight: 600; font-size: 0.9rem; margin-bottom: 6px; color: var(--text-primary); }
-.topology-vlan { margin-left: 16px; margin-bottom: 8px; }
-.vlan-header { font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px; font-family: monospace; }
-.vlan-guests { display: flex; flex-wrap: wrap; gap: 6px; margin-left: 8px; }
-.topology-guest { font-size: 0.75rem; padding: 2px 6px; background: rgba(255, 255, 255, 0.05); border-radius: 4px; color: var(--text-muted); }
-.topology-guest.vm strong { color: #3b82f6; }
-.topology-guest.ct strong { color: #a855f7; }
+/* Network Topology - New Styles */
+.topology-panel { padding: 16px; }
+
+.topology-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 20px;
+}
+
+.topology-node-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.topology-node-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.topology-node-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    background: rgba(59, 130, 246, 0.15);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+}
+
+.topology-node-content {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.topology-section {}
+
+.topology-section-title {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    font-weight: 600;
+    margin: 0 0 12px 0;
+    letter-spacing: 0.05em;
+}
+
+.topology-iface-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.topology-iface-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-family: var(--font-mono);
+}
+
+.topology-iface-chip.active {
+    background: rgba(16, 185, 129, 0.1);
+    border-color: rgba(16, 185, 129, 0.3);
+    color: #34d399;
+}
+
+.iface-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text-tertiary);
+}
+
+.iface-dot.active {
+    background: #10b981;
+    box-shadow: 0 0 6px #10b981;
+}
+
+.topology-bridges-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.topology-bridge-box {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.topology-bridge-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    background: rgba(0,0,0,0.2);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.bridge-name {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: #fbbf24;
+}
+
+.bridge-cidr {
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    background: var(--bg-body);
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+}
+
+.topology-guests {
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.topology-guest-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    background: var(--bg-body);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 0.8rem;
+    transition: border-color 0.2s;
+}
+
+.topology-guest-item:hover {
+    border-color: var(--accent-primary);
+}
+
+.topology-guest-item.vm { border-left: 3px solid #3b82f6; }
+.topology-guest-item.ct { border-left: 3px solid #a855f7; }
+
+.guest-icon {
+    font-size: 1rem;
+    opacity: 0.8;
+}
+
+.guest-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+}
+
+.guest-info strong {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.guest-id {
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+}
+
+.no-guests {
+    font-size: 0.8rem;
+    color: var(--text-tertiary);
+    text-align: center;
+    padding: 12px;
+    font-style: italic;
+}
 
 .node-footer { margin-top: 12px; border-top: 1px solid var(--border-color); padding-top: 12px; display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: var(--text-secondary); }
 .guest-counts { display: flex; gap: 8px; }
