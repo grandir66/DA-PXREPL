@@ -1172,6 +1172,7 @@ const executing = ref(false);
 const error = ref<string | null>(null);
 const migrations = ref<any[]>([]);
 const executionLog = ref<string[]>([]);
+const configJson = ref('');
 const balanciness = ref(0);
 const showJsonPreview = ref(false);
 
