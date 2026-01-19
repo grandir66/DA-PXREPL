@@ -1364,7 +1364,7 @@ const registeredNodes = ref<any[]>([]);
 const fetchRegisteredNodes = async () => {
     try {
         const token = localStorage.getItem('token');
-        const res = await fetch('/api/nodes', {
+        const res = await fetch('/api/nodes/', {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
