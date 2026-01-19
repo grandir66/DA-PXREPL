@@ -481,10 +481,61 @@ echo "Cleanup completed for {node_name}"
                     "networks": [] # Not available in simple scan
                 }
                 
+        # 2. Fetch Network Metrics in parallel
+        network_tasks = []
+        node_names = list(nodes_data.keys())
+        
+        for node_name in node_names:
+            network_tasks.append(
+                self._get_node_network_metrics(hostname, node_name, port, username, key_path)
+            )
+        
+        if network_tasks:
+            results = await asyncio.gather(*network_tasks)
+            for i, metrics in enumerate(results):
+                node_name = node_names[i]
+                if node_name in nodes_data:
+                    nodes_data[node_name]["network_in"] = metrics["netin"]
+                    nodes_data[node_name]["network_out"] = metrics["netout"]
+
         return {
             "nodes": nodes_data,
             "guests": guests_data
         }
+
+
+    async def _get_node_network_metrics(
+        self,
+        hostname: str,
+        target_node: str,
+        port: int = 22,
+        username: str = "root",
+        key_path: str = "/root/.ssh/id_rsa"
+    ) -> Dict[str, float]:
+        """Ottiene metriche di rete (netin/netout) per un nodo specifico"""
+        # pvesh get /nodes/{node}/rrddata --timeframe hour --cf AVERAGE --output-format json
+        cmd = f"pvesh get /nodes/{target_node}/rrddata --timeframe hour --cf AVERAGE --output-format json 2>/dev/null"
+        
+        result = await ssh_service.execute(hostname, cmd, port, username, key_path)
+        
+        metrics = {"netin": 0.0, "netout": 0.0}
+        
+        if result.success and result.stdout.strip():
+            try:
+                data = json.loads(result.stdout)
+                if data:
+                    # Calculate average from list
+                    # netin/netout keys exist directly in objects
+                    netin_sum = sum(item.get("netin", 0) or 0 for item in data if item.get("netin") is not None)
+                    netout_sum = sum(item.get("netout", 0) or 0 for item in data if item.get("netout") is not None)
+                    count = len(data)
+                    if count > 0:
+                        metrics["netin"] = netin_sum / count
+                        metrics["netout"] = netout_sum / count
+            except Exception as e:
+                logger.error(f"Error parsing RRD data for {target_node}: {e}")
+                
+        return metrics
 
 
 # Singleton instance
