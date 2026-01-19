@@ -15,6 +15,9 @@
     *   **Backup & Recovery**: Manage PBS backup jobs and perform restores directly from the UI.
     *   **Migration**: Tools to assist in moving workloads between nodes.
 *   **Host Protection**: Automated backup of host configurations (`/etc`, network, etc.).
+*   **Cluster Monitor**: 
+    *   Unified view of Node Health and Resources.
+    *   **Network Metrics**: Real-time traffic visualization (RX/TX) for Nodes and VMs.
 *   **Security & Logs**: Centralized logging, SSH key management for inter-node communication.
 
 ## 📋 Prerequisites

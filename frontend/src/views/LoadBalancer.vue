@@ -247,6 +247,44 @@
                         </div>
                     </div>
 
+                    <!-- Guest Indicators (Running Guests) -->
+                    <div class="guest-indicators">
+                        <div class="guest-indicators-header">
+                            <span class="indicator-title">Running Guests ({{ getGuestsForNode(nodeName).length }})</span>
+                            <button class="btn-xs btn-text" @click="toggleTopology(nodeName)">
+                                {{ showTopology[nodeName] ? 'Hide Topology' : 'Show Network Topology' }}
+                            </button>
+                        </div>
+                        <div class="guest-chips-grid">
+                            <div 
+                                v-for="guest in getGuestsForNode(nodeName)" 
+                                :key="guest.id"
+                                class="guest-chip"
+                                :class="guest.type"
+                                :title="getGuestTooltip(guest)"
+                            >
+                                <span class="chip-icon">{{ guest.type === 'vm' ? '🖥' : '📦' }}</span>
+                                <span class="chip-id">{{ guest.id }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Network Topology View -->
+                    <div v-if="showTopology[nodeName]" class="network-topology">
+                        <h4>🔌 Network Topology</h4>
+                        <div v-for="(bridge, bridgeName) in getNetworkTopology(nodeName)" :key="bridgeName" class="topology-bridge">
+                            <div class="bridge-header">🌉 {{ bridgeName }}</div>
+                            <div v-for="(vlan, vlanId) in bridge" :key="vlanId" class="topology-vlan">
+                                <div class="vlan-header">🏷️ VLAN {{ vlanId === 'untagged' ? 'Untagged' : vlanId }}</div>
+                                <div class="vlan-guests">
+                                    <div v-for="guest in vlan" :key="guest.id" class="topology-guest" :class="guest.type">
+                                        {{ guest.type === 'vm' ? '🖥' : '📦' }} <strong>{{ guest.id }}</strong> ({{ guest.iface }})
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="node-footer">
                         <div class="guest-counts">
                             <span class="guest-badge vm">{{ getGuestCount(nodeName, 'qemu') }} VMs</span>
@@ -1110,7 +1148,54 @@ const getGuestsForNode = (nodeName: string) => {
             nodeGuests.push({ ...guest, id });
         }
     }
+    }
     return nodeGuests.sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
+};
+
+const showTopology = ref<Record<string, boolean>>({});
+
+const toggleTopology = (nodeName: string) => {
+    showTopology.value[nodeName] = !showTopology.value[nodeName];
+};
+
+const getNetworkTopology = (nodeName: string) => {
+    const topology: Record<string, Record<string, any[]>> = {};
+    const guests = getGuestsForNode(nodeName);
+    
+    guests.forEach(g => {
+        // If networks is missing (old backend data), check if we can simulate or skip
+        const networks = g.networks || [];
+        if (networks.length === 0) return;
+
+        networks.forEach((net: any) => {
+            const bridge = net.bridge || 'Unknown';
+            const vlan = net.tag || 'untagged';
+            
+            if (!topology[bridge]) topology[bridge] = {};
+            if (!topology[bridge][vlan]) topology[bridge][vlan] = [];
+            
+            topology[bridge][vlan].push({
+                id: g.id,
+                type: g.type,
+                iface: net.id || net.ifname || 'net?'
+            });
+        });
+    });
+    
+    // Sort keys
+    const sortedTopology: Record<string, any> = {};
+    Object.keys(topology).sort().forEach(bridge => {
+        sortedTopology[bridge] = {};
+        Object.keys(topology[bridge]).sort((a, b) => {
+            if (a === 'untagged') return -1;
+            if (b === 'untagged') return 1;
+            return parseInt(a) - parseInt(b);
+        }).forEach(vlan => {
+            sortedTopology[bridge][vlan] = topology[bridge][vlan];
+        });
+    });
+    
+    return sortedTopology;
 };
 
 const getGuestTooltip = (guest: any) => {
@@ -2996,6 +3081,118 @@ onUnmounted(() => {
     align-items: center;
     margin-bottom: 16px;
 }
+
+/* Guest Indicators & Chips */
+.guest-indicators {
+    margin-top: 16px;
+    background: var(--bg-primary);
+    padding: 10px;
+    border-radius: 8px;
+}
+
+.guest-indicators-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.indicator-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.guest-chips-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.guest-chip {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    cursor: help;
+    border: 1px solid transparent;
+}
+
+.guest-chip.vm {
+    background: rgba(59, 130, 246, 0.15);
+    color: #3b82f6;
+    border-color: rgba(59, 130, 246, 0.2);
+}
+
+.guest-chip.ct {
+    background: rgba(168, 85, 247, 0.15);
+    color: #a855f7;
+    border-color: rgba(168, 85, 247, 0.2);
+}
+
+.guest-chip:hover {
+    filter: brightness(1.1);
+}
+
+/* Network Topology */
+.network-topology {
+    margin-top: 12px;
+    padding: 12px;
+    background: #0f172a; /* darker bg */
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.network-topology h4 {
+    margin: 0 0 10px 0;
+    font-size: 0.9rem;
+    color: var(--accent-primary);
+}
+
+.topology-bridge {
+    margin-bottom: 12px;
+    padding-left: 8px;
+    border-left: 2px solid var(--border-color);
+}
+
+.bridge-header {
+    font-weight: 600;
+    font-size: 0.9rem;
+    margin-bottom: 6px;
+    color: var(--text-primary);
+}
+
+.topology-vlan {
+    margin-left: 16px;
+    margin-bottom: 8px;
+}
+
+.vlan-header {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+    font-family: monospace;
+}
+
+.vlan-guests {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-left: 8px;
+}
+
+.topology-guest {
+    font-size: 0.75rem;
+    padding: 2px 6px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+    color: var(--text-muted);
+}
+
+.topology-guest.vm strong { color: #3b82f6; }
+.topology-guest.ct strong { color: #a855f7; }
 
 .map-node-name {
     margin: 0;

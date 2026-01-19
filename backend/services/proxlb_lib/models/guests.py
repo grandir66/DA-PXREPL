@@ -108,6 +108,29 @@ class Guests:
                     guests['guests'][guest['name']]['node_relationships_strict'] = Pools.get_pool_node_affinity_strictness(proxlb_config, guests['guests'][guest['name']]['pools'])
                     guests['guests'][guest['name']]['type'] = 'vm'
 
+                    # Get full config for network topology
+                    try:
+                        conf = proxmox_api.nodes(node).qemu(guest['vmid']).config.get()
+                        networks = []
+                        for key, value in conf.items():
+                            if key.startswith('net'):
+                                # Parse netX: model=...,bridge=vmbr0,tag=10...
+                                net_info = {'id': key, 'bridge': 'unknown', 'tag': None, 'mac': None}
+                                parts = value.split(',')
+                                for part in parts:
+                                    if part.strip().startswith('bridge='):
+                                        net_info['bridge'] = part.split('=')[1].strip()
+                                    elif part.strip().startswith('tag='):
+                                        net_info['tag'] = part.split('=')[1].strip()
+                                    elif '=' in part and len(part.split('=')) == 2 and ':' in part.split('=')[1]: # Simple MAC check
+                                        net_info['mac'] = part.split('=')[1].strip()
+                                
+                                networks.append(net_info)
+                        guests['guests'][guest['name']]['networks'] = networks
+                    except Exception as e:
+                        logger.warning(f"Failed to get config for VM {guest['name']}: {e}")
+                        guests['guests'][guest['name']]['networks'] = []
+
                     logger.debug(f"Resources of Guest {guest['name']} (type VM) added: {guests['guests'][guest['name']]}")
                 else:
                     logger.debug(f'Metric for VM {guest["name"]} ignored because VM is not running.')
@@ -156,6 +179,29 @@ class Guests:
                     guests['guests'][guest['name']]['node_relationships'] = Tags.get_node_relationships(guests['guests'][guest['name']]['tags'], nodes, guests['guests'][guest['name']]['pools'], guests['guests'][guest['name']]['ha_rules'], proxlb_config)
                     guests['guests'][guest['name']]['node_relationships_strict'] = Pools.get_pool_node_affinity_strictness(proxlb_config, guests['guests'][guest['name']]['pools'])
                     guests['guests'][guest['name']]['type'] = 'ct'
+
+                    # Get full config for network topology (CT)
+                    try:
+                        conf = proxmox_api.nodes(node).lxc(guest['vmid']).config.get()
+                        networks = []
+                        for key, value in conf.items():
+                            if key.startswith('net'):
+                                # Parse netX: name=eth0,bridge=vmbr0,tag=10,...
+                                net_info = {'id': key, 'bridge': 'unknown', 'tag': None, 'ifname': None}
+                                parts = value.split(',')
+                                for part in parts:
+                                    if part.strip().startswith('bridge='):
+                                        net_info['bridge'] = part.split('=')[1].strip()
+                                    elif part.strip().startswith('tag='):
+                                        net_info['tag'] = part.split('=')[1].strip()
+                                    elif part.strip().startswith('name='):
+                                        net_info['ifname'] = part.split('=')[1].strip()
+                                
+                                networks.append(net_info)
+                        guests['guests'][guest['name']]['networks'] = networks
+                    except Exception as e:
+                        logger.warning(f"Failed to get config for CT {guest['name']}: {e}")
+                        guests['guests'][guest['name']]['networks'] = []
 
                     logger.debug(f"Resources of Guest {guest['name']} (type CT) added: {guests['guests'][guest['name']]}")
                 else:
