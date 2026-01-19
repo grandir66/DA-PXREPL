@@ -285,15 +285,23 @@
                                           <div v-if="bridge.bridge_ports" class="bridge-ports-info">
                                               <span class="bridge-ports-label">Uplink:</span>
                                               <div class="bridge-ports-list">
-                                                  <span v-for="port in bridge.bridge_ports.split(' ').filter((p: string) => p)" 
-                                                        :key="port" 
-                                                        class="bridge-port-chip"
-                                                        :class="{ bond: port.startsWith('bond') }">
-                                                      {{ port }}
-                                                      <span v-if="getBondMode(nodeData, port)" class="bond-mode-badge">
-                                                          {{ getBondMode(nodeData, port) }}
-                                                      </span>
-                                                  </span>
+                                                  <template v-for="port in bridge.bridge_ports.split(' ').filter((p: string) => p)" :key="port">
+                                                      <div class="bridge-port-group">
+                                                          <span class="bridge-port-chip" :class="{ bond: port.startsWith('bond') }">
+                                                              {{ port }}
+                                                              <span v-if="getBondMode(nodeData, port)" class="bond-mode-badge">
+                                                                  {{ getBondMode(nodeData, port) }}
+                                                              </span>
+                                                          </span>
+                                                          <!-- Show bond slaves if this is a bond -->
+                                                          <div v-if="getBondSlaves(nodeData, port)" class="bond-slaves">
+                                                              <span class="slaves-arrow">→</span>
+                                                              <span v-for="slave in getBondSlaves(nodeData, port)" :key="slave" class="slave-nic">
+                                                                  {{ slave }}
+                                                              </span>
+                                                          </div>
+                                                      </div>
+                                                  </template>
                                               </div>
                                           </div>
 
@@ -806,6 +814,26 @@ const getBondMode = (nodeInterfaces: any[], portName: string) => {
     };
     
     return modeMap[bondIface.bond_mode] || bondIface.bond_mode;
+};
+
+// Helper to get bond slave interfaces
+const getBondSlaves = (nodeInterfaces: any[], portName: string): string[] | null => {
+    if (!nodeInterfaces || !portName.startsWith('bond')) return null;
+    
+    const bondIface = nodeInterfaces.find((i: any) => i.iface === portName && i.type === 'bond');
+    if (!bondIface) return null;
+    
+    // Proxmox uses 'slaves' field for bond interfaces
+    if (bondIface.slaves) {
+        return bondIface.slaves.split(' ').filter((s: string) => s.trim());
+    }
+    
+    // Alternative: bond_slaves or bond-slaves
+    if (bondIface.bond_slaves) {
+        return bondIface.bond_slaves.split(' ').filter((s: string) => s.trim());
+    }
+    
+    return null;
 };
 
 // Implementation
@@ -1560,6 +1588,36 @@ const getNetworkTopology = (nodeName: string) => {
     border-radius: 3px;
     font-weight: 600;
     text-transform: uppercase;
+}
+
+.bridge-port-group {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.bond-slaves {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.slaves-arrow {
+    color: var(--text-tertiary);
+    font-size: 0.8rem;
+    margin: 0 2px;
+}
+
+.slave-nic {
+    font-size: 0.7rem;
+    font-family: var(--font-mono);
+    padding: 1px 6px;
+    background: rgba(139, 92, 246, 0.1);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    border-radius: 3px;
+    color: #a78bfa;
 }
 
 .topology-guests {
