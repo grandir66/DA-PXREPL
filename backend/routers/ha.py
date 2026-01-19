@@ -447,3 +447,182 @@ async def clean_node_references(
     )
     
     return {"results": results, "node_name": node_name}
+
+
+# ============== Enhanced HA Data ==============
+
+@router.get("/node/{node_id}/available-guests")
+async def get_available_guests(
+    node_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Ottiene tutte le VM/CT del cluster disponibili per l'aggiunta all'HA.
+    Mostra nome, VMID, nodo, stato e se già in HA.
+    """
+    from services.proxmox_service import proxmox_service
+    
+    node = db.query(Node).filter(Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    
+    # Ottieni risorse cluster
+    resources = await proxmox_service.get_cluster_resources(
+        hostname=node.hostname,
+        port=node.ssh_port,
+        username=node.ssh_user,
+        key_path=node.ssh_key_path
+    )
+    
+    # Ottieni risorse già in HA
+    ha_resources = await ha_service.get_ha_resources(
+        hostname=node.hostname,
+        port=node.ssh_port,
+        username=node.ssh_user,
+        key_path=node.ssh_key_path,
+        use_cache=True
+    )
+    
+    # Set di risorse già in HA
+    ha_sids = set()
+    for res in ha_resources:
+        sid = res.get("sid", "")
+        if sid:
+            ha_sids.add(sid)
+    
+    # Filtra solo VM e CT
+    guests = []
+    for res in resources:
+        res_type = res.get("type", "")
+        if res_type in ["qemu", "lxc"]:
+            vmid = res.get("vmid")
+            sid = f"{'vm' if res_type == 'qemu' else 'ct'}:{vmid}"
+            
+            guests.append({
+                "vmid": vmid,
+                "name": res.get("name", f"VM-{vmid}"),
+                "type": "vm" if res_type == "qemu" else "ct",
+                "node": res.get("node", ""),
+                "status": res.get("status", "unknown"),
+                "cpu": res.get("cpu", 0),
+                "maxcpu": res.get("maxcpu", 0),
+                "mem": res.get("mem", 0),
+                "maxmem": res.get("maxmem", 0),
+                "uptime": res.get("uptime", 0),
+                "in_ha": sid in ha_sids,
+                "sid": sid
+            })
+    
+    # Ordina per VMID
+    guests.sort(key=lambda x: x["vmid"])
+    
+    return guests
+
+
+@router.get("/node/{node_id}/complete-data")
+async def get_ha_complete_data(
+    node_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint completo che ritorna tutti i dati necessari per la pagina HA:
+    - guests: tutte le VM/CT con stato HA
+    - ha_resources: risorse attualmente in HA
+    - ha_groups: gruppi HA configurati
+    - cluster_nodes: nodi del cluster
+    - cluster_status: stato quorum
+    """
+    from services.proxmox_service import proxmox_service
+    
+    node = db.query(Node).filter(Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    
+    # Esegui tutte le chiamate in parallelo
+    import asyncio
+    
+    resources_task = proxmox_service.get_cluster_resources(
+        hostname=node.hostname,
+        port=node.ssh_port,
+        username=node.ssh_user,
+        key_path=node.ssh_key_path
+    )
+    
+    ha_resources_task = ha_service.get_ha_resources(
+        hostname=node.hostname,
+        port=node.ssh_port,
+        username=node.ssh_user,
+        key_path=node.ssh_key_path,
+        use_cache=True
+    )
+    
+    ha_groups_task = ha_service.get_ha_groups(
+        hostname=node.hostname,
+        port=node.ssh_port,
+        username=node.ssh_user,
+        key_path=node.ssh_key_path,
+        use_cache=True
+    )
+    
+    cluster_nodes_task = cluster_service.get_cluster_nodes(
+        hostname=node.hostname,
+        port=node.ssh_port,
+        username=node.ssh_user,
+        key_path=node.ssh_key_path,
+        use_cache=True
+    )
+    
+    cluster_status_task = cluster_service.get_cluster_status(
+        hostname=node.hostname,
+        port=node.ssh_port,
+        username=node.ssh_user,
+        key_path=node.ssh_key_path,
+        use_cache=True
+    )
+    
+    # Attendi tutte le chiamate
+    resources, ha_resources, ha_groups, cluster_nodes, cluster_status = await asyncio.gather(
+        resources_task, ha_resources_task, ha_groups_task, cluster_nodes_task, cluster_status_task
+    )
+    
+    # Mappa HA resources per lookup veloce
+    ha_map = {}
+    for res in ha_resources:
+        sid = res.get("sid", "")
+        if sid:
+            ha_map[sid] = res
+    
+    # Processa guests
+    guests = []
+    for res in resources:
+        res_type = res.get("type", "")
+        if res_type in ["qemu", "lxc"]:
+            vmid = res.get("vmid")
+            sid = f"{'vm' if res_type == 'qemu' else 'ct'}:{vmid}"
+            ha_info = ha_map.get(sid, {})
+            
+            guests.append({
+                "vmid": vmid,
+                "name": res.get("name", f"VM-{vmid}"),
+                "type": "vm" if res_type == "qemu" else "ct",
+                "node": res.get("node", ""),
+                "status": res.get("status", "unknown"),
+                "in_ha": sid in ha_map,
+                "ha_state": ha_info.get("state", ""),
+                "ha_group": ha_info.get("group", ""),
+                "sid": sid
+            })
+    
+    guests.sort(key=lambda x: x["vmid"])
+    
+    return {
+        "guests": guests,
+        "ha_resources": ha_resources,
+        "ha_groups": ha_groups,
+        "cluster_nodes": cluster_nodes,
+        "cluster_status": cluster_status,
+        "node_id": node_id
+    }
+
