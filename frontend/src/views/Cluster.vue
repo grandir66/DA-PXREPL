@@ -48,6 +48,12 @@
         🛡️ HA Manager
       </button>
       <button 
+        class="tab-btn" 
+        :class="{ active: activeTab === 'topology' }" 
+        @click="activeTab = 'topology'">
+        🌐 Topology
+      </button>
+      <button 
         class="tab-btn danger-tab" 
         :class="{ active: activeTab === 'dangerous' }" 
         @click="activeTab = 'dangerous'">
@@ -176,6 +182,124 @@
                <button class="btn btn-primary" @click="saveCluster">💾 {{ editingClusterId ? 'Update Connection' : 'Create Connection' }}</button>
            </div>
         </div>
+      </div>
+
+      <!-- TOPOLOGY TAB -->
+      <div v-if="activeTab === 'topology'" class="topology-panel">
+          <div v-if="loadingTopology" class="flex justify-center p-12">
+             <div class="text-center">
+                 <span class="spinner-lg mb-4"></span>
+                 <p class="text-secondary">Analyzing Cluster Network Topology...</p>
+                 <small class="text-xs text-gray-500">Retrieving config from all guests</small>
+             </div>
+          </div>
+          
+          <div v-else-if="topologyData">
+              <!-- Corosync Status -->
+              <div class="card mb-6">
+                  <h4 class="mb-4 flex items-center gap-2">🔗 Corosync Status</h4>
+                  <div class="overflow-x-auto">
+                      <table class="w-full text-left border-collapse">
+                          <thead>
+                              <tr class="bg-gray-800 border-b border-gray-700">
+                                  <th class="p-3">Node</th>
+                                  <th class="p-3" v-for="i in [0, 1]" :key="i">Ring {{ i }}</th>
+                                  <th class="p-3">Quorum Votes</th>
+                              </tr>
+                          </thead>
+                          <tbody>
+                              <tr v-for="(ringNode, name) in (topologyData.corosync?.rings || {})" :key="name" class="border-b border-gray-800 hover:bg-gray-800">
+                                  <td class="p-3 font-bold">{{ name }}</td>
+                                  <td class="p-3">
+                                      <div v-if="ringNode.ring0_addr" class="flex items-center gap-2">
+                                          <span class="status-dot success"></span>
+                                          {{ ringNode.ring0_addr }}
+                                      </div>
+                                      <span v-else class="text-gray-600">-</span>
+                                  </td>
+                                  <td class="p-3">
+                                      <div v-if="ringNode.ring1_addr" class="flex items-center gap-2">
+                                          <span class="status-dot success"></span>
+                                          {{ ringNode.ring1_addr }}
+                                      </div>
+                                       <span v-else class="text-gray-600">-</span>
+                                  </td>
+                                  <td class="p-3">{{ ringNode.quorum_votes || 1 }}</td>
+                              </tr>
+                          </tbody>
+                      </table>
+                  </div>
+              </div>
+
+              <!-- Network Map -->
+              <h4 class="mb-4 flex items-center gap-2">🕸️ Network Map</h4>
+              <div class="flex gap-4 overflow-x-auto pb-4">
+                  <!-- COLONNA PER OGNI NODO -->
+                  <div v-for="(nodeData, nodeName) in topologyData.nodes" :key="nodeName" class="topology-host-col bg-gray-900 border border-gray-700 rounded-lg min-w-[300px] max-w-[350px]">
+                      <!-- Header Host -->
+                      <div class="p-3 bg-gray-800 border-b border-gray-700 font-bold flex justify-between">
+                          <span>🖥️ {{ nodeName }}</span>
+                          <span class="text-xs px-2 py-0.5 rounded bg-gray-700 text-gray-300">Online</span>
+                      </div>
+                      
+                      <div class="p-3 space-y-4">
+                          <!-- Physical Ports -->
+                          <div class="phys-ports">
+                              <h5 class="text-xs uppercase text-gray-500 font-bold mb-2">Physical Interfaces</h5>
+                              <div class="flex flex-wrap gap-2">
+                                  <div v-for="iface in (nodeData || []).filter((i: any) => i.type === 'eth' || i.type === 'bond')" :key="iface.iface" 
+                                       class="px-2 py-1 bg-gray-800 rounded border border-gray-700 text-xs flex items-center gap-1"
+                                       :class="{'border-green-800 bg-green-900/20 text-green-200': iface.active}">
+                                      <span class="text-[10px]">🔌</span> {{ iface.iface }}
+                                  </div>
+                              </div>
+                          </div>
+
+                          <!-- Bridges -->
+                          <div class="bridges">
+                              <h5 class="text-xs uppercase text-gray-500 font-bold mb-2">Bridges & Guests</h5>
+                              <div class="space-y-3">
+                                  <div v-for="bridge in (nodeData || []).filter((i: any) => i.type === 'bridge')" :key="bridge.iface" 
+                                       class="bridge-box border border-gray-600 rounded bg-gray-800/50 p-2">
+                                      
+                                      <!-- Bridge Header -->
+                                      <div class="flex justify-between items-center mb-2 pb-1 border-b border-gray-700/50">
+                                          <div class="flex items-center gap-1 font-mono text-sm text-yellow-500 font-bold">
+                                              <span>🌉</span> {{ bridge.iface }}
+                                          </div>
+                                          <div class="text-[10px] text-gray-400">{{ bridge.cidr || 'L2' }}</div>
+                                      </div>
+
+                                      <!-- Guests connected -->
+                                      <div class="guest-list space-y-1">
+                                          <div v-for="guest in getGuestsOnBridge(String(nodeName), bridge.iface)" :key="guest.id || guest.name" 
+                                               class="guest-item flex items-center justify-between text-xs p-1.5 rounded bg-gray-900 border border-gray-700 hover:border-blue-500 transition-colors">
+                                              <div class="flex items-center gap-1.5 overflow-hidden">
+                                                  <span v-if="guest.type==='vm' || guest.networks[0]?.id.startsWith('net')" title="VM">🖥️</span>
+                                                  <span v-else title="CT">📦</span>
+                                                  <div class="truncate">
+                                                      <span class="font-bold text-gray-300">{{ String(guest.name || guest.id).replace('VM-', '') }}</span>
+                                                      <span class="text-gray-500 ml-1">({{ guest.id.replace('vm:', '').replace('ct:', '') }})</span>
+                                                  </div>
+                                              </div>
+                                              <!-- Show VLAN tag if any -->
+                                              <div v-if="guest.networks.find((n:any) => n.bridge === bridge.iface)?.tag" 
+                                                   class="px-1 bg-purple-900/50 text-purple-300 rounded text-[10px] border border-purple-800">
+                                                  VLAN {{ guest.networks.find((n:any) => n.bridge === bridge.iface)?.tag }}
+                                              </div>
+                                          </div>
+                                          
+                                          <div v-if="getGuestsOnBridge(String(nodeName), bridge.iface).length === 0" class="text-[10px] text-gray-600 italic text-center py-1">
+                                              No guests connected
+                                          </div>
+                                      </div>
+                                  </div>
+                              </div>
+                          </div>
+                      </div>
+                  </div>
+              </div>
+          </div>
       </div>
 
       <!-- CLUSTER MONITOR TAB -->
@@ -584,6 +708,48 @@ const allGuestsSelected = computed(() => {
     const selectable = store.availableGuests.filter(g => !g.in_ha);
     return selectable.length > 0 && selectedGuestsForHA.value.length === selectable.length;
 });
+
+// --- Topology State ---
+const topologyData = ref<any>(null);
+const loadingTopology = ref(false);
+
+const loadTopology = async () => {
+    loadingTopology.value = true;
+    try {
+        const nodeId = await getFirstPVENodeId();
+        if(!nodeId) return;
+        
+        const token = localStorage.getItem('access_token');
+        const res = await fetch(`/api/ha/node/${nodeId}/topology`, { 
+            headers: { 'Authorization': `Bearer ${token}` } 
+        });
+        
+        if (res.ok) {
+            topologyData.value = await res.json();
+        }
+    } catch (e) {
+        console.error("Topology load failed", e);
+    } finally {
+        loadingTopology.value = false;
+    }
+};
+
+watch(activeTab, (val) => {
+    if (val === 'topology' && (!topologyData.value || clusters.value.length > 0)) { // Reload if switching
+        loadTopology();
+    }
+});
+
+// Helper to get guests for a bridge on a specific node
+const getGuestsOnBridge = (nodeName: string, bridge: string) => {
+    if (!topologyData.value || !topologyData.value.guests) return [];
+    
+    return Object.values(topologyData.value.guests).filter((g: any) => {
+        // g.networks is array of { bridge: 'vmbr0', ... }
+        if (!g.networks) return false;
+        return g.node === nodeName && g.networks.some((n: any) => n.bridge === bridge);
+    });
+};
 
 // Implementation
 const loadMonitorData = async () => {

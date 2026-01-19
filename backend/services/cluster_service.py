@@ -537,6 +537,145 @@ echo "Cleanup completed for {node_name}"
                 
         return metrics
 
+    async def get_cluster_topology(
+        self,
+        hostname: str,
+        port: int = 22,
+        username: str = "root",
+        key_path: str = "/root/.ssh/id_rsa"
+    ) -> Dict[str, Any]:
+        """Recupera la topologia di rete del cluster (Corosync, Nodi, Guests)"""
+        from services.proxmox_service import proxmox_service
+        
+        # 1. Base Resources
+        resources = await proxmox_service.get_cluster_resources(hostname, port, username, key_path)
+        
+        nodes = sorted([r for r in resources if r.get('type') == 'node'], key=lambda x: x.get('node'))
+        guests = [r for r in resources if r.get('type') in ['qemu', 'lxc']]
+        
+        # 2. Corosync Status (Single Call)
+        corosync_task = self._get_corosync_info(hostname, port, username, key_path)
+        
+        # 3. Node Interfaces (Parallel)
+        node_tasks = []
+        node_names = []
+        for node in nodes:
+            node_name = node.get('node')
+            node_names.append(node_name)
+            node_tasks.append(self._get_node_interfaces(hostname, node_name, port, username, key_path))
+            
+        # 4. Guest Configs (Parallel)
+        guest_tasks = []
+        guest_ids = []
+        for guest in guests:
+            node = guest.get('node')
+            vmid = str(guest.get('vmid'))
+            gtype = 'qemu' if guest.get('type') == 'qemu' else 'lxc'
+            
+            # Skip guests on offline nodes if any
+            if node:
+                guest_ids.append(vmid)
+                guest_tasks.append(self._get_guest_config(hostname, node, vmid, gtype, port, username, key_path))
+            
+        # Execute all details
+        corosync_data = await corosync_task
+        node_results = await asyncio.gather(*node_tasks)
+        guest_results = await asyncio.gather(*guest_tasks)
+        
+        # Map Results
+        nodes_map = {}
+        for i, node_name in enumerate(node_names):
+            nodes_map[node_name] = node_results[i]
+            
+        guests_map = {}
+        for i, vmid in enumerate(guest_ids):
+            guests_map[vmid] = guest_results[i]
+            
+        return {
+            "corosync": corosync_data,
+            "nodes": nodes_map,
+            "guests": guests_map,
+            "resource_list": resources # Raw list for reference
+        }
+
+    async def _get_corosync_info(self, hostname, port, username, key_path):
+        """Parse /etc/pve/corosync.conf and checks status"""
+        # Read conf
+        cat_cmd = "cat /etc/pve/corosync.conf 2>/dev/null"
+        res_cat = await ssh_service.execute(hostname, cat_cmd, port, username, key_path)
+        
+        rings = {}
+        if res_cat.success:
+            # Simple manual parsing or regex
+            content = res_cat.stdout
+            
+            # Find node blocks
+            # node {
+            #   name: pve1
+            #   ring0_addr: 1.2.3.4
+            # }
+            
+            current_node = None
+            for line in content.split('\n'):
+                line = line.strip()
+                if line.startswith('node {'):
+                    current_node = {}
+                elif line.startswith('}') and current_node is not None:
+                     if 'name' in current_node:
+                         rings[current_node['name']] = current_node
+                     current_node = None
+                elif current_node is not None:
+                    if ':' in line:
+                         k, v = line.split(':', 1)
+                         current_node[k.strip()] = v.strip()
+                         
+        return {"rings": rings, "raw_conf": res_cat.stdout if res_cat.success else ""}
+
+    async def _get_node_interfaces(self, hostname, target_node, port, username, key_path):
+        """Get network interfaces for a node"""
+        cmd = f"pvesh get /nodes/{target_node}/network --output-format json 2>/dev/null"
+        res = await ssh_service.execute(hostname, cmd, port, username, key_path)
+        if res.success and res.stdout.strip():
+            try:
+                return json.loads(res.stdout)
+            except:
+                pass
+        return []
+
+    async def _get_guest_config(self, hostname, target_node, vmid, gtype, port, username, key_path):
+        """Get guest config (for network info)"""
+        cmd = f"pvesh get /nodes/{target_node}/{gtype}/{vmid}/config --output-format json 2>/dev/null"
+        res = await ssh_service.execute(hostname, cmd, port, username, key_path)
+        
+        metrics = {"networks": []}
+        
+        if res.success and res.stdout.strip():
+            try:
+                cfg = json.loads(res.stdout)
+                # Parse network keys: net0, net1 OR network-interfaces (CT) often net0
+                # For VM: net0: virtio=...,bridge=vmbr0...
+                # For CT: net0: name=eth0,bridge=vmbr0...
+                
+                nets = []
+                for k, v in cfg.items():
+                    if k.startswith('net'):
+                        # Parse string v
+                        # Example: virtio=AA:BB:CC:DD:EE:FF,bridge=vmbr0,firewall=1
+                        net_info = {"id": k, "raw": v, "bridge": "", "mac": "", "tag": ""}
+                        parts = v.split(',')
+                        for p in parts:
+                            if '=' in p:
+                                pk, pv = p.split('=', 1)
+                                if pk == 'bridge': net_info["bridge"] = pv
+                                if pk == 'tag': net_info["tag"] = pv
+                                if pk == 'virtio' or pk == 'e1000': net_info["mac"] = pv
+                                if pk == 'hwaddr': net_info["mac"] = pv # CT
+                        nets.append(net_info)
+                metrics["networks"] = nets
+                metrics["name"] = cfg.get("name") # also capture name just in case
+            except:
+                pass
+        return metrics
 
 # Singleton instance
 cluster_service = ClusterService()

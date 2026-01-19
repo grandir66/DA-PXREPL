@@ -334,6 +334,30 @@ async def get_cluster_monitor(
     )
     
     return data
+    
+    
+@router.get("/node/{node_id}/topology")
+async def get_cluster_topology(
+    node_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Ottiene la topologia di rete del cluster (Corosync, Nodi, Guests).
+    NB: Operazione più lenta del monitor.
+    """
+    node = db.query(Node).filter(Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    
+    data = await cluster_service.get_cluster_topology(
+        hostname=node.hostname,
+        port=node.ssh_port,
+        username=node.ssh_user,
+        key_path=node.ssh_key_path
+    )
+    
+    return data
 
 
 @router.get("/node/{node_id}/cluster/nodes")
