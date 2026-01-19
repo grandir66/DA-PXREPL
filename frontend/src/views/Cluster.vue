@@ -723,6 +723,11 @@ const formatBytes = (bytes: number) => {
     return mb.toFixed(0) + ' MB';
 };
 
+const formatPercentDirect = (val: number) => {
+    if (val === undefined || val === null || isNaN(val)) return 'N/A';
+    return val.toFixed(1) + '%';
+};
+
 const getGuestsForNode = (nodeName: string) => {
     if (!lastAnalysis.value || !lastAnalysis.value.guests) return [];
     const guests = lastAnalysis.value.guests;
