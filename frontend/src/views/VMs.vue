@@ -401,7 +401,7 @@
                 <div class="flex justify-end gap-2">
                     <button class="btn btn-secondary" @click="restoreMode = false; zfsCloneMode = false; showBackupModal = zfsCloneMode ? false : true">Annulla</button>
                     <button v-if="!zfsCloneMode" class="btn btn-danger" @click="executeRestore">Start Restore</button>
-                    <button v-else class="btn btn-cyan" @click="executeZfsClone">Start ZFS Clone</button>
+                    <button v-else class="btn btn-cyan" @click="confirmZfsClone">Start ZFS Clone</button>
                 </div>
             </div>
             <div v-else class="flex justify-end">
@@ -411,7 +411,7 @@
     </ModalDialog>
 
     <!-- ZFS Clone Modal (Dedicated) -->
-    <ModalDialog :show="showZfsCloneModal" @close="showZfsCloneModal = false" title="⚡ Clone da Snapshot ZFS" size="md">
+    <ModalDialog :visible="showZfsCloneModal" @close="showZfsCloneModal = false" title="⚡ Clone da Snapshot ZFS" width="600px">
         <div class="zfs-clone-wizard">
             <div class="alert alert-warning mb-4">
                 ⚠️ <strong>Attenzione:</strong> Questa operazione creerà una <b>nuova VM</b> clonando i dischi dallo snapshot selezionato.
@@ -563,7 +563,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import vmsService, { type VM, type Snapshot, type Backup, type SanoidConfig, type ZFSSnapshot } from '../services/vms';
 import nodesService from '../services/nodes';
 import ModalDialog from '../components/ModalDialog.vue';
@@ -595,7 +595,7 @@ const sortBy = (key: string) => {
 
 // Snapshot Modal State
 const showSnapshotModal = ref(false);
-const snapshotTab = ref<'proxmox' | 'sanoid'>('proxmox');
+const snapshotTab = ref<'proxmox' | 'sanoid' | 'zfs'>('proxmox');
 const snapshots = ref<Snapshot[]>([]);
 const snapshotsLoading = ref(false);
 const showCreatePveSnapshot = ref(false);
@@ -1004,6 +1004,7 @@ const startRestoreWizard = async (bak: Backup) => {
         targetNodeId: selectedVM.value!.node_id!,
         storage: '',
         newVmid: null,
+        newName: '',
         start: true
     };
     restoreMode.value = true;

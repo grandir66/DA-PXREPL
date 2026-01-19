@@ -294,7 +294,7 @@ const sendDailySummary = async () => {
 @media (max-width: 768px) {
     .settings-layout { flex-direction: column; }
     .settings-sidebar { width: 100%; display: flex; overflow-x: auto; gap: 4px; padding-bottom: 8px; border: none; background: transparent; }
-    .nav-item { border-radius: 4px; border-left: none; border-bottom: 2px solid transparent; whitespace: nowrap; }
+    .nav-item { border-radius: 4px; border-left: none; border-bottom: 2px solid transparent; white-space: nowrap; }
     .nav-item.active { border-left: none; border-bottom-color: #00b894; }
     .grid-2 { grid-template-columns: 1fr; }
 }

@@ -63,6 +63,7 @@ export interface ZFSSnapshot {
     dataset: string;
     creation?: string;
     used?: string;
+    datasetsCount?: number; // Added for grouped snapshots
 }
 
 export default {
@@ -70,8 +71,8 @@ export default {
         return apiClient.get<VM[]>(`/dashboard/vms${forceRefresh ? '?force_refresh=true' : ''}`);
     },
 
-    getVMDetails(node: number | string, vmid: number | string) {
-        return apiClient.get(`/vms/node/${node}/vm/${vmid}/full-details`);
+    getVMDetails(node: number | string, vmid: number | string, vm_type: string = 'qemu') {
+        return apiClient.get(`/vms/node/${node}/vm/${vmid}/full-details?vm_type=${vm_type}`);
     },
 
     // Lifecycle
