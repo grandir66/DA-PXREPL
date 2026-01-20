@@ -245,7 +245,9 @@
                               <div style="display: flex; align-items: center; gap: 12px;">
                                   <div class="topology-node-icon">🖥️</div>
                                   <div>
-                                      <h3 style="margin: 0; font-size: 1.1rem;">{{ nodeName }}</h3>
+                                      <h3 style="margin: 0; font-size: 1.1rem; cursor: pointer; color: var(--accent);" 
+                                          @click="navigateToNode(String(nodeName))"
+                                          title="Click to view node details">{{ nodeName }}</h3>
                                       <span class="text-xs text-secondary">Proxmox Node</span>
                                   </div>
                               </div>
@@ -308,13 +310,15 @@
                                           <!-- Guests connected -->
                                           <div class="topology-guests">
                                               <div v-for="guest in getGuestsOnBridge(String(nodeName), bridge.iface)" 
-                                                   :key="guest.id" 
-                                                   class="topology-guest-item"
-                                                   :class="{ vm: guest.type === 'vm', ct: guest.type === 'ct' }">
-                                                  <span class="guest-icon">{{ guest.type === 'vm' ? '💻' : '📦' }}</span>
+                                                   :key="(guest as any).id" 
+                                                   class="topology-guest-item clickable-guest"
+                                                   :class="{ vm: (guest as any).type === 'vm', ct: (guest as any).type === 'ct' }"
+                                                   @click="navigateToVM(guest)"
+                                                   title="Click to view VM details">
+                                                  <span class="guest-icon">{{ (guest as any).type === 'vm' ? '💻' : '📦' }}</span>
                                                   <div class="guest-info">
-                                                      <strong>{{ guest.name || guest.id }}</strong>
-                                                      <span class="guest-id">ID: {{ guest.id }}</span>
+                                                      <strong style="color: var(--accent);">{{ (guest as any).name || (guest as any).id }}</strong>
+                                                      <span class="guest-id">ID: {{ (guest as any).id }}</span>
                                                   </div>
                                                   <!-- VLAN tag -->
                                                   <span v-if="getGuestVlanOnBridge(guest, bridge.iface)" class="badge badge-purple" style="margin-left: auto; font-size: 0.7rem;">
@@ -648,11 +652,13 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import { useHAStore } from '../stores/ha_store';
 import loadBalancerService from '../services/loadBalancer';
 import axios from 'axios';
 
 const store = useHAStore();
+const router = useRouter();
 const activeTab = ref('monitor'); // Start on Monitor
 const loading = computed(() => store.loading);
 
@@ -793,6 +799,19 @@ const getGuestVlanOnBridge = (guest: any, bridge: string) => {
     const targetBridge = bridge ? bridge.trim() : '';
     const netEntry = guest.networks.find((n: any) => n.bridge && n.bridge.trim() === targetBridge);
     return netEntry?.tag || null;
+};
+
+// Navigation: Click on node name -> open Node Info modal
+const navigateToNode = (nodeName: string) => {
+    router.push({ path: '/nodes', query: { openInfo: nodeName } });
+};
+
+// Navigation: Click on VM/CT -> open VM details modal
+const navigateToVM = (guest: any) => {
+    if (!guest) return;
+    const vmid = guest.id || guest.vmid;
+    const vmType = guest.type === 'ct' || guest.type === 'lxc' ? 'lxc' : 'qemu';
+    router.push({ path: '/vms', query: { openVm: String(vmid), type: vmType } });
 };
 
 // Helper to get bond mode for a port (if it's a bond interface)

@@ -564,6 +564,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
+import { useRoute } from 'vue-router';
 import vmsService, { type VM, type Snapshot, type Backup, type SanoidConfig, type ZFSSnapshot } from '../services/vms';
 import nodesService from '../services/nodes';
 import ModalDialog from '../components/ModalDialog.vue';
@@ -693,8 +694,19 @@ const filteredVMs = computed(() => {
     });
 });
 
-onMounted(() => {
-    loadVMs();
+const route = useRoute();
+
+onMounted(async () => {
+    await loadVMs();
+    
+    // Check for query param to auto-open VM details
+    const openVmId = route.query.openVm as string;
+    if (openVmId) {
+        const vm = vms.value.find(v => String(v.vmid) === openVmId);
+        if (vm) {
+            openVMInfoModal(vm);
+        }
+    }
 });
 
 const loadVMs = async (forceRefresh: boolean = false) => {

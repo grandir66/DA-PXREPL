@@ -781,3 +781,27 @@ async def get_all_dashboard_vms(
     return list(all_vms.values())
 
 
+@router.post("/nodes/{node_id}/diagnostic")
+async def run_node_diagnostic(
+    node_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Esegue lo script di diagnostica rapida sul nodo e ritorna l'output
+    """
+    node = await check_node_access(node_id, db, user)
+    
+    try:
+        result = await host_info_service.run_node_diagnostic(
+            node.hostname,
+            node.port or 22,
+            node.username or "root",
+            node.ssh_key_path
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Error running diagnostic for node {node_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+

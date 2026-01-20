@@ -5,6 +5,8 @@ Ispirato a Proxreporter per raccogliere dati hardware, storage, network, etc.
 
 import json
 import re
+import os
+import aiofiles
 import logging
 from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime
@@ -1275,6 +1277,54 @@ echo "DISK|$disk_read|$disk_write|$disk_read_ops|$disk_write_ops"
         except Exception as e:
             logger.error(f"Errore raccolta metriche per {hostname}: {e}")
             return metrics
+
+    async def run_node_diagnostic(
+        self,
+        hostname: str,
+        port: int = 22,
+        username: str = "root",
+        key_path: str = None
+    ) -> Dict[str, Any]:
+        """
+        Runs the QuickDiagnostic.sh script on the remote node.
+        Uploads the script to /tmp, executes it, and retrieves the output.
+        """
+        script_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "scripts", "quick_diagnostic.sh")
+        remote_path = "/tmp/quick_diagnostic.sh"
+        
+        try:
+            # Check if local script exists
+            if not os.path.exists(script_path):
+                logger.error(f"Script not found at: {script_path}")
+                return {"error": f"Diagnostic script not found at {script_path}"}
+                
+            async with ssh_service.get_connection(hostname, port, username, key_path) as conn:
+                # 1. Upload script
+                async with conn.start_sftp_client() as sftp:
+                    await sftp.put(script_path, remote_path)
+                    
+                # 2. Make executable
+                await conn.run(f"chmod +x {remote_path}")
+                
+                # 3. Execute script
+                result = await conn.run(remote_path, check=False)
+                output = result.stdout
+                error = result.stderr
+                exit_code = result.exit_status
+                
+                # 4. Cleanup
+                await conn.run(f"rm {remote_path}")
+                
+                return {
+                    "output": output,
+                    "error": error,
+                    "exit_code": exit_code,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+                
+        except Exception as e:
+            logger.error(f"Error running diagnostic on {hostname}: {e}")
+            return {"error": str(e)}
 
 
 # Singleton

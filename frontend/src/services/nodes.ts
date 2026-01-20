@@ -99,5 +99,10 @@ export default {
     // Refresh global cache
     refreshAllCache() {
         return apiClient.post('/nodes/refresh-cache');
+    },
+
+    // Run Quick Diagnostic
+    runDiagnostic(id: number | string) {
+        return apiClient.post<{ output: string, error: string, exit_code: number }>(`/nodes/${id}/diagnostic`);
     }
 }

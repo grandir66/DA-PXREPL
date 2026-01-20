@@ -77,7 +77,7 @@ import { useAuthStore } from '../stores/auth';
 const setupRequired = ref(false);
 const loginError = ref('');
 const loading = ref(false);
-const appVersion = ref('3.5.0');
+const appVersion = ref('3.10.10');
 const realms = ref([{ realm: 'pam', comment: 'Linux PAM' }]);
 
 const setupForm = ref({ username: '', email: '', password: '', full_name: '' });
@@ -102,6 +102,17 @@ onMounted(async () => {
       }
   } catch (e) {
       console.warn("Could not fetch realms", e);
+  }
+  
+  // Fetch version
+  try {
+      const res = await fetch('/api/health');
+      if (res.ok) {
+          const data = await res.json();
+          if (data.version) appVersion.value = data.version;
+      }
+  } catch (e) {
+      console.warn("Could not fetch version", e);
   }
 });
 

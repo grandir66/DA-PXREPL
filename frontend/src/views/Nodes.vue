@@ -118,7 +118,12 @@
         <div class="modal-content large">
             <div class="modal-header">
                 <h3>📊 Dettagli Nodo: {{ selectedNode.name }}</h3>
-                <button class="close-btn" @click="closeDetailsModal">&times;</button>
+                <div class="header-actions" style="display:flex; gap:10px;">
+                    <button class="btn btn-warning btn-sm" @click="runDiagnosticStart" :disabled="diagnosticLoading">
+                        {{ diagnosticLoading ? '⏳ Esecuzione...' : '🩺 Diagnostic' }}
+                    </button>
+                    <button class="close-btn" @click="closeDetailsModal">&times;</button>
+                </div>
             </div>
             <div class="modal-body">
                 <div v-if="refreshing" class="text-center p-6">
@@ -436,11 +441,34 @@
             </div>
         </div>
     </div>
+    </div>
+
+    <!-- Diagnostic Output Modal -->
+    <div v-if="showDiagnosticModal" class="modal-overlay" style="z-index: 1005;" @click.self="showDiagnosticModal = false">
+        <div class="modal-content large" style="max-width: 800px;">
+            <div class="modal-header">
+                <h3>🩺 Risultati Diagnostica: {{ selectedNode?.name }}</h3>
+                <button class="close-btn" @click="showDiagnosticModal = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="terminal-output" style="background: #1e1e1e; color: #f0f0f0; padding: 16px; border-radius: 6px; font-family: monospace; white-space: pre-wrap; max-height: 500px; overflow-y: auto;">
+                    {{ diagnosticOutput }}
+                </div>
+                <div v-if="diagnosticExitCode !== 0" class="mt-4 text-danger font-bold">
+                    ⚠️ Script terminato con codice errore: {{ diagnosticExitCode }}
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @click="showDiagnosticModal = false">Chiudi</button>
+            </div>
+        </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue';
+import { useRoute } from 'vue-router';
 import nodesService, { type Node } from '../services/nodes';
 
 const nodes = ref<Node[]>([]);
@@ -451,6 +479,12 @@ const showDetailsModal = ref(false);
 const selectedNode = ref<Node | null>(null);
 const creating = ref(false);
 const editingNodeId = ref<number | null>(null);
+
+// Diagnostic State
+const showDiagnosticModal = ref(false);
+const diagnosticLoading = ref(false);
+const diagnosticOutput = ref('');
+const diagnosticExitCode = ref(0);
 
 const form = reactive({
     name: '',
@@ -468,8 +502,20 @@ const form = reactive({
     pbs_fingerprint: ''
 });
 
-onMounted(() => {
-    loadNodes();
+const route = useRoute();
+
+onMounted(async () => {
+    await loadNodes();
+    
+    // Check for query param to auto-open node info modal
+    const openInfo = route.query.openInfo as string;
+    if (openInfo) {
+        // Find node by name and open info modal
+        const node = nodes.value.find(n => n.name === openInfo || String(n.id) === openInfo);
+        if (node) {
+            openModal('info', node);
+        }
+    }
 });
 
 const loadNodes = async () => {
@@ -621,6 +667,29 @@ const saveNode = async () => {
         alert('Errore salvataggio nodo: ' + errorMsg);
     } finally {
         creating.value = false;
+    }
+};
+
+const runDiagnosticStart = async () => {
+    if (!selectedNode.value) return;
+    
+    diagnosticLoading.value = true;
+    diagnosticOutput.value = '';
+    
+    try {
+        const res = await nodesService.runDiagnostic(selectedNode.value.id);
+        diagnosticOutput.value = res.data.output || res.data.error || 'Nessun output restituito.';
+        diagnosticExitCode.value = res.data.exit_code;
+        
+        // Show modal only when done
+        showDiagnosticModal.value = true;
+    } catch (e: any) {
+        console.error("Diagnostic error:", e);
+        diagnosticOutput.value = `Errore esecuzione diagnostica:\n${e.response?.data?.detail || e.message}`;
+        diagnosticExitCode.value = 1;
+        showDiagnosticModal.value = true;
+    } finally {
+        diagnosticLoading.value = false;
     }
 };
 
