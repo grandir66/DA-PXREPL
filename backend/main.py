@@ -135,7 +135,7 @@ if dapx_mode == "full":
 async def health_check():
     return {
         "status": "healthy",
-        "version": "3.10.12",
+        "version": "3.10.13",
         "auth_enabled": True,
         "mode": dapx_mode,
         "features": ["zfs", "btrfs", "pbs", "load_balancer"] if dapx_mode == "full" else ["load_balancer"]
