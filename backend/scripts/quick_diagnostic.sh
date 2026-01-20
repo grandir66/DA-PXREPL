@@ -83,10 +83,11 @@ check_storage_errors() {
         issues=$((issues + 1))
     fi
 
-    # Check LVM locks
+    # Check LVM locks (skip header, look for actual lock values)
     if command -v lvs &>/dev/null; then
         local locked_storage
-        locked_storage=$(lvs -o+lock_args 2>/dev/null | grep -i 'lock' || true)
+        # Use --noheadings to skip column headers, check if any LV has non-empty lock_args
+        locked_storage=$(lvs --noheadings -o lv_name,vg_name,lock_args 2>/dev/null | awk '$3 != "" {print}' || true)
         if [[ -n "$locked_storage" ]]; then
             __warn__ "Locked storage detected:"
             echo "$locked_storage"
