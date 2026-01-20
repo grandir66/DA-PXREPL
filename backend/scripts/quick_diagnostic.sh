@@ -168,14 +168,36 @@ check_cpu_errors() {
 check_network_errors() {
     __info__ "Checking network..."
 
-    local network_errors
-    network_errors=$(dmesg | grep -iE 'network error|link is down|nic error|carrier lost' || true)
-    if [[ -n "$network_errors" ]]; then
-        __warn__ "Network errors detected (dmesg):"
-        echo "$network_errors" | tail -5
-        WARNINGS_COUNT=$((WARNINGS_COUNT + 1))
-    else
+    local issues=0
+    
+    # Check current interface states (live status, not old dmesg)
+    if command -v ip &>/dev/null; then
+        local down_interfaces
+        down_interfaces=$(ip link show | grep -E 'state DOWN' | grep -vE 'lo:|docker|veth|tap|fwbr|fwpr|fwln' | awk -F: '{print $2}' | tr -d ' ' || true)
+        if [[ -n "$down_interfaces" ]]; then
+            __warn__ "Interfaces currently DOWN:"
+            echo "$down_interfaces" | while read iface; do
+                echo "  • $iface"
+            done
+            issues=$((issues + 1))
+        fi
+    fi
+    
+    # Check for very recent network errors only (last 10 minutes)
+    if command -v journalctl &>/dev/null; then
+        local recent_network_errors
+        recent_network_errors=$(journalctl --since "10 minutes ago" -p warning --no-pager 2>/dev/null | grep -iE 'link is down|carrier lost|nic error' | tail -3 || true)
+        if [[ -n "$recent_network_errors" ]]; then
+            __warn__ "Recent network events (last 10 min):"
+            echo "$recent_network_errors"
+            issues=$((issues + 1))
+        fi
+    fi
+    
+    if [[ $issues -eq 0 ]]; then
         __ok__ "Network: OK"
+    else
+        WARNINGS_COUNT=$((WARNINGS_COUNT + issues))
     fi
 }
 
@@ -185,13 +207,20 @@ check_system_log_errors() {
 
     if command -v journalctl &>/dev/null; then
         local syslog_errors
-        syslog_errors=$(journalctl -p err -b --no-pager | tail -10)
-        if [[ -n "$syslog_errors" ]]; then
-            __warn__ "Recent errors in system logs:"
+        # Filter out common non-critical errors:
+        # - pvescheduler backup errors for missing VMs (scheduled jobs for removed VMs)
+        # - authentication failures (handled separately or not critical for diagnostics)
+        # - qga timeout (guest agent not installed, not critical)
+        syslog_errors=$(journalctl -p err --since "1 hour ago" --no-pager 2>/dev/null \
+            | grep -vE 'pvescheduler.*unable to find VM|authentication failure|qga command.*timeout' \
+            | tail -10 || true)
+        
+        if [[ -n "$syslog_errors" ]] && [[ $(echo "$syslog_errors" | grep -c .) -gt 1 ]]; then
+            __warn__ "Critical errors in system logs (last 1h):"
             echo "$syslog_errors"
             WARNINGS_COUNT=$((WARNINGS_COUNT + 1))
         else
-            __ok__ "System logs: OK"
+            __ok__ "System logs: OK (no critical errors)"
         fi
     else
         __warn__ "journalctl not available"

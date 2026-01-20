@@ -375,7 +375,9 @@
                 <div v-for="(node, nodeName) in lastAnalysis.nodes" :key="nodeName" class="node-card" :class="getNodeHealthClass(node)">
                     <div class="node-header">
                         <div class="node-title">
-                            <h3>{{ nodeName }}</h3>
+                            <h3 @click="navigateToNode(String(nodeName))" 
+                                style="cursor: pointer; color: var(--accent);" 
+                                title="Click to view node details">{{ nodeName }}</h3>
                             <span class="node-status" :class="getNodeStatusClass(node)">{{ getNodeStatus(node) }}</span>
                         </div>
                         <div class="node-score" :class="getScoreClass(node.pressure_score)">
