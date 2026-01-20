@@ -95,7 +95,11 @@ check_storage_errors() {
         fi
     fi
 
-    [[ $issues -eq 0 ]] && __ok__ "Storage: OK"
+    if [[ $issues -eq 0 ]]; then
+        __ok__ "Storage: OK"
+    else
+        WARNINGS_COUNT=$((WARNINGS_COUNT + issues))
+    fi
 }
 
 # --- check_memory_errors -----------------------------------------------------
@@ -122,7 +126,11 @@ check_memory_errors() {
         issues=$((issues + 1))
     fi
 
-    [[ $issues -eq 0 ]] && __ok__ "Memory: OK"
+    if [[ $issues -eq 0 ]]; then
+        __ok__ "Memory: OK"
+    else
+        WARNINGS_COUNT=$((WARNINGS_COUNT + issues))
+    fi
 }
 
 # --- check_cpu_errors --------------------------------------------------------
@@ -149,7 +157,11 @@ check_cpu_errors() {
         issues=$((issues + 1))
     fi
 
-    [[ $issues -eq 0 ]] && __ok__ "CPU: OK"
+    if [[ $issues -eq 0 ]]; then
+        __ok__ "CPU: OK"
+    else
+        WARNINGS_COUNT=$((WARNINGS_COUNT + issues))
+    fi
 }
 
 # --- check_network_errors ----------------------------------------------------
@@ -161,6 +173,7 @@ check_network_errors() {
     if [[ -n "$network_errors" ]]; then
         __warn__ "Network errors detected (dmesg):"
         echo "$network_errors" | tail -5
+        WARNINGS_COUNT=$((WARNINGS_COUNT + 1))
     else
         __ok__ "Network: OK"
     fi
@@ -176,31 +189,73 @@ check_system_log_errors() {
         if [[ -n "$syslog_errors" ]]; then
             __warn__ "Recent errors in system logs:"
             echo "$syslog_errors"
+            WARNINGS_COUNT=$((WARNINGS_COUNT + 1))
         else
             __ok__ "System logs: OK"
         fi
     else
         __warn__ "journalctl not available"
+        WARNINGS_COUNT=$((WARNINGS_COUNT + 1))
     fi
 }
+
+# --- Counters for summary -----------------------------------------------------
+ISSUES_COUNT=0
+WARNINGS_COUNT=0
 
 # --- main --------------------------------------------------------------------
 main() {
     __check_root__
     __check_proxmox__
 
+    local start_time=$(date +%s)
+    local hostname=$(hostname)
+    
     echo
-    __info__ "Starting Quick Diagnostic..."
-    echo "---------------------------------------------------"
+    echo "╔═══════════════════════════════════════════════════════════════════╗"
+    echo "║                    📋 QUICK DIAGNOSTIC REPORT                    ║"
+    echo "╠═══════════════════════════════════════════════════════════════════╣"
+    echo "║  Host: $(printf '%-58s' "$hostname")║"
+    echo "║  Date: $(printf '%-58s' "$(date '+%Y-%m-%d %H:%M:%S')")║"
+    echo "╚═══════════════════════════════════════════════════════════════════╝"
+    echo
 
     check_storage_errors
+    echo
     check_memory_errors
+    echo
     check_cpu_errors
+    echo
     check_network_errors
+    echo
     check_system_log_errors
 
-    echo "---------------------------------------------------"
-    __ok__ "Diagnostic completed."
+    local end_time=$(date +%s)
+    local duration=$((end_time - start_time))
+
+    echo
+    echo "╔═══════════════════════════════════════════════════════════════════╗"
+    echo "║                         📊 SUMMARY                               ║"
+    echo "╠═══════════════════════════════════════════════════════════════════╣"
+    
+    # Check results and build summary
+    local status_icon="✅"
+    local status_text="All checks passed"
+    local status_color="${GREEN}"
+    
+    if [[ $ISSUES_COUNT -gt 0 ]]; then
+        status_icon="❌"
+        status_text="$ISSUES_COUNT issue(s) detected"
+        status_color="${RED}"
+    elif [[ $WARNINGS_COUNT -gt 0 ]]; then
+        status_icon="⚠️"
+        status_text="$WARNINGS_COUNT warning(s) detected"
+        status_color="${YELLOW}"
+    fi
+    
+    echo -e "║  Status: ${status_color}${status_icon} ${status_text}${NC}$(printf '%*s' $((42 - ${#status_text})) '')║"
+    echo "║  Duration: ${duration}s$(printf '%*s' 54 '')║"
+    echo "╚═══════════════════════════════════════════════════════════════════╝"
     echo
 }
 

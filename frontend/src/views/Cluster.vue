@@ -432,9 +432,11 @@
                             <div 
                                 v-for="guest in getGuestsForNode(nodeName)" 
                                 :key="guest.id"
-                                class="guest-chip"
+                                class="guest-chip clickable-guest"
                                 :class="guest.type"
                                 :title="getGuestTooltip(guest)"
+                                @click="navigateToVM(guest)"
+                                style="cursor: pointer;"
                             >
                                 <span class="chip-icon">{{ guest.type === 'vm' ? '🖥' : '📦' }}</span>
                                 <span class="chip-id">{{ guest.name || guest.id }}</span>
