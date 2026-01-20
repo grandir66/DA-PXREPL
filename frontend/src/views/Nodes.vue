@@ -514,7 +514,7 @@ onMounted(async () => {
         // Find node by name and open info modal
         const node = nodes.value.find(n => n.name === openInfo || String(n.id) === openInfo);
         if (node) {
-            openModal('info', node);
+            showNodeDetails(node);
         }
     }
 });
