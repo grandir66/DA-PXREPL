@@ -34,7 +34,7 @@ __err__() {
 }
 
 __check_root__() {
-    if [[EUID -ne 0]]; then
+    if [[ $EUID -ne 0 ]]; then
         __err__ "This script must be run as root"
         exit 1
     fi
