@@ -443,7 +443,6 @@
             </div>
         </div>
     </div>
-    </div>
 
     <!-- Diagnostic Output Modal -->
     <div v-if="showDiagnosticModal" class="modal-overlay" style="z-index: 1005;" @click.self="showDiagnosticModal = false">

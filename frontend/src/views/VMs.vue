@@ -69,7 +69,6 @@
                                 {{ vm.net0_ip }}
                             </div>
                         </td>
-                        </td>
                         <td>
                              <router-link :to="'/nodes?openInfo=' + vm.node" class="badge badge-outline text-sm no-underline hover:bg-accent hover:text-white transition-colors" title="Vai al nodo">
                                 {{ vm.node }}
