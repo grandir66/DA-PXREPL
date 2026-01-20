@@ -26,6 +26,10 @@ export interface Node {
     pbs_username?: string;
     pbs_available?: boolean;
     pbs_version?: string;
+    // Status & Extra
+    sanoid_installed?: boolean;
+    sanoid_version?: string;
+    host_info?: any; // Detailed host stats
 }
 
 export interface HostDetails {

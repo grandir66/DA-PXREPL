@@ -33,7 +33,7 @@ try:
     URLLIB3_PRESENT = True
 except ImportError:
     URLLIB3_PRESENT = False
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from utils.helper import Helper
 from utils.logger import SystemdLogger
 
@@ -209,7 +209,7 @@ class ProxmoxApi:
         logger.debug("Finished: api_connect_get_hosts.")
         sys.exit(1)
 
-    def test_api_proxmox_host(self, host: str) -> tuple[str, int | None, None]:
+    def test_api_proxmox_host(self, host: str) -> tuple[Optional[str], Optional[int]]:
         """
         Tests the connectivity to a Proxmox host by resolving its IP address and
         checking both IPv4 and IPv6 addresses.

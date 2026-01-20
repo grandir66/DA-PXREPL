@@ -114,6 +114,68 @@ class SSHService:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, _execute)
     
+    async def execute_script_from_content(
+        self,
+        hostname: str,
+        script_content: str,
+        port: int = 22,
+        username: str = "root",
+        key_path: str = None,
+        timeout: int = 300
+    ) -> SSHResult:
+        """Esegue uno script dal contenuto fornito"""
+        key_path = key_path or self.DEFAULT_KEY_PATH
+        remote_tmp_path = f"/tmp/diagnostic_{os.urandom(4).hex()}.sh"
+        
+        def _execute_script():
+            client = None
+            sftp = None
+            try:
+                # 1. Upload script
+                client = self._get_client(hostname, port, username, key_path)
+                sftp = client.open_sftp()
+                with sftp.file(remote_tmp_path, 'w') as f:
+                    f.write(script_content)
+                sftp.chmod(remote_tmp_path, 0o755)
+                
+                # 2. Execute script
+                stdin, stdout, stderr = client.exec_command(remote_tmp_path, timeout=timeout)
+                exit_code = stdout.channel.recv_exit_status()
+                stdout_text = stdout.read().decode('utf-8', errors='replace')
+                stderr_text = stderr.read().decode('utf-8', errors='replace')
+                
+                # 3. Cleanup
+                try:
+                    sftp.remove(remote_tmp_path)
+                except:
+                    pass
+                
+                return SSHResult(
+                    success=(exit_code == 0),
+                    stdout=stdout_text,
+                    stderr=stderr_text,
+                    exit_code=exit_code
+                )
+            except Exception as e:
+                logger.error(f"Errore esecuzione script su {hostname}: {e}")
+                # Try cleanup in case of error
+                try:
+                    if sftp: sftp.remove(remote_tmp_path)
+                except:
+                    pass
+                    
+                return SSHResult(
+                    success=False,
+                    stdout="",
+                    stderr=str(e),
+                    exit_code=-1
+                )
+            finally:
+                if sftp: sftp.close()
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _execute_script)
+    
     async def test_connection(
         self,
         hostname: str,

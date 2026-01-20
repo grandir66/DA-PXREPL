@@ -65,13 +65,15 @@
                             <span v-else class="text-secondary">N/A</span>
                         </td>
                         <td>
-                            <span v-if="node.vm_count !== undefined">
-                                {{ node.vm_count }} 
-                                <span v-if="node.running_vm_count && node.running_vm_count > 0" style="color: var(--accent-primary);">
-                                    ({{ node.running_vm_count }} running)
+                            <router-link :to="'/vms?search=' + node.name" class="no-underline hover:text-accent transition-colors" title="Vedi VM di questo nodo">
+                                <span v-if="node.vm_count !== undefined">
+                                    {{ node.vm_count }} 
+                                    <span v-if="node.running_vm_count && node.running_vm_count > 0" style="color: var(--accent-primary);">
+                                        ({{ node.running_vm_count }} running)
+                                    </span>
                                 </span>
-                            </span>
-                            <span v-else class="text-secondary">-</span>
+                                <span v-else class="text-secondary">-</span>
+                            </router-link>
                         </td>
                         <td>
                             <span v-if="node.temperature_highest_c">

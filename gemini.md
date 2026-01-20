@@ -148,10 +148,25 @@ Sii pragmatico. Sii affidabile. Auto-correggiti.
 
 ## 4. Protocolli di Sviluppo e Rilascio (Appresi sul Campo)
 
-### 4.1. Gestione Versioni e Tag
-*   **Commit > Push > Tag:** Mai creare un tag di release prima che TUTTO il codice (inclusi refactoring dell'ultimo minuto) sia stato committato e pushato.
-*   **Versioning Sincronizzato:** Assicurarsi sempre che `version.json` (root), `backend/version.json`, `backend/main.py` e `frontend/package.json` siano allineati alla stessa versione.
-*   **Update Detection:** Il sistema di aggiornamento si basa sui tag git. Se modifichi codice dopo il tag, quell'aggiornamento sarà invisibile agli utenti finché non viene rilasciato un nuovo tag.
+### 4.1. Protocollo di Rilascio di Versione (MANDATORIO)
+Ogni rilascio di versione DEVE seguire rigorosamente questi passaggi nell'ordine indicato. Non saltare nessuno step.
+
+1.  **Allineamento Versioni:** Aggiornare il numero di versione in TUTTI i file seguenti:
+    *   `version.json` (root)
+    *   `backend/version.json`
+    *   `backend/main.py` (`app = FastAPI(version="...")`)
+    *   `frontend/package.json`
+2.  **Commit & Push Codice:**
+    *   `git add .`
+    *   `git commit -m "chore: release vX.Y.Z"`
+    *   `git push` (Assicurarsi che il codice sia sul remote PRIMA del tag)
+3.  **Tagging & Push Tag:**
+    *   `git tag -a vX.Y.Z -m "Release vX.Y.Z"`
+    *   `git push --tags` (CRITICO: Senza questo, i client non vedono l'aggiornamento)
+4.  **GitHub Release (Chiusura):**
+    *   Creare la release ufficiale su GitHub per impostare il badge "Latest" e pubblicare il changelog:
+    *   `gh release create vX.Y.Z --title "vX.Y.Z" --notes "Elenco cambiamenti..."`
+    *   *Se `gh` non è disponibile, istruire l'utente a farlo manualmente.*
 
 ### 4.2. Refactoring UI
 *   **Verifica Import:** Quando si sposta un componente (es. da `LoadBalancer.vue` a `Cluster.vue`), verificare sempre che le dipendenze (es. `services/loadBalancer.ts`) siano importate correttamente nel nuovo file (default vs named imports).

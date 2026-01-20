@@ -771,6 +771,47 @@ async def get_node_sanoid_status(
     )
 
 
+@router.post("/{node_id}/diagnostic")
+async def run_node_diagnostic(
+    node_id: int,
+    user: User = Depends(require_operator),
+    db: Session = Depends(get_db)
+):
+    """Esegue lo script di diagnostica rapida sul nodo"""
+    node = db.query(Node).filter(Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    
+    if not check_node_access(user, node):
+        raise HTTPException(status_code=403, detail="Accesso negato a questo nodo")
+    
+    # Leggi lo script dal file locale
+    script_path = Path(__file__).parent.parent / "scripts" / "quick_diagnostic.sh"
+    try:
+        if not script_path.exists():
+            return {"success": False, "error": "Script di diagnostica non trovato sul server."}
+        
+        script_content = script_path.read_text(encoding="utf-8")
+    except Exception as e:
+        logger.error(f"Errore lettura script diagnostic: {e}")
+        return {"success": False, "error": f"Errore interno: {e}"}
+        
+    # Esegui script
+    result = await ssh_service.execute_script_from_content(
+        hostname=node.hostname,
+        script_content=script_content,
+        port=node.ssh_port,
+        username=node.ssh_user,
+        key_path=node.ssh_key_path
+    )
+    
+    return {
+        "success": result.success,
+        "exit_code": result.exit_code,
+        "output": result.stdout + "\n" + result.stderr
+    }
+
+
 @router.post("/{node_id}/set-auth-node")
 async def set_as_auth_node(
     node_id: int,

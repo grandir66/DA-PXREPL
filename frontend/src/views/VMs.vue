@@ -58,7 +58,9 @@
                         <td class="font-mono font-bold text-accent">{{ vm.vmid }}</td>
                         <td style="width: 250px;">
                             <div class="flex items-center gap-2">
-                                <span class="font-medium text-lg">{{ vm.name }}</span>
+                                <span class="font-medium text-lg cursor-pointer hover:text-accent border-b border-dashed border-secondary hover:border-accent" @click="openVMInfoModal(vm)">
+                                    {{ vm.name }}
+                                </span>
                                 <span class="badge text-xs" :class="vm.type === 'lxc' ? 'badge-warning' : 'badge-info'">
                                     {{ vm.type === 'lxc' ? 'CT' : 'VM' }}
                                 </span>
@@ -67,8 +69,11 @@
                                 {{ vm.net0_ip }}
                             </div>
                         </td>
+                        </td>
                         <td>
-                             <span class="badge badge-outline text-sm">{{ vm.node }}</span>
+                             <router-link :to="'/nodes?openInfo=' + vm.node" class="badge badge-outline text-sm no-underline hover:bg-accent hover:text-white transition-colors" title="Vai al nodo">
+                                {{ vm.node }}
+                             </router-link>
                         </td>
                         <td>
                             <span class="badge" :class="vm.status === 'running' ? 'badge-success' : 'badge-secondary'">
@@ -681,7 +686,11 @@ const filteredVMs = computed(() => {
     let result = vms.value;
     if (search.value) {
         const term = search.value.toLowerCase();
-        result = result.filter(v => v.name?.toLowerCase().includes(term) || v.vmid?.toString().includes(term));
+        result = result.filter(v => 
+            v.name?.toLowerCase().includes(term) || 
+            v.vmid?.toString().includes(term) ||
+            v.node?.toLowerCase().includes(term)
+        );
     }
     return result.slice().sort((a: any, b: any) => {
         const valA = a[sortKey.value];
@@ -706,6 +715,11 @@ onMounted(async () => {
         if (vm) {
             openVMInfoModal(vm);
         }
+    }
+
+    // Check for search query param
+    if (route.query.search) {
+        search.value = route.query.search as string;
     }
 });
 

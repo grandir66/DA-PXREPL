@@ -16,7 +16,7 @@ import sys
 import time
 import utils.version
 from utils.logger import SystemdLogger
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from types import FrameType
 
 logger = SystemdLogger()
@@ -312,7 +312,7 @@ class Helper:
             return False
 
     @staticmethod
-    def tcp_connect_test(addr_family: int, host: str, port: int, timeout: int) -> tuple[bool, int | None]:
+    def tcp_connect_test(addr_family: int, host: str, port: int, timeout: int) -> tuple[bool, Optional[int]]:
         """
         Attempt a TCP connection to the specified host and port to test the reachability.
 
