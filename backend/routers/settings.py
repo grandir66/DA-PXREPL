@@ -875,7 +875,7 @@ async def update_systemd_service(config: dict):
         service_file.write_text('\n'.join(new_lines))
         
         # Ricarica systemd
-        os.system('systemctl daemon-reload')
+        subprocess.run(['systemctl', 'daemon-reload'], check=False, capture_output=True)
         
     except Exception as e:
         logger.warning(f"Impossibile aggiornare servizio systemd: {e}")
@@ -980,19 +980,27 @@ async def reset_database(
             logger.info(f"Backup database creato: {backup_path}")
     
     try:
+        # Log audit BEFORE the destructive operation (DB will be deleted)
+        log_audit(
+            db, user.id, "database_reset", "system",
+            details=f"Database reset requested. Backup: {backup_path}" if backup_path else "Database reset requested (no backup)",
+            ip_address=request.client.host if request.client else None
+        )
+        db.commit()
+
         # Chiudi tutte le connessioni
         db.close()
         engine.dispose()
-        
+
         # Elimina il database
         if Path(DATABASE_PATH).exists():
             Path(DATABASE_PATH).unlink()
             logger.info(f"Database eliminato: {DATABASE_PATH}")
-        
+
         # Ricrea le tabelle
         Base.metadata.create_all(bind=engine)
         logger.info("Tabelle database ricreate")
-        
+
         # Reinizializza configurazione di default
         new_db = SessionLocal()
         try:
@@ -1000,13 +1008,7 @@ async def reset_database(
             logger.info("Configurazione di default reinizializzata")
         finally:
             new_db.close()
-        
-        log_audit(
-            db, user.id, "database_reset", "system",
-            details=f"Database reset completato. Backup: {backup_path}" if backup_path else "Database reset completato (no backup)",
-            ip_address=request.client.host if request.client else None
-        )
-        
+
         return {
             "success": True,
             "message": "Database resettato con successo. Il sistema è stato riportato allo stato iniziale.",

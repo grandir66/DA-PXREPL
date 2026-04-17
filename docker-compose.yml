@@ -28,7 +28,7 @@ services:
       - DAPX_DB=/data/dapx-backandrepl.db
       - DAPX_PORT=8420
       - DAPX_LOG_LEVEL=INFO
-      - DAPX_SECRET_KEY=${DAPX_SECRET_KEY:-change-me-in-production}
+      - DAPX_SECRET_KEY=${DAPX_SECRET_KEY:?DAPX_SECRET_KEY is required. Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"}
       - DAPX_TOKEN_EXPIRE=480
       - DAPX_CORS_ORIGINS=
     

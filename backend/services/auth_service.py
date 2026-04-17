@@ -13,7 +13,14 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-SECRET_KEY = os.environ.get("SANOID_MANAGER_SECRET_KEY", secrets.token_urlsafe(32))
+_secret_key = os.environ.get("SANOID_MANAGER_SECRET_KEY") or os.environ.get("DAPX_SECRET_KEY")
+if not _secret_key:
+    raise RuntimeError(
+        "FATAL: No secret key configured. "
+        "Set SANOID_MANAGER_SECRET_KEY or DAPX_SECRET_KEY environment variable. "
+        "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+    )
+SECRET_KEY = _secret_key
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("SANOID_MANAGER_TOKEN_EXPIRE", 480))
 

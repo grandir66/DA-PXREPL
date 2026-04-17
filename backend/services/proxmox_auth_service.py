@@ -153,12 +153,13 @@ class ProxmoxAuthService:
                     permissions=permissions
                 )
                 
-                # Cache del ticket
+                # Cache del ticket (Proxmox tickets last 2 hours)
+                from datetime import timedelta
                 self._ticket_cache[userid] = ProxmoxTicket(
                     ticket=ticket,
                     csrf_token=csrf_token,
                     username=userid,
-                    expires=datetime.utcnow()
+                    expires=datetime.utcnow() + timedelta(hours=2)
                 )
                 
                 logger.info(f"Proxmox auth successful for {userid} (admin={is_admin})")
@@ -473,9 +474,7 @@ class ProxmoxAuthService:
         """Ottiene un ticket dalla cache se ancora valido"""
         ticket = self._ticket_cache.get(userid)
         if ticket:
-            # I ticket Proxmox durano 2 ore
-            from datetime import timedelta
-            if datetime.utcnow() - ticket.expires < timedelta(hours=2):
+            if datetime.utcnow() < ticket.expires:
                 return ticket
             else:
                 del self._ticket_cache[userid]

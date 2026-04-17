@@ -11,6 +11,22 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
+import re
+
+def sanitize_zfs_name(name: str) -> str:
+    """Validate and sanitize a ZFS dataset/snapshot name to prevent command injection.
+    ZFS names can contain alphanumeric, '/', '-', '_', '.', ':' and '@' characters."""
+    if not name:
+        raise ValueError("ZFS name cannot be empty")
+    if not re.match(r'^[a-zA-Z0-9/_\-.:@]+$', name):
+        raise ValueError(f"Invalid ZFS name: {name}")
+    # Block shell metacharacters
+    dangerous = [';', '|', '&', '`', '$', '(', ')', '{', '}', '<', '>', '\n', '\r']
+    for char in dangerous:
+        if char in name:
+            raise ValueError(f"Invalid character in ZFS name: {repr(char)}")
+    return name
+
 
 @dataclass
 class SSHResult:
@@ -59,7 +75,20 @@ class SSHService:
         
         # Crea nuova connessione
         client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        # Load system known_hosts for host key verification
+        known_hosts_paths = [
+            os.path.expanduser("~/.ssh/known_hosts"),
+            "/etc/ssh/ssh_known_hosts",
+        ]
+        for kh_path in known_hosts_paths:
+            if os.path.exists(kh_path):
+                try:
+                    client.load_host_keys(kh_path)
+                except Exception as e:
+                    logger.warning(f"Could not load known_hosts from {kh_path}: {e}")
+        # Warn and auto-add only if no known_hosts found (first connection)
+        # In production, consider switching to RejectPolicy and managing keys manually
+        client.set_missing_host_key_policy(paramiko.WarningPolicy())
         
         try:
             client.connect(
@@ -290,6 +319,7 @@ class SSHService:
         key_path = key_path or self.DEFAULT_KEY_PATH
         cmd = "zfs list -H -t snapshot -o name,used,creation -s creation"
         if dataset:
+            dataset = sanitize_zfs_name(dataset)
             cmd += f" -r {dataset}"
         
         result = await self.execute(
@@ -328,6 +358,8 @@ class SSHService:
     ) -> SSHResult:
         """Crea uno snapshot manuale"""
         key_path = key_path or self.DEFAULT_KEY_PATH
+        dataset = sanitize_zfs_name(dataset)
+        snapshot_name = sanitize_zfs_name(snapshot_name)
         r_flag = "-r" if recursive else ""
         cmd = f"zfs snapshot {r_flag} {dataset}@{snapshot_name}"
         
@@ -348,6 +380,7 @@ class SSHService:
         key_path: str = "/root/.ssh/id_rsa"
     ) -> SSHResult:
         """Elimina uno snapshot"""
+        full_snapshot_name = sanitize_zfs_name(full_snapshot_name)
         cmd = f"zfs destroy {full_snapshot_name}"
         
         return await self.execute(

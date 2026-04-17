@@ -77,7 +77,7 @@ if not ALLOWED_ORIGINS or ALLOWED_ORIGINS == [""]:
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # DEBUG: Allow all origins to fix 405/Connection issues
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -135,7 +135,7 @@ if dapx_mode == "full":
 async def health_check():
     return {
         "status": "healthy",
-        "version": "3.10.17",
+        "version": "3.10.12",
         "auth_enabled": True,
         "mode": dapx_mode,
         "features": ["zfs", "btrfs", "pbs", "load_balancer"] if dapx_mode == "full" else ["load_balancer"]
