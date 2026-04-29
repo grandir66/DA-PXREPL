@@ -1172,7 +1172,22 @@ reset_state_if_requested() {
     systemctl stop dapx-unified 2>/dev/null || true
     rm -f  "$DATA_DIR/dapx.db" "$DATA_DIR/dapx.db-wal" "$DATA_DIR/dapx.db-shm"
     rm -f  "$CONFIG_DIR/dapx-unified.env"
-    log_success "Stato resettato (DB e secret rimossi). L'install partirà dal Setup iniziale."
+    # Backup + rimozione della keypair del service user, così l'install
+    # ne genera una pulita (le voci stale lato remote vengono ripulite al
+    # prossimo run del job tramite il marker "# dapx-executor:<host>").
+    local home_dir
+    home_dir=$(getent passwd "$SERVICE_USER" | cut -d: -f6)
+    if [[ -n "$home_dir" ]] && [[ -d "$home_dir/.ssh" ]]; then
+        local stamp
+        stamp=$(date +%Y%m%d%H%M%S)
+        for f in id_rsa id_rsa.pub id_ed25519 id_ed25519.pub; do
+            if [[ -f "$home_dir/.ssh/$f" ]]; then
+                mv "$home_dir/.ssh/$f" "$home_dir/.ssh/$f.bak-$stamp"
+            fi
+        done
+        log_info "Keypair SSH precedente spostata in $home_dir/.ssh/*.bak-$stamp"
+    fi
+    log_success "Stato resettato (DB, secret e keypair SSH). L'install partirà dal Setup iniziale."
 }
 
 do_install() {

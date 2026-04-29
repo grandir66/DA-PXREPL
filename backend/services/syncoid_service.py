@@ -301,13 +301,23 @@ class SyncoidService:
             logger.warning("Pub key contiene apostrofi, salto distribuzione")
             return
 
-        # 2) Per ogni endpoint, appendi se non già presente
+        # Marker per le chiavi gestite da dapx: ci permette di rimuovere
+        # le voci vecchie quando l'executor ha rigenerato la sua keypair
+        # (es. dopo --reset/reinstallazione).
+        marker = f"# dapx-executor:{executor_host}"
+        managed_line = f"{pubkey_line} {marker}"
+
+        # 2) Per ogni endpoint: rimuovi vecchie voci con lo stesso marker e
+        #    appendi la riga corrente (idempotente).
         for host, port in endpoints:
             cmd = (
                 "mkdir -p ~/.ssh && chmod 700 ~/.ssh && "
                 "touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && "
-                f"grep -qxF '{pubkey_line}' ~/.ssh/authorized_keys || "
-                f"echo '{pubkey_line}' >> ~/.ssh/authorized_keys"
+                # rimuovi righe stale con lo stesso marker
+                f"sed -i '\\|{marker}|d' ~/.ssh/authorized_keys && "
+                # appendi la riga corrente (con marker)
+                f"grep -qxF '{managed_line}' ~/.ssh/authorized_keys || "
+                f"echo '{managed_line}' >> ~/.ssh/authorized_keys"
             )
             try:
                 r = await ssh_service.execute(
