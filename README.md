@@ -22,27 +22,28 @@
 
 ## 📋 Prerequisites
 
-*   **OS**: Debian 11/12 or Proxmox VE 7/8.
-*   **Filesystem**: ZFS (recommended for full feature set).
+*   **Typical deploy**: a **Proxmox VE** host where you can create an LXC (the installer wizard runs here once).
+*   **Guest OS**: Debian 11/12 inside the container (created by `deploy_lxc.sh` or your template).
+*   **Filesystem**: ZFS on managed nodes (recommended for full feature set).
 *   **Dependencies**: Python 3.9+, SSH.
 
 ## 🛠️ Installation
 
-DAPX-Unified is meant to run **inside a Linux guest** (LXC or VM), not on the Proxmox hypervisor itself. The automated wizard creates that guest for you; if you already have a Debian CT/VM, install from Git as below.
+**Standard setup:** run DAPX-Unified **inside a dedicated LXC** created on your Proxmox host. Use the deployment wizard **on the hypervisor**—it **generates the container** (template, disk, network), clones this repo, and runs the installer inside it. Do not install on the Proxmox host itself.
 
-### Option 1: Automated LXC on Proxmox host (recommended)
+### Recommended: generate LXC and install (Proxmox shell)
 
-Run this **on the Proxmox VE shell** (SSH or console). It creates a container, clones the repo into `/opt/dapx-unified`, and runs the installer—same result as Option 2, unattended.
+On the **Proxmox VE node** (SSH or console):
 
 ```bash
 bash <(curl -s https://raw.githubusercontent.com/grandir66/DA-PXREPL/main/deploy_lxc.sh)
 ```
 
-Follow the wizard (container ID, hostname, password, network, resources). When it finishes, open `http://<container-ip>:8420`.
+The wizard asks for CT ID, hostname, root password, bridge/VLAN/IP, CPU/RAM/disk. It creates and starts the container, then installs from Git into `/opt/dapx-unified`. When done, open `http://<container-ip>:8420`.
 
-### Option 2: Install from Git inside an existing LXC / VM (manual)
+### Advanced: Git install in an existing Debian CT/VM
 
-Use this when you manage the container yourself (template already installed, networking done). Run **as root inside the guest** (e.g. after `pct enter <CTID>` or SSH):
+Only if you **already** have a suitable guest and prefer not to use the wizard above. As **root inside that CT/VM**:
 
 ```bash
 apt-get update && apt-get install -y git curl
@@ -52,14 +53,12 @@ chmod +x install.sh
 NONINTERACTIVE=true ./install.sh --local
 ```
 
-- **`NONINTERACTIVE=true`**: no prompts (same as the automated deploy script).
-- **`--local`**: install from the cloned tree under `/opt/dapx-unified` (no separate download step).
+- **`NONINTERACTIVE=true`**: no prompts (same behaviour as the generated-container deploy).
+- **`--local`**: install from the cloned tree.
 
-**LXC note:** Tools like `pveversion` are usually **not** installed inside a CT, so the installer may log *“Proxmox VE non rilevato”*. That is normal; DAPX-Unified still manages Proxmox nodes over the API and SSH from the container.
+**Inside LXC:** `pveversion` is usually absent, so you may see *“Proxmox VE non rilevato”*—that is normal for a CT.
 
-**Interactive install** (prompts for mode and confirmation): `./install.sh` with no arguments, from `/opt/dapx-unified` after cloning.
-
-Other installer flags: `./install.sh --help` (e.g. `--github` for a fresh fetch without manual clone).
+Interactive install after clone: `./install.sh` with no arguments. More flags: `./install.sh --help`.
 
 ### Access the Interface
 Once installed, the web interface is available at:
