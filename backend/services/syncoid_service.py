@@ -158,8 +158,24 @@ class SyncoidService:
             extra_args=extra_args
         )
         
+        # Pre-fetch host keys of any remote endpoints into the executor's
+        # ~/.ssh/known_hosts, otherwise syncoid's inner ssh fails with
+        # "Host key verification failed" on first contact.
+        remote_endpoints = []
+        for host, port in ((source_host, source_port), (dest_host, dest_port)):
+            if host and host != executor_host:
+                remote_endpoints.append((host, port))
+        if remote_endpoints:
+            await self._ensure_known_hosts(
+                executor_host=executor_host,
+                executor_port=executor_port,
+                executor_user=executor_user,
+                executor_key=executor_key,
+                endpoints=remote_endpoints,
+            )
+
         logger.info(f"Esecuzione syncoid: {cmd}")
-        
+
         # Esegui comando
         result = await ssh_service.execute(
             hostname=executor_host,
@@ -185,6 +201,53 @@ class SyncoidService:
             "command": cmd
         }
     
+    async def _ensure_known_hosts(
+        self,
+        executor_host: str,
+        executor_port: int,
+        executor_user: str,
+        executor_key: str,
+        endpoints: list,  # list[tuple[host, port]]
+    ) -> None:
+        """
+        Su `executor_host`, aggiunge le host key di `endpoints` a
+        ~/.ssh/known_hosts (idempotente). Best-effort: log e prosegue.
+        """
+        # Build a single shell command that:
+        #  - skips already-known hosts (ssh-keygen -F)
+        #  - keyscan'a quelli mancanti e appende
+        #  - dedup finale
+        parts = ["mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/known_hosts"]
+        for host, port in endpoints:
+            # Quoting difensivo: gli host arrivano dal DB (hostname/IP), non da input utente diretto.
+            host_q = host.replace('"', '').replace("'", "").replace(" ", "")
+            port_i = int(port)
+            parts.append(
+                f'if ! ssh-keygen -F "[{host_q}]:{port_i}" >/dev/null 2>&1 && '
+                f'! ssh-keygen -F "{host_q}" >/dev/null 2>&1; then '
+                f'ssh-keyscan -H -p {port_i} -T 5 "{host_q}" >> ~/.ssh/known_hosts 2>/dev/null || true; '
+                f'fi'
+            )
+        parts.append("sort -u ~/.ssh/known_hosts -o ~/.ssh/known_hosts || true")
+        cmd = " && ".join(parts)
+
+        try:
+            result = await ssh_service.execute(
+                hostname=executor_host,
+                command=cmd,
+                port=executor_port,
+                username=executor_user,
+                key_path=executor_key,
+                timeout=30,
+            )
+            if not result.success:
+                logger.warning(
+                    f"ssh-keyscan pre-step ha restituito errore su {executor_host}: "
+                    f"{result.stderr or result.stdout}"
+                )
+        except Exception as e:
+            logger.warning(f"ssh-keyscan pre-step fallito su {executor_host}: {e}")
+
     def _parse_transferred(self, output: str) -> Optional[str]:
         """Estrae la quantità di dati trasferiti dall'output di syncoid"""
         # Pattern comuni nell'output di syncoid
