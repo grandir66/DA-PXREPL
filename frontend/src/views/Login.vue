@@ -72,6 +72,7 @@
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
+import authService from '../services/auth';
 
 // State
 const setupRequired = ref(false);
@@ -94,14 +95,15 @@ onMounted(async () => {
     }
 
   try {
-      await authStore.fetchRealms();
-      if (authStore.realms.length > 0) {
-          realms.value = authStore.realms;
+      const cfg = await authService.getConfig();
+      setupRequired.value = !!cfg.data?.setup_required;
+      if (Array.isArray(cfg.data?.realms) && cfg.data.realms.length > 0) {
+          realms.value = cfg.data.realms;
           const pam = realms.value.find(r => r.realm === 'pam');
           loginForm.value.realm = pam ? pam.realm : (realms.value[0]?.realm || 'pam');
       }
   } catch (e) {
-      console.warn("Could not fetch realms", e);
+      console.warn("Could not fetch auth config", e);
   }
   
   // Fetch version
@@ -132,8 +134,23 @@ const doLogin = async () => {
 };
 
 const doSetup = async () => {
-    // Placeholder
-    alert("Setup non ancora implementato");
+    loading.value = true;
+    loginError.value = '';
+    try {
+        await authService.setup(setupForm.value);
+        // Auto-login con le credenziali appena create
+        await authStore.login({
+            username: setupForm.value.username,
+            password: setupForm.value.password,
+            realm: 'pam',
+        });
+        router.push({ name: 'dashboard' });
+    } catch (e: any) {
+        console.error(e);
+        loginError.value = e.response?.data?.detail || 'Errore durante il setup iniziale.';
+    } finally {
+        loading.value = false;
+    }
 };
 </script>
 

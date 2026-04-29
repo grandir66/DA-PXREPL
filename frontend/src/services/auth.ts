@@ -31,6 +31,10 @@ export default {
         return apiClient.get('/auth/realms');
     },
 
+    getConfig() {
+        return apiClient.get('/auth/config');
+    },
+
     setup(data: any) {
         return apiClient.post('/auth/setup', data);
     },

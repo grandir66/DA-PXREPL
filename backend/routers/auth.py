@@ -97,6 +97,7 @@ class AuthConfigResponse(BaseModel):
     proxmox_node: Optional[str]
     realms: List[dict]
     allow_local_fallback: bool
+    setup_required: bool = False
 
 
 # ============== Dipendenze ==============
@@ -326,11 +327,14 @@ async def get_auth_config(db: Session = Depends(get_db)):
                 verify_ssl=node.proxmox_verify_ssl
             )
     
+    setup_required = db.query(User).count() == 0
+
     return AuthConfigResponse(
         auth_method=auth_method,
         proxmox_node=proxmox_node,
         realms=realms,
-        allow_local_fallback=allow_local
+        allow_local_fallback=allow_local,
+        setup_required=setup_required
     )
 
 
