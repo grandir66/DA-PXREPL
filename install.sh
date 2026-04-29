@@ -551,9 +551,15 @@ copy_application_files() {
     # Copia frontend
     if [[ -d "$SCRIPT_DIR/frontend/dist" ]]; then
         log_info "Copia frontend pre-compilato..."
-        mkdir -p "$INSTALL_DIR/frontend/dist"
-        cp -r "$SCRIPT_DIR/frontend/dist/"* "$INSTALL_DIR/frontend/dist/"
-        log_success "Frontend copiato"
+        FRONTEND_SRC=$(realpath "$SCRIPT_DIR/frontend/dist" 2>/dev/null || echo "$SCRIPT_DIR/frontend/dist")
+        FRONTEND_DST=$(realpath "$INSTALL_DIR/frontend/dist" 2>/dev/null || echo "$INSTALL_DIR/frontend/dist")
+        if [[ "$FRONTEND_SRC" == "$FRONTEND_DST" ]]; then
+            log_success "Frontend pre-compilato già in $INSTALL_DIR/frontend/dist (nessuna copia necessaria)"
+        else
+            mkdir -p "$INSTALL_DIR/frontend/dist"
+            cp -r "$SCRIPT_DIR/frontend/dist/"* "$INSTALL_DIR/frontend/dist/"
+            log_success "Frontend copiato"
+        fi
     elif [[ -d "$SCRIPT_DIR/frontend" ]] && [[ -f "$SCRIPT_DIR/frontend/package.json" ]]; then
         log_info "Frontend non compilato, avvio build..."
         build_frontend
