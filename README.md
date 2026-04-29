@@ -28,42 +28,40 @@
 
 ## 🛠️ Installation
 
-### Option 1: Automated Deployment on Proxmox (Recommended)
+DAPX-Unified is meant to run **inside a Linux guest** (LXC or VM), not on the Proxmox hypervisor itself. The automated wizard creates that guest for you; if you already have a Debian CT/VM, install from Git as below.
 
-This method automatically creates a dedicated LXC container on your Proxmox host and installs DAPX-Unified inside it. This keeps your Proxmox host clean.
+### Option 1: Automated LXC on Proxmox host (recommended)
 
-1.  **Access your Proxmox VE Shell** (Web UI Console or SSH).
-2.  **Run the deployment script**:
+Run this **on the Proxmox VE shell** (SSH or console). It creates a container, clones the repo into `/opt/dapx-unified`, and runs the installer—same result as Option 2, unattended.
 
 ```bash
 bash <(curl -s https://raw.githubusercontent.com/grandir66/DA-PXREPL/main/deploy_lxc.sh)
 ```
 
-3.  **Follow the wizard**:
-    *   **Container ID**: Choose a free ID (e.g., 100).
-    *   **Hostname**: Give it a name (e.g., `dapx-unified`).
-    *   **Password**: Set a root password for the container.
-    *   **Network**: Define Bridge, VLAN (optional), and IP (DHCP or Static).
-    *   **Resources**: Allocate CPU, RAM, and Disk.
+Follow the wizard (container ID, hostname, password, network, resources). When it finishes, open `http://<container-ip>:8420`.
 
-The script will create the container, download the application, and set everything up. Once finished, it will show you the URL to access the dashboard.
+### Option 2: Install from Git inside an existing LXC / VM (manual)
 
-### Option 2: Manual Installation (Advanced)
-If you prefer to install it manually (on a bare metal Debian server or an existing VM/CT):
-Execute the installation script as root. This will set up the Python environment, install system dependencies (like `sanoid`, `lz4`, `pv`), configure the systemd service, and build the frontend.
+Use this when you manage the container yourself (template already installed, networking done). Run **as root inside the guest** (e.g. after `pct enter <CTID>` or SSH):
 
 ```bash
-sudo ./install.sh
+apt-get update && apt-get install -y git curl
+git clone https://github.com/grandir66/DA-PXREPL.git /opt/dapx-unified
+cd /opt/dapx-unified
+chmod +x install.sh
+NONINTERACTIVE=true ./install.sh --local
 ```
 
-Follow the on-screen instructions. The script will:
-*   Check for required dependencies (Python, ZFS, etc.).
-*   Create a virtual environment and install Python requirements.
-*   Install and configure `Sanoid` if missing.
-*   Set up a systemd service (`dapx-unified`).
-*   Generate SSH keys for inter-node communication.
+- **`NONINTERACTIVE=true`**: no prompts (same as the automated deploy script).
+- **`--local`**: install from the cloned tree under `/opt/dapx-unified` (no separate download step).
 
-### 3. Access the Interface
+**LXC note:** Tools like `pveversion` are usually **not** installed inside a CT, so the installer may log *“Proxmox VE non rilevato”*. That is normal; DAPX-Unified still manages Proxmox nodes over the API and SSH from the container.
+
+**Interactive install** (prompts for mode and confirmation): `./install.sh` with no arguments, from `/opt/dapx-unified` after cloning.
+
+Other installer flags: `./install.sh --help` (e.g. `--github` for a fresh fetch without manual clone).
+
+### Access the Interface
 Once installed, the web interface is available at:
 
 ```
