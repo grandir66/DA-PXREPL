@@ -173,6 +173,13 @@ class SyncoidService:
                 executor_key=executor_key,
                 endpoints=remote_endpoints,
             )
+            await self._ensure_executor_authorized(
+                executor_host=executor_host,
+                executor_port=executor_port,
+                executor_user=executor_user,
+                executor_key=executor_key,
+                endpoints=remote_endpoints,
+            )
 
         logger.info(f"Esecuzione syncoid: {cmd}")
 
@@ -247,6 +254,77 @@ class SyncoidService:
                 )
         except Exception as e:
             logger.warning(f"ssh-keyscan pre-step fallito su {executor_host}: {e}")
+
+    async def _ensure_executor_authorized(
+        self,
+        executor_host: str,
+        executor_port: int,
+        executor_user: str,
+        executor_key: str,
+        endpoints: list,  # list[tuple[host, port]]
+    ) -> None:
+        """
+        Garantisce che la chiave pubblica dell'executor sia presente in
+        ~/.ssh/authorized_keys di ogni endpoint remoto. Senza questo,
+        syncoid (eseguito sull'executor) fallisce con
+        "Permission denied (publickey,password)" alla connessione interna.
+
+        Funziona perché il server dapx ha SSH verso *tutti* i nodi (chiave
+        propria distribuita all'add-node), quindi può leggere la pub key
+        dell'executor e appenderla sul remote senza richiedere password.
+        Best-effort: log e prosegue.
+        """
+        # 1) Leggi la pub key dell'executor
+        try:
+            r = await ssh_service.execute(
+                hostname=executor_host,
+                command="cat ~/.ssh/id_rsa.pub 2>/dev/null || cat ~/.ssh/id_ed25519.pub 2>/dev/null",
+                port=executor_port,
+                username=executor_user,
+                key_path=executor_key,
+                timeout=10,
+            )
+            pubkey = (r.stdout or "").strip()
+            if not r.success or not pubkey:
+                logger.warning(
+                    f"Impossibile leggere la chiave pubblica su {executor_host}: "
+                    f"{r.stderr or 'output vuoto'}"
+                )
+                return
+        except Exception as e:
+            logger.warning(f"Lettura pub key fallita su {executor_host}: {e}")
+            return
+
+        # Sanitize: prendi solo la prima riga, niente caratteri di controllo
+        pubkey_line = pubkey.splitlines()[0].strip()
+        if "'" in pubkey_line:
+            logger.warning("Pub key contiene apostrofi, salto distribuzione")
+            return
+
+        # 2) Per ogni endpoint, appendi se non già presente
+        for host, port in endpoints:
+            cmd = (
+                "mkdir -p ~/.ssh && chmod 700 ~/.ssh && "
+                "touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && "
+                f"grep -qxF '{pubkey_line}' ~/.ssh/authorized_keys || "
+                f"echo '{pubkey_line}' >> ~/.ssh/authorized_keys"
+            )
+            try:
+                r = await ssh_service.execute(
+                    hostname=host,
+                    command=cmd,
+                    port=int(port),
+                    username=executor_user,
+                    key_path=executor_key,
+                    timeout=15,
+                )
+                if not r.success:
+                    logger.warning(
+                        f"Append pub key su {host} fallito: "
+                        f"{r.stderr or r.stdout}"
+                    )
+            except Exception as e:
+                logger.warning(f"Append pub key su {host} ha sollevato: {e}")
 
     def _parse_transferred(self, output: str) -> Optional[str]:
         """Estrae la quantità di dati trasferiti dall'output di syncoid"""
