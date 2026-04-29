@@ -637,7 +637,7 @@ generate_secret_key() {
 # Generated: $(date)
 
 # Secret key for JWT tokens (DO NOT SHARE!)
-DAPX_UNIFIED_SECRET_KEY=$SECRET_KEY
+DAPX_SECRET_KEY=$SECRET_KEY
 
 # Database path
 DAPX_DB=$DATA_DIR/dapx.db
