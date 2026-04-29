@@ -22,16 +22,18 @@
 
 ## 📋 Prerequisites
 
-*   **Typical deploy**: a **Proxmox VE** host where you can create an LXC (the installer wizard runs here once).
+*   **Typical deploy**: a **Proxmox VE** host where you run `deploy_lxc.sh` once; it creates the LXC and invokes **`install.sh`** inside it (same script as a manual clone).
 *   **Guest OS**: Debian 11/12 inside the container (created by `deploy_lxc.sh` or your template).
 *   **Filesystem**: ZFS on managed nodes (recommended for full feature set).
 *   **Dependencies**: Python 3.9+, SSH.
 
 ## 🛠️ Installation
 
-**Standard setup:** run DAPX-Unified **inside a dedicated LXC** created on your Proxmox host. Use the deployment wizard **on the hypervisor**—it **generates the container** (template, disk, network), clones this repo, and runs the installer inside it. Do not install on the Proxmox host itself.
+There is **one** supported application installer: **`install.sh`** at the root of this repository (Python venv, dependencies, copies app under `/opt/dapx-unified`, systemd, SSH keys).
 
-### Recommended: generate LXC and install (Proxmox shell)
+**Standard deploy:** create a new LXC on Proxmox, clone the repo into `/opt/dapx-unified`, then run that installer non-interactively—same command in every case.
+
+### Recommended: wizard on Proxmox (creates CT + runs `install.sh`)
 
 On the **Proxmox VE node** (SSH or console):
 
@@ -39,11 +41,17 @@ On the **Proxmox VE node** (SSH or console):
 bash <(curl -s https://raw.githubusercontent.com/grandir66/DA-PXREPL/main/deploy_lxc.sh)
 ```
 
-The wizard asks for CT ID, hostname, root password, bridge/VLAN/IP, CPU/RAM/disk. It creates and starts the container, then installs from Git into `/opt/dapx-unified`. When done, open `http://<container-ip>:8420`.
+The wizard creates and starts the container, clones this repo to `/opt/dapx-unified` inside the CT, then runs **exactly** the standard installer:
 
-### Advanced: Git install in an existing Debian CT/VM
+```bash
+NONINTERACTIVE=true ./install.sh --local
+```
 
-Only if you **already** have a suitable guest and prefer not to use the wizard above. As **root inside that CT/VM**:
+No separate “LXC installer”: it is the same `install.sh` as below. When the wizard finishes, open `http://<container-ip>:8420`.
+
+### Same installer on an existing Debian CT/VM
+
+If you already have a guest, clone and run the **same** command as the wizard (or `./install.sh` alone for interactive prompts):
 
 ```bash
 apt-get update && apt-get install -y git curl
@@ -53,12 +61,12 @@ chmod +x install.sh
 NONINTERACTIVE=true ./install.sh --local
 ```
 
-- **`NONINTERACTIVE=true`**: no prompts (same behaviour as the generated-container deploy).
-- **`--local`**: install from the cloned tree.
+- **`NONINTERACTIVE=true`**: no prompts (wizard uses this too).
+- **`--local`**: install from the files in this clone under `/opt/dapx-unified`.
 
-**Inside LXC:** `pveversion` is usually absent, so you may see *“Proxmox VE non rilevato”*—that is normal for a CT.
+**Inside LXC:** `pveversion` is usually absent—*“Proxmox VE non rilevato”* from `install.sh` is normal for a CT.
 
-Interactive install after clone: `./install.sh` with no arguments. More flags: `./install.sh --help`.
+Interactive: `./install.sh` with no arguments. Options: `./install.sh --help`.
 
 ### Access the Interface
 Once installed, the web interface is available at:
