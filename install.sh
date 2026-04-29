@@ -18,6 +18,10 @@ SERVICE_USER="root"
 SERVICE_PORT="8420"
 PYTHON_MIN_VERSION="3.9"
 
+# Reset mode: when true, wipe DB and config so the install starts from
+# the initial-setup page (no users, no secret). Toggled via --reset.
+RESET_MODE=${RESET_MODE:-false}
+
 # Determina directory dello script (metodo robusto)
 # Salviamo subito il path prima che cambi con cd
 ORIGINAL_PWD="$(pwd)"
@@ -1160,6 +1164,17 @@ update_existing() {
     fi
 }
 
+reset_state_if_requested() {
+    if [[ "$RESET_MODE" != true ]]; then
+        return 0
+    fi
+    log_step "Reset richiesto: pulizia stato applicativo"
+    systemctl stop dapx-unified 2>/dev/null || true
+    rm -f  "$DATA_DIR/dapx.db" "$DATA_DIR/dapx.db-wal" "$DATA_DIR/dapx.db-shm"
+    rm -f  "$CONFIG_DIR/dapx-unified.env"
+    log_success "Stato resettato (DB e secret rimossi). L'install partirà dal Setup iniziale."
+}
+
 do_install() {
     check_existing_installation
     select_mode
@@ -1183,6 +1198,7 @@ do_install() {
     fi
     
     install_sanoid
+    reset_state_if_requested
     create_directories
     create_virtual_environment
     install_python_dependencies
@@ -1226,6 +1242,16 @@ main() {
             do_install
             exit 0
             ;;
+        --reset)
+            RESET_MODE=true
+            shift
+            # --reset è un modificatore: senza altri arg = install --local
+            if [[ $# -eq 0 ]]; then
+                do_install
+                exit 0
+            fi
+            RESET_MODE=true exec "$0" "$@"
+            ;;
         --help|-h)
             echo "Uso: $0 [OPZIONE]"
             echo ""
@@ -1233,6 +1259,8 @@ main() {
             echo "  --local           Installa da file locali"
             echo "  --github [VER]    Installa da GitHub (default: latest)"
             echo "  --update          Aggiorna installazione esistente"
+            echo "  --reset           Cancella DB e secret prima di installare"
+            echo "                    (forza il Setup iniziale al primo avvio)"
             echo "  --uninstall       Disinstalla"
             echo "  --help            Mostra questo help"
             echo ""

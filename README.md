@@ -63,6 +63,7 @@ NONINTERACTIVE=true ./install.sh --local
 
 - **`NONINTERACTIVE=true`**: no prompts (wizard uses this too).
 - **`--local`**: install from the files in this clone under `/opt/dapx-unified`.
+- **`--reset`** *(optional)*: wipe the local DB and secret before installing, so the first page is the **Initial Setup** (create admin user). Useful when reinstalling on a CT that already had users. Example: `NONINTERACTIVE=true ./install.sh --reset --local`.
 
 **Inside LXC:** `pveversion` is usually absent—*“Proxmox VE non rilevato”* from `install.sh` is normal for a CT.
 
