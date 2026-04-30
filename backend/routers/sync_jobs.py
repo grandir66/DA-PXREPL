@@ -6,7 +6,7 @@ Supporta sia ZFS (syncoid) che BTRFS (btrfs send/receive)
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel
 
@@ -14,7 +14,33 @@ from database import get_db, Node, SyncJob, JobLog, User, SyncMethod
 from services.syncoid_service import syncoid_service
 from services.btrfs_service import btrfs_service
 from services.scheduler import scheduler_service
+from services.schedule_translator import to_cron as _sched_to_cron, from_cron as _sched_from_cron
 from routers.auth import get_current_user, require_operator, require_admin, log_audit
+
+
+def _resolve_schedule_pair(schedule: Optional[str], schedule_config: Optional[Dict[str, Any]]):
+    """
+    Allinea schedule (cron) e schedule_config (JSON) prima di salvare.
+
+    Regole:
+      - se viene passato `schedule_config` è la fonte di verità: il cron
+        viene rigenerato (anche per kind=manual → schedule=None);
+      - se viene passato solo `schedule` (cron) si deriva una struttura
+        best-effort che può essere "advanced" se il cron non è canonico;
+      - se entrambi sono None: nessun cambio (None, None) → il caller
+        decide se è un update parziale o un default.
+    """
+    if schedule_config is not None:
+        try:
+            cron = _sched_to_cron(schedule_config)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"schedule_config non valido: {e}")
+        return cron, schedule_config
+    if schedule is not None:
+        cron = schedule.strip() or None
+        cfg = _sched_from_cron(cron) if cron else {"kind": "manual"}
+        return cron, cfg
+    return None, None
 
 router = APIRouter()
 
@@ -407,7 +433,8 @@ class SyncJobCreate(BaseModel):
     
     # Scheduling
     schedule: Optional[str] = None  # cron format
-    
+    schedule_config: Optional[Dict[str, Any]] = None  # struttura "human" (vedi schedule_translator)
+
     # VM options
     register_vm: bool = False
     vm_id: Optional[int] = None
@@ -454,6 +481,7 @@ class SyncJobUpdate(BaseModel):
     btrfs_full_sync: Optional[bool] = None
     
     schedule: Optional[str] = None
+    schedule_config: Optional[Dict[str, Any]] = None
     is_active: Optional[bool] = None
     register_vm: Optional[bool] = None
     vm_id: Optional[int] = None
@@ -503,6 +531,7 @@ class SyncJobResponse(BaseModel):
     btrfs_full_sync: Optional[bool] = False
     
     schedule: Optional[str]
+    schedule_config: Optional[Dict[str, Any]] = None
     is_active: bool
     register_vm: bool
     vm_id: Optional[int]
@@ -758,6 +787,10 @@ async def create_sync_job(
     # Crea job con nome (generato o fornito)
     job_dict = job.model_dump()
     job_dict['name'] = job_name
+    # Allinea schedule (cron) e schedule_config (JSON struct)
+    cron, cfg = _resolve_schedule_pair(job_dict.get('schedule'), job_dict.get('schedule_config'))
+    job_dict['schedule'] = cron
+    job_dict['schedule_config'] = cfg
     db_job = SyncJob(**job_dict, created_by=user.id)
     db.add(db_job)
     
@@ -790,6 +823,7 @@ class VMReplicaCreate(BaseModel):
     dest_vm_id: Optional[int] = None  # ID VM destinazione se diverso
     dest_vm_name_suffix: Optional[str] = None  # Suffisso per nome VM su destinazione (es: -replica)
     schedule: Optional[str] = None
+    schedule_config: Optional[Dict[str, Any]] = None
     compress: str = "lz4"
     recursive: bool = False
     register_vm: bool = True
@@ -858,7 +892,11 @@ async def create_vm_replica_jobs(
     
     created_jobs = []
     total_size = 0
-    
+
+    # Allinea lo schedule UNA volta sola: tutti i job della VM condividono
+    # la stessa pianificazione.
+    _vm_cron, _vm_cfg = _resolve_schedule_pair(vm_data.schedule, vm_data.schedule_config)
+
     for disk in disks:
         if not disk.get("dataset"):
             continue
@@ -891,7 +929,8 @@ async def create_vm_replica_jobs(
             dest_dataset=dest_dataset,
             recursive=vm_data.recursive,
             compress=vm_data.compress,
-            schedule=vm_data.schedule,
+            schedule=_vm_cron,
+            schedule_config=_vm_cfg,
             register_vm=vm_data.register_vm,
             vm_id=vm_data.vm_id,
             dest_vm_id=dest_vmid if dest_vmid != vm_data.vm_id else None,
@@ -1113,26 +1152,35 @@ async def update_sync_job(
     if "dest_dataset" in update_data and update_data["dest_dataset"] != job.dest_dataset:
         changes.append(f"dest_dataset changed")
     
+    # Riallinea schedule/schedule_config se uno dei due è cambiato
+    if "schedule" in update_data or "schedule_config" in update_data:
+        new_cron, new_cfg = _resolve_schedule_pair(
+            update_data.get("schedule", job.schedule),
+            update_data.get("schedule_config", job.schedule_config),
+        )
+        update_data["schedule"] = new_cron
+        update_data["schedule_config"] = new_cfg
+
     # Applica gli aggiornamenti
     for key, value in update_data.items():
         setattr(job, key, value)
-    
+
     log_audit(
         db, user.id, "sync_job_updated", "sync_job",
         resource_id=job_id,
         details=f"Updated job '{job.name}': {', '.join(changes) if changes else 'minor changes'}",
         ip_address=request.client.host if request.client else None
     )
-    
+
     db.commit()
     db.refresh(job)
-    
+
     # Aggiorna scheduler
     if job.is_active and job.schedule:
         scheduler_service.update_job_schedule(job.id, job.schedule)
     else:
         scheduler_service.remove_job(job.id)
-    
+
     return job
 
 

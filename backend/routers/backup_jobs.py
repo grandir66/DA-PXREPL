@@ -5,7 +5,7 @@ Solo backup, senza restore automatico
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 import asyncio
@@ -17,6 +17,22 @@ from database import (
 )
 from routers.auth import get_current_user, require_operator, User, log_audit
 from services import ssh_service
+from services.schedule_translator import to_cron as _sched_to_cron, from_cron as _sched_from_cron
+
+
+def _resolve_schedule_pair(schedule: Optional[str], schedule_config: Optional[Dict[str, Any]]):
+    """Allinea cron e schedule_config (vedi sync_jobs._resolve_schedule_pair)."""
+    if schedule_config is not None:
+        try:
+            cron = _sched_to_cron(schedule_config)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"schedule_config non valido: {e}")
+        return cron, schedule_config
+    if schedule is not None:
+        cron = schedule.strip() or None
+        cfg = _sched_from_cron(cron) if cron else {"kind": "manual"}
+        return cron, cfg
+    return None, None
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -42,6 +58,7 @@ class BackupJobCreate(BaseModel):
     keep_weekly: Optional[int] = None
     keep_monthly: Optional[int] = None
     schedule: Optional[str] = None
+    schedule_config: Optional[Dict[str, Any]] = None
     is_active: bool = True
     notify_on_each_run: bool = False
     notify_on_failure: bool = True
@@ -85,6 +102,7 @@ class BackupJobUpdate(BaseModel):
     keep_weekly: Optional[int] = None
     keep_monthly: Optional[int] = None
     schedule: Optional[str] = None
+    schedule_config: Optional[Dict[str, Any]] = None
     is_active: Optional[bool] = None
     notify_on_each_run: Optional[bool] = None
     notify_on_failure: Optional[bool] = None
@@ -111,6 +129,7 @@ class BackupJobResponse(BaseModel):
     keep_weekly: Optional[int] = None
     keep_monthly: Optional[int] = None
     schedule: Optional[str] = None
+    schedule_config: Optional[Dict[str, Any]] = None
     is_active: bool
     current_status: str
     last_backup_time: Optional[datetime] = None
@@ -158,6 +177,7 @@ def job_to_response(job: BackupJob, db: Session) -> BackupJobResponse:
         keep_weekly=job.keep_weekly,
         keep_monthly=job.keep_monthly,
         schedule=job.schedule,
+        schedule_config=job.schedule_config,
         is_active=job.is_active,
         current_status=job.current_status,
         last_backup_time=job.last_backup_time,
@@ -216,7 +236,9 @@ async def create_backup_job(
     pbs_node = db.query(Node).filter(Node.id == job_data.pbs_node_id).first()
     if not pbs_node or pbs_node.node_type != NodeType.PBS.value:
         raise HTTPException(status_code=400, detail="Nodo PBS non valido")
-    
+
+    cron, cfg = _resolve_schedule_pair(job_data.schedule, job_data.schedule_config)
+
     # Crea job
     job = BackupJob(
         name=job_data.name,
@@ -235,7 +257,8 @@ async def create_backup_job(
         keep_daily=job_data.keep_daily,
         keep_weekly=job_data.keep_weekly,
         keep_monthly=job_data.keep_monthly,
-        schedule=job_data.schedule,
+        schedule=cron,
+        schedule_config=cfg,
         is_active=job_data.is_active,
         notify_on_each_run=job_data.notify_on_each_run,
         notify_on_failure=job_data.notify_on_failure,
@@ -265,13 +288,20 @@ async def update_backup_job(
         raise HTTPException(status_code=404, detail="Backup job non trovato")
     
     update_data = job_data.model_dump(exclude_unset=True)
+    if "schedule" in update_data or "schedule_config" in update_data:
+        new_cron, new_cfg = _resolve_schedule_pair(
+            update_data.get("schedule", job.schedule),
+            update_data.get("schedule_config", job.schedule_config),
+        )
+        update_data["schedule"] = new_cron
+        update_data["schedule_config"] = new_cfg
     for key, value in update_data.items():
         setattr(job, key, value)
-    
+
     job.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(job)
-    
+
     log_audit(db, user.id, "backup_job_updated", "backup_job",
               resource_id=job.id, details=f"Updated backup job: {job.name}")
     

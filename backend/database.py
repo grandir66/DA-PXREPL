@@ -428,8 +428,9 @@ class SyncJob(Base):
     
     # Scheduling (cron format)
     schedule = Column(String(100), nullable=True)  # es: "0 */4 * * *" ogni 4 ore
+    schedule_config = Column(JSON, nullable=True)  # Struttura "human" {kind, time, weekdays, ...} (vedi services/schedule_translator.py)
     is_active = Column(Boolean, default=True)
-    
+
     # VM Registration
     register_vm = Column(Boolean, default=False)
     vm_id = Column(Integer, nullable=True)  # VMID Proxmox sorgente
@@ -517,9 +518,10 @@ class RecoveryJob(Base):
     
     # Scheduling
     schedule = Column(String(100), nullable=True)  # Cron format
+    schedule_config = Column(JSON, nullable=True)  # Struttura "human" (vedi services/schedule_translator.py)
     backup_schedule = Column(String(100), nullable=True)  # Schedule separato per backup (null = stesso di restore)
     is_active = Column(Boolean, default=True)
-    
+
     # Stato corrente
     current_status = Column(String(20), default=RecoveryJobStatus.PENDING.value)
     last_backup_time = Column(DateTime, nullable=True)
@@ -596,8 +598,9 @@ class BackupJob(Base):
     
     # Scheduling
     schedule = Column(String(100), nullable=True)  # Cron format
+    schedule_config = Column(JSON, nullable=True)  # Struttura "human" (vedi services/schedule_translator.py)
     is_active = Column(Boolean, default=True)
-    
+
     # Stato corrente
     current_status = Column(String(20), default=BackupJobStatus.PENDING.value)
     last_backup_time = Column(DateTime, nullable=True)
@@ -650,8 +653,9 @@ class HostBackupJob(Base):
     
     # Scheduling
     schedule = Column(String(100), nullable=True)  # Cron format
+    schedule_config = Column(JSON, nullable=True)  # Struttura "human" (vedi services/schedule_translator.py)
     is_active = Column(Boolean, default=True)
-    
+
     # Notifiche
     notify_mode = Column(String(20), default="daily")  # daily, always, failure, never
     notify_subject = Column(String(200), nullable=True)

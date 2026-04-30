@@ -5,7 +5,7 @@ Permette di configurare e gestire job di backup/restore automatici
 
 from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel, Field, field_validator, model_validator
 import asyncio
@@ -14,10 +14,26 @@ import re
 import json
 
 from database import (
-    get_db, Node, RecoveryJob, JobLog, User, 
+    get_db, Node, RecoveryJob, JobLog, User,
     NodeType, RecoveryJobStatus, VirtualMachine
 )
 from services.pbs_service import pbs_service
+from services.schedule_translator import to_cron as _sched_to_cron, from_cron as _sched_from_cron
+
+
+def _resolve_schedule_pair(schedule: Optional[str], schedule_config: Optional[Dict[str, Any]]):
+    """Allinea cron e schedule_config (vedi sync_jobs._resolve_schedule_pair)."""
+    if schedule_config is not None:
+        try:
+            cron = _sched_to_cron(schedule_config)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"schedule_config non valido: {e}")
+        return cron, schedule_config
+    if schedule is not None:
+        cron = schedule.strip() or None
+        cfg = _sched_from_cron(cron) if cron else {"kind": "manual"}
+        return cron, cfg
+    return None, None
 from services.proxmox_service import proxmox_service
 from services.ssh_service import ssh_service
 from routers.auth import get_current_user, require_operator, require_admin, log_audit
@@ -143,6 +159,7 @@ class RecoveryJobCreate(BaseModel):
     restore_unique: bool = Field(default=True, description="Genera nuovi UUID")
     overwrite_existing: bool = Field(default=True, description="Sovrascrivi se esiste")
     schedule: Optional[str] = Field(None, max_length=100, description="Schedule cron per recovery completo")
+    schedule_config: Optional[Dict[str, Any]] = Field(None, description="Struttura JSON 'human' di schedule (vedi schedule_translator)")
     backup_schedule: Optional[str] = Field(None, max_length=100, description="Schedule cron per backup (opzionale)")
     is_active: bool = Field(default=True, description="Job attivo")
     retry_on_failure: bool = Field(default=True, description="Retry automatico su fallimento")
@@ -223,6 +240,7 @@ class RecoveryJobUpdate(BaseModel):
     restore_unique: Optional[bool] = None
     overwrite_existing: Optional[bool] = None
     schedule: Optional[str] = Field(None, max_length=100)
+    schedule_config: Optional[Dict[str, Any]] = None
     backup_schedule: Optional[str] = Field(None, max_length=100)
     is_active: Optional[bool] = None
     retry_on_failure: Optional[bool] = None
@@ -252,6 +270,7 @@ class RecoveryJobResponse(BaseModel):
     restore_unique: bool
     overwrite_existing: bool
     schedule: Optional[str]
+    schedule_config: Optional[Dict[str, Any]] = None
     backup_schedule: Optional[str]
     is_active: bool
     current_status: str
@@ -800,9 +819,13 @@ async def create_recovery_job(
     if not check_node_access(user, source_node) or not check_node_access(user, dest_node):
         raise HTTPException(status_code=403, detail="Accesso negato ai nodi specificati")
     
-    # Crea il job
+    # Crea il job: allinea schedule (cron) e schedule_config (JSON struct)
+    payload = job_data.model_dump()
+    cron, cfg = _resolve_schedule_pair(payload.get("schedule"), payload.get("schedule_config"))
+    payload["schedule"] = cron
+    payload["schedule_config"] = cfg
     job = RecoveryJob(
-        **job_data.model_dump(),
+        **payload,
         created_by=user.id
     )
     db.add(job)
@@ -844,11 +867,19 @@ async def update_recovery_job(
     if not job:
         raise HTTPException(status_code=404, detail="Recovery job non trovato")
     
-    for key, value in job_data.model_dump(exclude_unset=True).items():
+    update_data = job_data.model_dump(exclude_unset=True)
+    if "schedule" in update_data or "schedule_config" in update_data:
+        new_cron, new_cfg = _resolve_schedule_pair(
+            update_data.get("schedule", job.schedule),
+            update_data.get("schedule_config", job.schedule_config),
+        )
+        update_data["schedule"] = new_cron
+        update_data["schedule_config"] = new_cfg
+    for key, value in update_data.items():
         setattr(job, key, value)
-    
+
     job.updated_at = datetime.utcnow()
-    
+
     log_audit(
         db, user.id, "recovery_job_updated", "recovery_job",
         resource_id=job_id,

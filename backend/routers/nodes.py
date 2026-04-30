@@ -879,22 +879,138 @@ async def get_node_bridges(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Ottiene la lista dei bridge di rete disponibili sul nodo"""
+    """Ottiene la lista dei bridge di rete disponibili sul nodo (legacy: lista di stringhe)."""
     node = db.query(Node).filter(Node.id == node_id).first()
     if not node:
         raise HTTPException(status_code=404, detail="Nodo non trovato")
-    
+
     if not check_node_access(user, node):
         raise HTTPException(status_code=403, detail="Accesso negato a questo nodo")
-    
+
     bridges = await proxmox_service.get_node_bridges(
         hostname=node.hostname,
         port=node.ssh_port,
         username=node.ssh_user,
         key_path=node.ssh_key_path
     )
-    
+
     return {"bridges": bridges}
+
+
+@router.get("/{node_id}/network-config")
+async def get_node_network_config(
+    node_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Network config arricchito per il nodo: bridges con flag vlan-aware e
+    eventuali VLAN già osservate nei config VM. Usato dal modale di
+    registrazione VM per popolare i selettori bridge/VLAN.
+
+    Output:
+        {
+            "bridges": [
+                {"name": "vmbr0", "vlan_aware": true,
+                 "observed_vlans": [10, 20]},
+                ...
+            ],
+            "vlan_aware_default": "vmbr0"   # primo vlan-aware
+        }
+    """
+    node = db.query(Node).filter(Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Nodo non trovato")
+
+    if not check_node_access(user, node):
+        raise HTTPException(status_code=403, detail="Accesso negato a questo nodo")
+
+    # 1) Lista bridge
+    bridge_names = await proxmox_service.get_node_bridges(
+        hostname=node.hostname,
+        port=node.ssh_port,
+        username=node.ssh_user,
+        key_path=node.ssh_key_path,
+    )
+
+    # 2) Vlan-aware flag: leggiamo /etc/network/interfaces. Per ogni bridge
+    #    cerchiamo "bridge-vlan-aware yes" nel suo blocco. Best-effort:
+    #    se non riusciamo a leggere, default vlan_aware=false.
+    vlan_aware_map: Dict[str, bool] = {b: False for b in bridge_names}
+    try:
+        r = await ssh_service.execute(
+            hostname=node.hostname,
+            command="cat /etc/network/interfaces 2>/dev/null",
+            port=node.ssh_port,
+            username=node.ssh_user,
+            key_path=node.ssh_key_path,
+            timeout=10,
+        )
+        if r.success and r.stdout:
+            current_iface: Optional[str] = None
+            for raw in r.stdout.splitlines():
+                line = raw.strip()
+                if not line or line.startswith("#"):
+                    continue
+                # nuovo blocco interface
+                if line.startswith("iface "):
+                    current_iface = line.split()[1] if len(line.split()) >= 2 else None
+                    continue
+                if line.startswith("auto ") or line.startswith("source "):
+                    continue
+                if (
+                    current_iface
+                    and current_iface in vlan_aware_map
+                    and "bridge-vlan-aware" in line
+                    and "yes" in line.lower()
+                ):
+                    vlan_aware_map[current_iface] = True
+    except Exception as e:
+        logger.warning(f"Lettura /etc/network/interfaces fallita su {node.hostname}: {e}")
+
+    # 3) VLAN già osservate nei config VM (qemu + lxc): regex su tag=NN
+    observed: Dict[str, set] = {b: set() for b in bridge_names}
+    try:
+        r = await ssh_service.execute(
+            hostname=node.hostname,
+            command=(
+                "grep -hE '^net[0-9]+:' /etc/pve/qemu-server/*.conf "
+                "/etc/pve/lxc/*.conf 2>/dev/null || true"
+            ),
+            port=node.ssh_port,
+            username=node.ssh_user,
+            key_path=node.ssh_key_path,
+            timeout=10,
+        )
+        if r.success and r.stdout:
+            import re as _re
+            for line in r.stdout.splitlines():
+                m_br = _re.search(r"bridge=([\w\-]+)", line)
+                m_tag = _re.search(r"tag=(\d+)", line)
+                if m_br and m_tag:
+                    br = m_br.group(1)
+                    if br in observed:
+                        observed[br].add(int(m_tag.group(1)))
+    except Exception as e:
+        logger.debug(f"Scan VLAN da config VM fallito su {node.hostname}: {e}")
+
+    bridges_out = [
+        {
+            "name": b,
+            "vlan_aware": vlan_aware_map.get(b, False),
+            "observed_vlans": sorted(observed.get(b, set())),
+        }
+        for b in bridge_names
+    ]
+    vlan_aware_default = next(
+        (b["name"] for b in bridges_out if b["vlan_aware"]),
+        bridges_out[0]["name"] if bridges_out else None,
+    )
+
+    return {
+        "bridges": bridges_out,
+        "vlan_aware_default": vlan_aware_default,
+    }
 
 
 @router.get("/{node_id}/pbs-datastores")

@@ -17,6 +17,7 @@ from database import engine, Base, get_db, init_default_config, SessionLocal
 from routers import nodes, snapshots, sync_jobs, vms, logs, settings, auth, ssh_keys
 from routers import recovery_jobs, backup_jobs, host_info, host_backup, migration_jobs, updates, pve_replication_jobs, load_balancer
 from routers import ha, clusters
+from routers import schedule as schedule_router
 from services.scheduler import SchedulerService
 from services.logging_config import setup_logging, get_logger
 
@@ -42,7 +43,15 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Avvio DAPX-backandrepl...")
     Base.metadata.create_all(bind=engine)
-    
+
+    # Migrazioni leggere idempotenti: aggiunge le colonne nuove alle
+    # tabelle esistenti (SQLite non le crea automaticamente).
+    try:
+        from update_db_schema import update_schema
+        update_schema()
+    except Exception as e:
+        logger.warning(f"update_db_schema fallito (non bloccante): {e}")
+
     # Inizializza configurazione di default
     db = SessionLocal()
     try:
@@ -64,7 +73,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="DAPX-backandrepl",
     description="Sistema centralizzato di backup e replica per Proxmox VE. Supporta ZFS (Sanoid/Syncoid), BTRFS (btrfs send/receive) e PBS (Proxmox Backup Server).",
-    version="3.10.12",
+    version="3.11.0",
     lifespan=lifespan
 )
 
@@ -128,6 +137,7 @@ if dapx_mode == "full":
     app.include_router(host_backup.router, prefix="/api/host-backup", tags=["Host Config Backup"])
     app.include_router(migration_jobs.router, prefix="/api/migration-jobs", tags=["Migration Jobs"])
     app.include_router(pve_replication_jobs.router, prefix="/api/pve-replication", tags=["PVE Replication"])
+    app.include_router(schedule_router.router, prefix="/api/schedule", tags=["Schedule"])
 
 
 # Health check (non richiede autenticazione)

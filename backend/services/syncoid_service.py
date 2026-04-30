@@ -192,7 +192,39 @@ class SyncoidService:
             key_path=executor_key,
             timeout=timeout
         )
-        
+
+        # Auto-recovery: il dataset destinazione può rimanere "locked" da un
+        # processo `zfs receive` orfano (parent SSH morto) o da un receive
+        # parziale interrotto. Sintomo tipico:
+        #   "cannot receive: <ds> is already target of a zfs receive process"
+        # Se rileviamo questo errore proviamo a sbloccare il dataset e a
+        # rieseguire syncoid una sola volta.
+        if (
+            not result.success
+            and dest_host
+            and self._is_stuck_receive_error(result.stderr + result.stdout)
+        ):
+            logger.warning(
+                f"Rilevato lock di receive su {dest_host}:{dest_dataset}, "
+                f"tento auto-unstick e retry"
+            )
+            unstuck = await self._unstick_dest(
+                dest_host=dest_host,
+                dest_port=dest_port,
+                dest_user=dest_user,
+                dest_key=executor_key,  # il server dapx ha SSH a tutti i nodi
+                dest_dataset=dest_dataset,
+            )
+            if unstuck:
+                result = await ssh_service.execute(
+                    hostname=executor_host,
+                    command=cmd,
+                    port=executor_port,
+                    username=executor_user,
+                    key_path=executor_key,
+                    timeout=timeout,
+                )
+
         end_time = datetime.utcnow()
         duration = int((end_time - start_time).total_seconds())
         
@@ -335,6 +367,82 @@ class SyncoidService:
                     )
             except Exception as e:
                 logger.warning(f"Append pub key su {host} ha sollevato: {e}")
+
+    def _is_stuck_receive_error(self, output: str) -> bool:
+        """True se l'output contiene il marker di lock di un receive in corso."""
+        if not output:
+            return False
+        return "already target of a zfs receive process" in output.lower()
+
+    async def _unstick_dest(
+        self,
+        dest_host: str,
+        dest_port: int,
+        dest_user: str,
+        dest_key: str,
+        dest_dataset: str,
+    ) -> bool:
+        """
+        Rimuove un lock di `zfs receive` rimasto sul dataset di destinazione.
+
+        Strategia (tutto in un'unica shell pipeline sul nodo remoto):
+          1) elenca i PID di `zfs receive` che riguardano `dest_dataset`
+             e degli `mbuffer` figli;
+          2) uccide *solo* i processi orfani (PPID=1) — un receive con
+             parent SSH ancora vivo è un job legittimo in corso e va
+             lasciato stare;
+          3) attende un istante perché ZFS rilasci il dataset;
+          4) tenta `zfs receive -A` per scartare un eventuale resume
+             token rimasto (no-op se non presente).
+
+        Ritorna True se ha effettivamente terminato qualche processo o
+        abortito un resume — solo in quel caso ha senso fare retry.
+        """
+        # Quoting difensivo: dataset proviene dal DB.
+        ds_q = dest_dataset.replace("'", "").replace('"', "")
+        script = (
+            "set -e; killed=0; "
+            # PIDs di zfs receive che toccano il dataset
+            f"pids=$(pgrep -af 'zfs *receive' 2>/dev/null | "
+            f"awk -v ds='{ds_q}' '$0 ~ ds {{print $1}}' || true); "
+            "for p in $pids; do "
+            "  ppid=$(ps -o ppid= -p \"$p\" 2>/dev/null | tr -d ' '); "
+            "  if [ \"$ppid\" = \"1\" ]; then "
+            "    kill -9 \"$p\" 2>/dev/null && killed=1; "
+            # mbuffer figli orfani correlati
+            "    for m in $(pgrep -P 1 mbuffer 2>/dev/null); do "
+            "      kill -9 \"$m\" 2>/dev/null || true; "
+            "    done; "
+            "  fi; "
+            "done; "
+            "sleep 1; "
+            # tenta abort di un eventuale resume parziale
+            f"if zfs receive -A '{ds_q}' 2>/dev/null; then killed=1; fi; "
+            "echo \"unstuck=$killed\""
+        )
+
+        try:
+            r = await ssh_service.execute(
+                hostname=dest_host,
+                command=script,
+                port=dest_port,
+                username=dest_user,
+                key_path=dest_key,
+                timeout=30,
+            )
+        except Exception as e:
+            logger.warning(f"_unstick_dest fallito su {dest_host}: {e}")
+            return False
+
+        out = (r.stdout or "") + (r.stderr or "")
+        if "unstuck=1" in out:
+            logger.info(f"Auto-unstick riuscito su {dest_host}:{dest_dataset}")
+            return True
+        logger.warning(
+            f"Nessun processo orfano trovato su {dest_host}:{dest_dataset} — "
+            f"il lock potrebbe essere di un job ancora attivo. Output: {out.strip()}"
+        )
+        return False
 
     def _parse_transferred(self, output: str) -> Optional[str]:
         """Estrae la quantità di dati trasferiti dall'output di syncoid"""

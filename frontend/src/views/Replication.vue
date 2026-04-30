@@ -1,234 +1,378 @@
 <template>
-  <div class="replication-view">
-    <div class="header-section">
-      <div>
-        <h1>Gestione Repliche</h1>
-        <p class="subtitle">Sistema unificato per Syncoid, PVE Native e PBS Recovery</p>
+  <div class="repl-view">
+    <header class="repl-head">
+      <div class="repl-head-left">
+        <h1>Repliche &amp; Backup</h1>
+        <p class="repl-sub">
+          Gestione unificata di repliche ZFS (Syncoid) e backup/restore via PBS,
+          a livello VM.
+        </p>
       </div>
-      <div class="actions">
-        <button class="btn-primary" @click="openNewReplication">
-          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-          Nuova Replica
-        </button>
+      <div class="repl-head-actions">
+        <div class="repl-new-wrap" v-click-outside="closeNewMenu">
+          <button class="btn btn-primary" @click="newMenuOpen = !newMenuOpen">
+            + Nuovo job
+            <span class="caret">▾</span>
+          </button>
+          <ul v-if="newMenuOpen" class="repl-new-menu">
+            <li @click="openCreate('syncoid')">
+              <span class="kind-dot zfs"></span>
+              <div>
+                <strong>Replica ZFS (Syncoid)</strong>
+                <small>send/receive ZFS tra due nodi PVE</small>
+              </div>
+            </li>
+            <li @click="openCreate('backup_pbs')">
+              <span class="kind-dot pbs"></span>
+              <div>
+                <strong>Backup verso PBS</strong>
+                <small>solo backup su Proxmox Backup Server</small>
+              </div>
+            </li>
+            <li @click="openCreate('recovery_pbs')">
+              <span class="kind-dot pbs"></span>
+              <div>
+                <strong>Replica via PBS</strong>
+                <small>backup + restore automatico su nodo destinazione</small>
+              </div>
+            </li>
+          </ul>
+        </div>
       </div>
-    </div>
+    </header>
 
-    <!-- Stats Cards -->
-    <div class="stats-grid">
-      <div class="stat-card">
-        <div class="stat-label">Job Attivi</div>
-        <div class="stat-value">{{ activeJobsCount }}</div>
+    <section class="repl-stats">
+      <div class="repl-stat">
+        <span class="repl-stat-label">Job totali</span>
+        <span class="repl-stat-val">{{ store.jobs.length }}</span>
       </div>
-      <div class="stat-card">
-        <div class="stat-label">Successi (24h)</div>
-        <div class="stat-value text-success">{{ successCount }}</div>
+      <div class="repl-stat">
+        <span class="repl-stat-label">Attivi</span>
+        <span class="repl-stat-val text-success">{{ activeCount }}</span>
       </div>
-      <div class="stat-card">
-        <div class="stat-label">Fallimenti (24h)</div>
-        <div class="stat-value text-danger">{{ failureCount }}</div>
+      <div class="repl-stat">
+        <span class="repl-stat-label">In esecuzione</span>
+        <span class="repl-stat-val text-warning">{{ runningCount }}</span>
       </div>
-    </div>
+      <div class="repl-stat">
+        <span class="repl-stat-label">Falliti (ultimo run)</span>
+        <span class="repl-stat-val text-danger">{{ failedCount }}</span>
+      </div>
+    </section>
 
-    <!-- Tabs for different job types -->
-    <div class="tabs">
-      <button 
-        v-for="tab in tabs" 
-        :key="tab.id"
-        class="tab-btn"
-        :class="{ active: activeTab === tab.id }"
-        @click="activeTab = tab.id"
+    <nav class="repl-tabs">
+      <button
+        v-for="t in tabs"
+        :key="t.id"
+        class="repl-tab"
+        :class="{ active: activeTab === t.id }"
+        @click="activeTab = t.id"
       >
-        {{ tab.label }}
+        {{ t.label }}
+        <span v-if="t.count != null" class="repl-tab-count">{{ t.count }}</span>
       </button>
-    </div>
+    </nav>
 
-    <!-- Content based on tab -->
-    <div class="tab-content">
-      <SyncJobs v-if="activeTab === 'syncoid'" ref="syncJobsRef" @edit="openEditWizard" />
-      <RecoveryJobs v-else-if="activeTab === 'pbs'" ref="pbsJobsRef" />
-      <PVEReplicationJobs v-else-if="activeTab === 'pve'" ref="pveJobsRef" />
-    </div>
+    <main class="repl-main">
+      <!-- Tab "PVE Native" è read-only e usa la view legacy -->
+      <PVELegacy v-if="activeTab === 'pve'" />
 
-    <!-- Replication Wizard Modal -->
-    <ReplicationWizard 
-      v-if="showWizard" 
-      :editing-job="selectedEditingJob"
-      @close="closeWizard" 
-      @created="onJobCreated"
-    />
+      <JobsList
+        v-else
+        :jobs="filteredJobs"
+        :loading="store.loadingJobs"
+        @refresh="reload"
+        @edit="onEdit"
+        @run="onRun"
+        @delete="onDelete"
+      />
+    </main>
 
-    <SyncJobEdit
-      v-if="showEditModal && selectedEditingJob"
-      :job="selectedEditingJob"
-      @close="closeEditModal"
-      @saved="onJobSaved"
+    <JobModal
+      v-model:visible="modalVisible"
+      :mode="createKind"
+      :job="editingJob"
+      @saved="onSaved"
     />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import SyncJobs from './replication/SyncoidJobs.vue';
-import RecoveryJobs from './replication/PBSJobs.vue';
-import PVEReplicationJobs from './replication/PVEReplicationJobs.vue';
-import ReplicationWizard from './replication/ReplicationWizard.vue';
-import SyncJobEdit from './replication/SyncJobEdit.vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useReplicationStore, type UnifiedJob, type JobKind } from '../stores/replication'
+import JobsList from '../components/jobs/JobsList.vue'
+import JobModal from '../components/jobs/JobModal.vue'
+import PVELegacy from './replication/PVEReplicationJobs.vue'
+import syncJobsService from '../services/syncJobs'
+import backupJobsService from '../services/backupJobs'
+import recoveryJobsService from '../services/recoveryJobs'
 
-const activeTab = ref('syncoid');
+const store = useReplicationStore()
 
-const showWizard = ref(false);
-const showEditModal = ref(false);
-const selectedEditingJob = ref(null);
+const activeTab = ref<'all' | 'syncoid' | 'backup_pbs' | 'recovery_pbs' | 'pve'>('all')
+const newMenuOpen = ref(false)
 
-const syncJobsRef = ref();
-const pbsJobsRef = ref();
-const pveJobsRef = ref();
+const modalVisible = ref(false)
+const editingJob = ref<UnifiedJob | null>(null)
+const createKind = ref<JobKind>('syncoid')
 
-const tabs = [
-  { id: 'syncoid', label: 'Syncoid (ZFS)' },
-  { id: 'pve', label: 'PVE Native' },
-  { id: 'pbs', label: 'PBS Replication' }
-];
+const tabs = computed(() => [
+  { id: 'all', label: 'Tutti', count: store.jobs.length },
+  { id: 'syncoid', label: 'Repliche ZFS', count: store.jobs.filter(j => j.kind === 'syncoid').length },
+  { id: 'backup_pbs', label: 'Backup PBS', count: store.jobs.filter(j => j.kind === 'backup_pbs').length },
+  { id: 'recovery_pbs', label: 'Replica PBS', count: store.jobs.filter(j => j.kind === 'recovery_pbs').length },
+  { id: 'pve', label: 'PVE nativa', count: null },
+])
 
-const activeJobsCount = ref(0);
-const successCount = ref(0);
-const failureCount = ref(0);
+const filteredJobs = computed(() => {
+  if (activeTab.value === 'all') return store.jobs
+  if (activeTab.value === 'pve') return []
+  return store.jobs.filter(j => j.kind === activeTab.value)
+})
 
-const openNewReplication = () => {
-    selectedEditingJob.value = null;
-    showWizard.value = true;
-};
+const activeCount = computed(() => store.jobs.filter(j => j.is_active !== false).length)
+const runningCount = computed(() =>
+  store.jobs.filter(j => {
+    const cs = (j.current_status || '').toLowerCase()
+    return ['running', 'backing_up', 'restoring', 'registering'].includes(cs)
+  }).length
+)
+const failedCount = computed(() =>
+  store.jobs.filter(j => ['error', 'failed'].includes((j.last_status || '').toLowerCase())).length
+)
 
-const openEditWizard = (job: any) => {
-    selectedEditingJob.value = job;
-    if (activeTab.value === 'syncoid') {
-        showEditModal.value = true;
-    } else {
-        // For other types, potentially use wizard or their own edit modals
-        // Currently fallback to Wizard or nothing if Wizard doesn't support edit
-        // For now, let's assume Wizard is only for Create
-        alert("Modifica non ancora implementata per questo tipo di job");
-    }
-};
+let pollHandle: number | null = null
 
-const closeWizard = () => {
-    showWizard.value = false;
-    selectedEditingJob.value = null;
-};
-
-const closeEditModal = () => {
-    showEditModal.value = false;
-    selectedEditingJob.value = null;
-};
-
-const onJobCreated = () => {
-    closeWizard();
-    refreshJobs();
-};
-
-const onJobSaved = () => {
-  closeEditModal();
-  refreshJobs();
-};
-
-const refreshJobs = () => {
-    if (activeTab.value === 'syncoid' && syncJobsRef.value) syncJobsRef.value.loadJobs();
-    else if (activeTab.value === 'pve' && pveJobsRef.value) pveJobsRef.value.loadJobs();
-    else if (activeTab.value === 'pbs' && pbsJobsRef.value) pbsJobsRef.value.loadJobs();
+async function reload() {
+  await store.fetchAll()
 }
 
 onMounted(() => {
-  // Load summary stats logic here
-});
+  reload()
+  // Light polling ogni 10s per refresh stato
+  pollHandle = window.setInterval(() => store.fetchJobs().catch(() => {}), 10_000)
+})
+onUnmounted(() => {
+  if (pollHandle) window.clearInterval(pollHandle)
+})
+
+function openCreate(k: JobKind) {
+  createKind.value = k
+  editingJob.value = null
+  newMenuOpen.value = false
+  modalVisible.value = true
+}
+
+function onEdit(j: UnifiedJob) {
+  editingJob.value = j
+  createKind.value = j.kind
+  modalVisible.value = true
+}
+
+async function onRun(j: UnifiedJob) {
+  try {
+    if (j.kind === 'syncoid') await syncJobsService.runJob(String(j.id))
+    else if (j.kind === 'backup_pbs') await backupJobsService.runJob(String(j.id))
+    else if (j.kind === 'recovery_pbs') await recoveryJobsService.runJob(String(j.id))
+    setTimeout(reload, 800)
+  } catch (e) {
+    alert('Errore avvio job: ' + ((e as any)?.response?.data?.detail || (e as any)?.message))
+  }
+}
+
+async function onDelete(j: UnifiedJob) {
+  if (!confirm(`Eliminare il job "${j.name}"?`)) return
+  try {
+    if (j.kind === 'syncoid') await syncJobsService.deleteJob(String(j.id))
+    else if (j.kind === 'backup_pbs') await backupJobsService.deleteJob(String(j.id))
+    else if (j.kind === 'recovery_pbs') await recoveryJobsService.deleteJob(String(j.id))
+    await reload()
+  } catch (e) {
+    alert('Errore eliminazione: ' + ((e as any)?.response?.data?.detail || (e as any)?.message))
+  }
+}
+
+function onSaved() {
+  modalVisible.value = false
+  reload()
+}
+
+function closeNewMenu() {
+  newMenuOpen.value = false
+}
+
+// Direttiva minimale per chiudere il dropdown click-outside
+const vClickOutside = {
+  mounted(el: any, binding: any) {
+    el.__co = (e: MouseEvent) => {
+      if (!(el === e.target || el.contains(e.target))) binding.value?.()
+    }
+    document.addEventListener('mousedown', el.__co)
+  },
+  unmounted(el: any) {
+    document.removeEventListener('mousedown', el.__co)
+  },
+}
 </script>
 
 <style scoped>
-.replication-view {
+.repl-view {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: var(--space-5);
+  padding: var(--space-5);
 }
 
-.header-section {
+.repl-head {
   display: flex;
+  align-items: flex-end;
   justify-content: space-between;
+  gap: var(--space-3);
+}
+.repl-head h1 {
+  margin: 0;
+  font-size: 1.4rem;
+  color: var(--color-text-primary);
+}
+.repl-sub {
+  margin: 4px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+}
+
+.repl-new-wrap {
+  position: relative;
+}
+.caret {
+  margin-left: 6px;
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+.repl-new-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 280px;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  z-index: 50;
+}
+.repl-new-menu li {
+  display: flex;
   align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.repl-new-menu li:hover {
+  background: var(--color-bg-hover);
+}
+.repl-new-menu strong {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--color-text-primary);
+}
+.repl-new-menu small {
+  display: block;
+  font-size: 0.74rem;
+  color: var(--color-text-secondary);
+}
+.kind-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.kind-dot.zfs {
+  background: var(--color-zfs);
+}
+.kind-dot.pbs {
+  background: var(--color-pbs);
 }
 
-.subtitle {
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-}
-
-.stats-grid {
+.repl-stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
+  gap: var(--space-3);
 }
-
-.stat-card {
-  background: var(--bg-secondary);
-  padding: 20px;
-  border-radius: 12px;
-  border: 1px solid var(--border-color);
+.repl-stat {
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
-
-.stat-label {
-  font-size: 0.8rem;
-  color: var(--text-secondary);
+.repl-stat-label {
+  font-size: 0.7rem;
+  color: var(--color-text-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 8px;
+  letter-spacing: 0.06em;
 }
-
-.stat-value {
-  font-size: 2rem;
+.repl-stat-val {
+  font-size: 1.6rem;
   font-weight: 700;
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+}
+.text-success {
+  color: var(--color-success-fg) !important;
+}
+.text-warning {
+  color: var(--color-warning-fg) !important;
+}
+.text-danger {
+  color: var(--color-danger-fg) !important;
 }
 
-.tabs {
+.repl-tabs {
   display: flex;
-  gap: 8px;
-  border-bottom: 1px solid var(--border-color);
-  padding-bottom: 0;
+  gap: 2px;
+  border-bottom: 1px solid var(--color-border);
 }
-
-.tab-btn {
-  padding: 12px 24px;
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--text-secondary);
+.repl-tab {
+  background: none;
+  border: 0;
+  padding: var(--space-3) var(--space-4);
+  color: var(--color-text-secondary);
   cursor: pointer;
+  border-bottom: 2px solid transparent;
   font-weight: 600;
-  transition: all 0.2s;
-}
-
-.tab-btn:hover {
-  color: var(--text-primary);
-}
-
-.tab-btn.active {
-  color: var(--accent-primary);
-  border-bottom-color: var(--accent-primary);
-}
-
-.tab-content {
-  background: var(--bg-secondary);
-  border-radius: 12px;
-  border: 1px solid var(--border-color);
-  padding: 0; /* Let children handle padding or provide it if needed */
-  min-height: 400px;
-}
-
-.actions .btn-primary {
-  display: flex;
+  font-size: 0.86rem;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
+}
+.repl-tab:hover {
+  color: var(--color-text-primary);
+}
+.repl-tab.active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+}
+.repl-tab-count {
+  font-size: 0.7rem;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--color-bg-element);
+  color: var(--color-text-secondary);
+}
+.repl-tab.active .repl-tab-count {
+  background: var(--color-primary-dim);
+  color: var(--color-primary);
 }
 
-.actions svg {
-  width: 20px;
-  height: 20px;
+.repl-main {
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
 }
 </style>

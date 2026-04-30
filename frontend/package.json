@@ -1,7 +1,7 @@
 {
   "name": "da-repl",
   "private": true,
-  "version": "3.10.12",
+  "version": "3.11.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
