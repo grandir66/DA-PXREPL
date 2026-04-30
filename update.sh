@@ -71,8 +71,10 @@ fi
 log_info "Controllo versione su GitHub..."
 
 # Scarica version.json remoto
-REMOTE_VERSION_URL="https://raw.githubusercontent.com/grandir66/DA-PXREPL/$BRANCH/version.json"
-REMOTE_VERSION_JSON=$(curl -s "$REMOTE_VERSION_URL" 2>/dev/null || echo "")
+# Cache-buster: raw.githubusercontent.com mette in cache CDN per ~5 minuti.
+# Aggiungiamo timestamp per forzare un fetch fresco dopo un push appena fatto.
+REMOTE_VERSION_URL="https://raw.githubusercontent.com/grandir66/DA-PXREPL/$BRANCH/version.json?t=$(date +%s)"
+REMOTE_VERSION_JSON=$(curl -s -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "$REMOTE_VERSION_URL" 2>/dev/null || echo "")
 
 if [ -n "$REMOTE_VERSION_JSON" ]; then
     REMOTE_VERSION=$(echo "$REMOTE_VERSION_JSON" | grep '"version"' | cut -d'"' -f4)
@@ -220,17 +222,43 @@ else
     log_success "Virtual environment creato e configurato"
 fi
 
-# Frontend rebuild
+# Frontend rebuild — best effort.
+# Se npm manca o la build fallisce (es. Node troppo vecchio per Vite),
+# usiamo il frontend/dist precompilato gia' presente nel repo, che e'
+# stato aggiornato dal git pull.
 echo -e "\n${BOLD}Rebuild Frontend${NC}\n"
 
+frontend_use_prebuilt() {
+    if [ -d "frontend/dist" ] && [ "$(ls -A frontend/dist 2>/dev/null)" ]; then
+        log_success "Uso frontend/dist precompilato dal repo (nessuna build necessaria)"
+        return 0
+    fi
+    log_warn "frontend/dist non disponibile, l'interfaccia potrebbe non aggiornarsi"
+    return 1
+}
+
 if [ -d "frontend" ] && [ -f "frontend/package.json" ]; then
-    cd frontend
-    log_info "Installazione dipendenze npm..."
-    npm install --silent
-    log_info "Compilazione frontend..."
-    npm run build
-    cd ..
-    log_success "Frontend ricompilato"
+    if ! command -v npm >/dev/null 2>&1; then
+        log_warn "npm non installato"
+        frontend_use_prebuilt
+    else
+        pushd frontend >/dev/null
+        log_info "Installazione dipendenze npm..."
+        if ! npm install --silent; then
+            log_warn "npm install ha riportato errori, proseguo comunque"
+        fi
+        log_info "Compilazione frontend..."
+        if npm run build; then
+            log_success "Frontend ricompilato"
+            popd >/dev/null
+        else
+            log_warn "Build npm fallita (Node troppo vecchio? Vite >=7 richiede Node 20+)"
+            popd >/dev/null
+            frontend_use_prebuilt
+        fi
+    fi
+else
+    log_warn "frontend/package.json non trovato, salto rebuild"
 fi
 
 # ============== RESTART ==============
