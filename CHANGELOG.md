@@ -5,6 +5,14 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.12.1] - 2026-04-30
+
+### Correzioni
+- **`update.sh`**: lo script si chiudeva silenziosamente subito dopo "Versione disponibile" senza chiedere conferma e senza aggiornare. Causa: `compare_versions` ritorna 1/2 per indicare maggiore/minore e con `set -e` attivo questo abortiva lo script prima del prompt. Ora il return code viene catturato senza far scattare `set -e`.
+
+### Aggiunte
+- **`update.sh --yes` / `-y`**: modalità non interattiva per esecuzione tramite `pct exec`, cron, pipe. Lo script rileva anche automaticamente l'assenza di TTY su stdin e assume `yes`.
+
 ## [3.12.0] - 2026-04-30
 
 ### Aggiunte

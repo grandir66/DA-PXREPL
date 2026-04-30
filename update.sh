@@ -10,7 +10,33 @@ set -e
 INSTALL_DIR="/opt/dapx-unified"
 DATA_DIR="/var/lib/dapx-unified"
 REPO_URL="https://github.com/grandir66/DA-PXREPL.git"
-BRANCH="${1:-main}"
+BRANCH="main"
+ASSUME_YES=0
+for arg in "$@"; do
+    case "$arg" in
+        -y|--yes|--non-interactive)
+            ASSUME_YES=1
+            ;;
+        -h|--help)
+            echo "Uso: $0 [-y|--yes] [branch]"
+            echo "  -y, --yes   Modalita' non interattiva (assume Y a tutti i prompt)"
+            echo "  branch      Branch git da cui aggiornare (default: main)"
+            exit 0
+            ;;
+        -*)
+            echo "Opzione sconosciuta: $arg" >&2
+            exit 2
+            ;;
+        *)
+            BRANCH="$arg"
+            ;;
+    esac
+done
+
+# Se stdin non e' un terminale (es. pct exec, pipe), forza non-interattivo
+if [ ! -t 0 ]; then
+    ASSUME_YES=1
+fi
 
 # Colori
 RED='\033[0;31m'
@@ -111,14 +137,22 @@ compare_versions() {
 }
 
 echo ""
-compare_versions "$CURRENT_VERSION" "$REMOTE_VERSION"
-COMP_RESULT=$?
+# NB: compare_versions ritorna 1 o 2 per indicare maggiore/minore. Con `set -e`
+# attivo, una funzione che ritorna != 0 fa abortire lo script PRIMA del prompt
+# (bug storico: lo script si chiudeva silenziosamente dopo "Versione disponibile").
+# Catturiamo l'exit code in modo che set -e non scatti.
+COMP_RESULT=0
+compare_versions "$CURRENT_VERSION" "$REMOTE_VERSION" || COMP_RESULT=$?
 
 if [ $COMP_RESULT -eq 0 ]; then
     echo -e "${GREEN}════════════════════════════════════════════════════════${NC}"
     echo -e "${GREEN}  ✓ Sei già all'ultima versione! ($CURRENT_VERSION)     ${NC}"
     echo -e "${GREEN}════════════════════════════════════════════════════════${NC}"
     echo ""
+    if [ "$ASSUME_YES" -eq 1 ]; then
+        echo "Nessun aggiornamento necessario (modalita' non interattiva)."
+        exit 0
+    fi
     read -p "Vuoi forzare la reinstallazione comunque? [y/N]: " force
     if [[ ! "$force" =~ ^[Yy]$ ]]; then
         echo "Nessun aggiornamento necessario."
@@ -126,6 +160,10 @@ if [ $COMP_RESULT -eq 0 ]; then
     fi
 elif [ $COMP_RESULT -eq 1 ]; then
     log_warn "La versione locale ($CURRENT_VERSION) è più recente di quella remota ($REMOTE_VERSION)"
+    if [ "$ASSUME_YES" -eq 1 ]; then
+        log_info "Salto downgrade (modalita' non interattiva)"
+        exit 0
+    fi
     read -p "Vuoi fare downgrade? [y/N]: " downgrade
     if [[ ! "$downgrade" =~ ^[Yy]$ ]]; then
         exit 0
@@ -136,9 +174,13 @@ else
     echo -e "${YELLOW}    $CURRENT_VERSION → $REMOTE_VERSION                  ${NC}"
     echo -e "${YELLOW}════════════════════════════════════════════════════════${NC}"
     echo ""
-    read -p "Procedere con l'aggiornamento? [Y/n]: " proceed
-    if [[ "$proceed" =~ ^[Nn]$ ]]; then
-        exit 0
+    if [ "$ASSUME_YES" -eq 1 ]; then
+        log_info "Procedo con l'aggiornamento (modalita' non interattiva)"
+    else
+        read -p "Procedere con l'aggiornamento? [Y/n]: " proceed
+        if [[ "$proceed" =~ ^[Nn]$ ]]; then
+            exit 0
+        fi
     fi
 fi
 
@@ -293,7 +335,11 @@ else
     
     # Offri rollback
     echo ""
-    read -p "Vuoi ripristinare il backup? [y/N]: " rollback
+    if [ "$ASSUME_YES" -eq 1 ]; then
+        rollback="N"
+    else
+        read -p "Vuoi ripristinare il backup? [y/N]: " rollback
+    fi
     if [[ "$rollback" =~ ^[Yy]$ ]]; then
         if [ -f "$BACKUP_FILE" ]; then
             cp "$BACKUP_FILE" "$DATA_DIR/dapx.db"
