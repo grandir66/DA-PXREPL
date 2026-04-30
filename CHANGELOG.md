@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.12.3] - 2026-04-30
+
+### Correzioni
+- **JobModal · Destinazione**: lo storage ZFS (es. `rpool`) non compariva nella destinazione di una replica. Cause: (1) `pvesm status` ritorna i pool ZFS come `zfspool` mentre il filtro frontend cercava solo `zfs`; (2) i pool ZFS raw non registrati come storage Proxmox (tipico caso di `rpool`) non venivano elencati. Ora il backend aggiunge i pool ZFS via `zpool list` come tipo `zfs`, e il frontend tratta `zfs` e `zfspool` come equivalenti (`backend/routers/nodes.py`, `frontend/src/components/jobs/StoragePicker.vue`).
+
 ## [3.12.2] - 2026-04-30
 
 ### Correzioni

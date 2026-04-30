@@ -1080,7 +1080,7 @@ async def get_node_storages(
                     "used": storage.get("used", ""),
                     "total": storage.get("total", "")
                 })
-        except:
+        except Exception:
             # Fallback: parse text output
             for line in result.stdout.strip().split('\n')[1:]:
                 parts = line.split()
@@ -1093,7 +1093,44 @@ async def get_node_storages(
                         "used": parts[4] if len(parts) > 4 else "N/A",
                         "total": parts[5] if len(parts) > 5 else "N/A"
                     })
-    
+
+    # Aggiunge i pool ZFS raw (es. rpool) che non sono registrati come
+    # storage Proxmox ma sono validi target per syncoid. Idempotente:
+    # se un pool e' gia' presente come storage zfspool con lo stesso nome,
+    # non viene duplicato.
+    existing_names = {s["storage"] for s in storages}
+    pool_result = await ssh_service.execute(
+        hostname=node.hostname,
+        command="zpool list -H -p -o name,size,alloc,free,health 2>/dev/null",
+        port=node.ssh_port,
+        username=node.ssh_user,
+        key_path=node.ssh_key_path,
+        timeout=15
+    )
+    if pool_result.success and pool_result.stdout.strip():
+        for line in pool_result.stdout.strip().split('\n'):
+            parts = line.split('\t') if '\t' in line else line.split()
+            if not parts:
+                continue
+            pool_name = parts[0]
+            if pool_name in existing_names:
+                continue
+            try:
+                size = int(parts[1]) if len(parts) > 1 else 0
+                used = int(parts[2]) if len(parts) > 2 else 0
+                avail = int(parts[3]) if len(parts) > 3 else 0
+            except ValueError:
+                size = used = avail = 0
+            health = parts[4] if len(parts) > 4 else "ONLINE"
+            storages.append({
+                "storage": pool_name,
+                "type": "zfs",
+                "status": "active" if health == "ONLINE" else health.lower(),
+                "avail": avail,
+                "used": used,
+                "total": size,
+            })
+
     return {"storages": storages}
 
 

@@ -97,7 +97,14 @@ const storages = ref<StorageEntry[]>([])
 
 const filtered = computed(() => {
   if (props.type === 'any') return storages.value
-  return storages.value.filter(s => (s.type || '').toLowerCase() === props.type)
+  // PVE espone storage ZFS come `zfspool` (pvesm) o come pool raw `zfs`.
+  // Trattiamoli come equivalenti quando filtriamo per type='zfs'.
+  const wantZfs = props.type === 'zfs'
+  return storages.value.filter(s => {
+    const t = (s.type || '').toLowerCase()
+    if (wantZfs) return t === 'zfs' || t === 'zfspool'
+    return t === props.type
+  })
 })
 
 async function reload() {
