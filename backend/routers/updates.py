@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import subprocess
+import shutil
 import os
 import logging
 import asyncio
@@ -338,34 +339,41 @@ async def run_update_process():
         else:
             log("Warning: venv non trovato, skip dipendenze Python")
         
-        # Ricompila Frontend
-        log("Ricompilazione frontend...")
+        # Frontend: se npm e' disponibile ricompila, altrimenti usa il
+        # dist pre-compilato appena pullato da git (la repo lo include).
+        log("Aggiornamento frontend...")
         frontend_dir = os.path.join(INSTALL_DIR, "frontend")
-        
-        if os.path.exists(os.path.join(frontend_dir, "package.json")):
-            # npm install
-            result = subprocess.run(
-                ["npm", "install", "--silent"],
-                cwd=frontend_dir,
-                capture_output=True,
-                text=True
-            )
-            if result.returncode != 0:
-                log(f"Warning npm install: {result.stderr[:100] if result.stderr else ''}")
-            
-            # npm run build
-            result = subprocess.run(
-                ["npm", "run", "build"],
-                cwd=frontend_dir,
-                capture_output=True,
-                text=True
-            )
-            if result.returncode == 0:
-                log("Frontend ricompilato con successo")
-            else:
-                log(f"Warning build frontend: {result.stderr[:200] if result.stderr else 'errore build'}")
+        dist_dir = os.path.join(frontend_dir, "dist")
+        npm_path = shutil.which("npm")
+
+        if npm_path and os.path.exists(os.path.join(frontend_dir, "package.json")):
+            try:
+                result = subprocess.run(
+                    [npm_path, "install", "--silent"],
+                    cwd=frontend_dir,
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode != 0:
+                    log(f"Warning npm install: {result.stderr[:100] if result.stderr else ''}")
+
+                result = subprocess.run(
+                    [npm_path, "run", "build"],
+                    cwd=frontend_dir,
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode == 0:
+                    log("Frontend ricompilato con successo")
+                else:
+                    log(f"Warning build frontend: {result.stderr[:200] if result.stderr else 'errore build'}")
+            except FileNotFoundError as e:
+                log(f"Warning: npm non eseguibile ({e}). Uso dist pre-compilato.")
         else:
-            log("Warning: frontend/package.json non trovato")
+            if os.path.isdir(dist_dir) and os.listdir(dist_dir):
+                log("npm non installato: uso frontend/dist pre-compilato dal repo (OK)")
+            else:
+                log("Warning: npm assente e dist non disponibile — UI potrebbe non aggiornarsi")
         
         # Ricarica e riavvia servizio
         log("Ricarica configurazione systemd...")
