@@ -5,6 +5,15 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.11.3] - 2026-04-30
+
+### Correzioni
+- Allineato `version.json` di root (rimasto a `3.10.17`) alla versione effettiva
+  del backend/frontend: ora `update.sh` rileva correttamente le nuove release.
+- Sincronizzato l'endpoint `/api/health` (`backend/main.py`) che restituiva una
+  versione hardcoded obsoleta (`3.10.12`).
+
+
 ### Aggiunte
 - **Modulo unificato Repliche & Backup** (`frontend/src/views/Replication.vue`):
   hub VM-centrico con tab (Tutti / Repliche ZFS / Backup PBS / Replica PBS / PVE
