@@ -96,15 +96,32 @@ fi
 # Fetch versione remota
 log_info "Controllo versione su GitHub..."
 
-# Scarica version.json remoto
-# Cache-buster: raw.githubusercontent.com mette in cache CDN per ~5 minuti.
-# Aggiungiamo timestamp per forzare un fetch fresco dopo un push appena fatto.
-REMOTE_VERSION_URL="https://raw.githubusercontent.com/grandir66/DA-PXREPL/$BRANCH/version.json?t=$(date +%s)"
-REMOTE_VERSION_JSON=$(curl -s -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "$REMOTE_VERSION_URL" 2>/dev/null || echo "")
+# Sorgente preferita: GitHub Releases API (sempre fresca, no CDN cache).
+# Fallback: version.json su raw.githubusercontent.com (con cache-buster) — il
+# CDN ha TTL ~5min e ignora spesso Cache-Control, quindi puo' restituire
+# valori vecchi. Per questo l'API releases e' la prima scelta.
+REMOTE_VERSION=""
+REMOTE_DATE=""
 
-if [ -n "$REMOTE_VERSION_JSON" ]; then
-    REMOTE_VERSION=$(echo "$REMOTE_VERSION_JSON" | grep '"version"' | cut -d'"' -f4)
-    REMOTE_DATE=$(echo "$REMOTE_VERSION_JSON" | grep '"build_date"' | cut -d'"' -f4)
+RELEASE_API_URL="https://api.github.com/repos/grandir66/DA-PXREPL/releases/latest"
+RELEASE_JSON=$(curl -s -H 'Accept: application/vnd.github+json' "$RELEASE_API_URL" 2>/dev/null || echo "")
+if [ -n "$RELEASE_JSON" ]; then
+    # Estrae tag_name (es. "v3.12.1") e rimuove la "v" iniziale
+    REMOTE_VERSION=$(echo "$RELEASE_JSON" | grep -m1 '"tag_name"' | cut -d'"' -f4 | sed 's/^v//')
+    REMOTE_DATE=$(echo "$RELEASE_JSON" | grep -m1 '"published_at"' | cut -d'"' -f4 | cut -dT -f1)
+fi
+
+# Fallback su raw version.json se l'API non ha risposto o non ha trovato release
+if [ -z "$REMOTE_VERSION" ]; then
+    REMOTE_VERSION_URL="https://raw.githubusercontent.com/grandir66/DA-PXREPL/$BRANCH/version.json?t=$(date +%s)"
+    REMOTE_VERSION_JSON=$(curl -s -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "$REMOTE_VERSION_URL" 2>/dev/null || echo "")
+    if [ -n "$REMOTE_VERSION_JSON" ]; then
+        REMOTE_VERSION=$(echo "$REMOTE_VERSION_JSON" | grep '"version"' | cut -d'"' -f4)
+        REMOTE_DATE=$(echo "$REMOTE_VERSION_JSON" | grep '"build_date"' | cut -d'"' -f4)
+    fi
+fi
+
+if [ -n "$REMOTE_VERSION" ]; then
     log_success "Versione disponibile: ${BOLD}$REMOTE_VERSION${NC} ($REMOTE_DATE)"
 else
     log_error "Impossibile recuperare versione remota"

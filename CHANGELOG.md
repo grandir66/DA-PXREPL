@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.12.2] - 2026-04-30
+
+### Correzioni
+- **`update.sh`**: il CDN di `raw.githubusercontent.com` ignorava `Cache-Control` e cache-buster query, restituendo per ~5 minuti dopo un push una versione obsoleta (es. `3.12.0` mentre la release era `3.12.1`). Ora lo script usa **GitHub Releases API** (`/releases/latest`) come sorgente primaria — sempre fresca — con il raw `version.json` come fallback.
+
 ## [3.12.1] - 2026-04-30
 
 ### Correzioni
