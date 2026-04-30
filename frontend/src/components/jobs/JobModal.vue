@@ -404,15 +404,24 @@ interface FormState {
   notify_subject: string | null
 }
 
+interface PresetVm {
+  vmid: number | string
+  name?: string | null
+  type?: 'qemu' | 'lxc' | string
+  node_id?: number | string
+}
+
 const props = withDefaults(
   defineProps<{
     visible: boolean
     mode?: JobKind             // create mode iniziale
     job?: UnifiedJob | null    // se presente -> edit
+    presetVm?: PresetVm | null // pre-compila step "Origine" da una VM
   }>(),
   {
     mode: 'syncoid',
     job: null,
+    presetVm: null,
   }
 )
 const emit = defineEmits<{
@@ -541,6 +550,12 @@ watch(
       form.value = hydrateFromJob(props.job)
     } else {
       form.value = emptyForm(props.mode)
+      if (props.presetVm && props.presetVm.node_id != null && props.presetVm.vmid != null) {
+        form.value.source_node_id = Number(props.presetVm.node_id) as any
+        form.value.vm_id = Number(props.presetVm.vmid) as any
+        form.value.vm_name = props.presetVm.name || null
+        form.value.vm_type = (props.presetVm.type as any) || 'qemu'
+      }
     }
     if (form.value.source_node_id) reloadVMs()
     if (form.value.vm_id && form.value.source_node_id) loadDisks()
@@ -627,11 +642,12 @@ async function reloadVMs() {
   try {
     await store.fetchNodes()
     const r = await vmsService.getNodeVMs(form.value.source_node_id)
-    // sostituisci/integra le VM del nodo nello store
-    const others = store.vms.filter(
-      v => Number(v.node_id || 0) !== Number(form.value.source_node_id)
-    )
-    store.$patch({ vms: [...others, ...(r.data as VM[])] })
+    // L'endpoint /nodes/{id}/vms NON include node_id nel payload — va aggiunto
+    // qui altrimenti vmsByNode() del store le scarta tutte (filtra per node_id).
+    const nodeId = Number(form.value.source_node_id)
+    const fresh = (r.data as VM[]).map(v => ({ ...v, node_id: nodeId }))
+    const others = store.vms.filter(v => Number(v.node_id || 0) !== nodeId)
+    store.$patch({ vms: [...others, ...fresh] })
   } catch (e) {
     // ignore: il filtro mostrerà semplicemente lista vuota
   }

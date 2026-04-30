@@ -1,7 +1,7 @@
 <template>
     <div class="host-backup-page">
         <div class="page-header">
-            <h1 class="page-title">📦 Host Config Backup</h1>
+            <h1 class="page-title">Host Config Backup</h1>
             <p class="page-subtitle">Backup configurazione host Proxmox PVE e PBS</p>
         </div>
 
@@ -17,7 +17,7 @@
         <!-- Create Schedule Form -->
         <div class="card mb-6">
             <div class="card-header collapse-header" @click="showCreateForm = !showCreateForm">
-                <h3>➕ Crea Job Host Backup Schedulato</h3>
+                <h3>Crea Job Host Backup Schedulato</h3>
                 <span>{{ showCreateForm ? '▲' : '▼' }}</span>
             </div>
             
@@ -96,7 +96,7 @@
         <!-- Scheduled Jobs List -->
         <div class="card mb-6">
             <div class="card-header">
-                <h3>📋 Job Host Backup Configurati</h3>
+                <h3>Job Host Backup Configurati</h3>
                 <button class="btn btn-sm btn-secondary" @click="loadJobs">🔄 Aggiorna</button>
             </div>
             <div class="card-body p-0">
@@ -148,7 +148,7 @@
         <!-- Manual Backup Section -->
         <div class="card">
             <div class="card-header">
-                <h3>⚡ Backup Manuale Rapido</h3>
+                <h3>Backup Manuale Rapido</h3>
             </div>
             <div class="card-body">
                 <div style="display: flex; gap: 12px; align-items: flex-end;">
@@ -171,7 +171,7 @@
         <!-- Backup Files List -->
         <div class="card mb-6">
             <div class="card-header">
-                <h3>📁 Backup Esistenti</h3>
+                <h3>Backup Esistenti</h3>
                 <div style="display: flex; gap: 12px; align-items: center;">
                     <select v-model="backupListNodeId" class="form-input" style="width: 200px;" @change="loadBackups">
                         <option :value="null">-- Nodo --</option>

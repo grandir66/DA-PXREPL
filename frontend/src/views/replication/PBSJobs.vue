@@ -1,7 +1,7 @@
 <template>
   <div class="recovery-jobs-page">
     <div class="page-header" v-if="!embedded">
-        <h1 class="page-title">🔄 Replica via PBS</h1>
+        <h1 class="page-title">Replica via PBS</h1>
         <p class="page-subtitle">Sincronizzazione VM tra cluster tramite Proxmox Backup Server</p>
     </div>
 

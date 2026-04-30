@@ -1,7 +1,7 @@
 <template>
   <div class="nodes-page">
     <div class="page-header">
-        <h1 class="page-title">🖥️ Nodi Proxmox</h1>
+        <h1 class="page-title">Nodi Proxmox</h1>
         <p class="page-subtitle">Gestione e monitoraggio nodi del cluster</p>
         <div style="display: flex; align-items: center; gap: 12px; margin-top: 12px;">
             <button class="btn btn-primary btn-sm" @click="openModal">
@@ -119,7 +119,7 @@
     <div v-if="showDetailsModal && selectedNode" class="modal-overlay" @click.self="closeDetailsModal">
         <div class="modal-content large">
             <div class="modal-header">
-                <h3>📊 Dettagli Nodo: {{ selectedNode.name }}</h3>
+                <h3>Dettagli Nodo: {{ selectedNode.name }}</h3>
                 <div class="header-actions" style="display:flex; gap:10px;">
                     <button class="btn btn-warning btn-sm" @click="runDiagnosticStart" :disabled="diagnosticLoading">
                         {{ diagnosticLoading ? '⏳ Esecuzione...' : '🩺 Diagnostic' }}
@@ -448,7 +448,7 @@
     <div v-if="showDiagnosticModal" class="modal-overlay" style="z-index: 1005;" @click.self="showDiagnosticModal = false">
         <div class="modal-content large" style="max-width: 800px;">
             <div class="modal-header">
-                <h3>🩺 Risultati Diagnostica: {{ selectedNode?.name }}</h3>
+                <h3>Risultati Diagnostica: {{ selectedNode?.name }}</h3>
                 <button class="close-btn" @click="showDiagnosticModal = false">&times;</button>
             </div>
             <div class="modal-body">

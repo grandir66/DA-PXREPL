@@ -3,7 +3,7 @@
 <div class="load-balancer-view">
     <div class="page-header">
         <div>
-            <h1 class="page-title">⚖️ Cluster Load Balancer</h1>
+            <h1 class="page-title">Cluster Load Balancer</h1>
             <p class="page-subtitle">Powered by ProxLB</p>
         </div>
         <div class="actions">
@@ -322,7 +322,7 @@
         <!-- HA Manager Tab -->
         <div v-if="activeTab === 'ha'" class="ha-panel">
             <div class="section-header">
-                <h3>🛡️ High Availability Manager</h3>
+                <h3>High Availability Manager</h3>
                 <button class="btn btn-sm btn-primary" @click="loadHAData" :disabled="loading">
                     🔄 Refresh
                 </button>
@@ -554,7 +554,7 @@
         <!-- Cluster Tab -->
         <div v-if="activeTab === 'cluster'" class="cluster-panel">
             <div class="section-header">
-                <h3>🖥️ Cluster Node Management</h3>
+                <h3>Cluster Node Management</h3>
                 <button class="btn btn-sm btn-primary" @click="loadClusterData" :disabled="loading">
                     🔄 Refresh
                 </button>
@@ -680,7 +680,7 @@
 
             <!-- Balancing Parameters -->
             <div class="config-section">
-                <h3 class="section-title">⚖️ Parametri Bilanciamento</h3>
+                <h3 class="section-title">Parametri Bilanciamento</h3>
                 <div class="form-grid">
                     <div class="form-group checkbox">
                         <label><input type="checkbox" v-model="config.balancing.enable"> Abilita Bilanciamento Automatico</label>
@@ -725,7 +725,7 @@
 
             <!-- Migration Options -->
             <div class="config-section">
-                <h3 class="section-title">🔄 Opzioni Migrazione</h3>
+                <h3 class="section-title">Opzioni Migrazione</h3>
                 <div class="form-grid">
                     <div class="form-group checkbox">
                         <label><input type="checkbox" v-model="config.balancing.live"> Migrazione Live (senza downtime)</label>
@@ -753,7 +753,7 @@
 
             <!-- Affinity / Pinning -->
             <div class="config-section">
-                <h3 class="section-title">🔗 Regole Affinità e Pinning</h3>
+                <h3 class="section-title">Regole Affinità e Pinning</h3>
                 <div class="form-grid">
                     <div class="form-group checkbox">
                         <label><input type="checkbox" v-model="config.balancing.enforce_affinity"> Forza regole di affinità</label>
@@ -775,7 +775,7 @@
 
             <!-- Node Management -->
             <div class="config-section">
-                <h3 class="section-title">🖥️ Gestione Nodi</h3>
+                <h3 class="section-title">Gestione Nodi</h3>
                 
                 <div class="subsection">
                     <h4>Nodi in Manutenzione</h4>
@@ -813,7 +813,7 @@
 
             <!-- Guest Management -->
             <div class="config-section">
-                <h3 class="section-title">🖥️ Gestione Guest (VM/CT)</h3>
+                <h3 class="section-title">Gestione Guest (VM/CT)</h3>
                 
                 <div class="guest-management-grid">
                     <!-- Migratable Guests -->

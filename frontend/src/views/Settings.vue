@@ -1,7 +1,7 @@
 <template>
   <div class="settings-page">
     <div class="page-header">
-        <h1 class="page-title">⚙️ Impostazioni</h1>
+        <h1 class="page-title">Impostazioni</h1>
         <p class="page-subtitle">Configurazione sistema, utenti e sicurezza</p>
     </div>
 
@@ -29,7 +29,7 @@
         <div class="settings-content">
             <!-- GENERAL TAB -->
             <div v-if="activeTab === 'general'" class="card">
-                <h3>🔐 Autenticazione Sistema</h3>
+                <h3>Autenticazione Sistema</h3>
                 <div class="card-body" v-if="authConfig">
                      <div class="form-group">
                          <label>Metodo Autenticazione</label>
@@ -45,7 +45,7 @@
             <!-- NOTIFICATIONS TAB -->
             <div v-if="activeTab === 'notifications'" class="card">
                 <div class="card-header">
-                    <h3>🔔 Configurazione Notifiche</h3>
+                    <h3>Configurazione Notifiche</h3>
                     <div style="display: flex; gap: 12px; align-items: center;">
                         <button class="btn btn-secondary btn-sm" @click="testNotification('email')">Test Email</button>
                         <button class="btn btn-primary btn-sm" @click="saveNotifications" :disabled="saving">

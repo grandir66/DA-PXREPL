@@ -1,7 +1,7 @@
 <template>
   <div class="recovery-jobs-page">
     <div class="page-header">
-        <h1 class="page-title">🔄 Replica via PBS</h1>
+        <h1 class="page-title">Replica via PBS</h1>
         <p class="page-subtitle">Sincronizzazione VM tra cluster tramite Proxmox Backup Server</p>
         <div style="display: flex; align-items: center; gap: 12px; margin-top: 12px;">
             <button class="btn btn-secondary btn-sm" @click="loadJobs" :disabled="loading">

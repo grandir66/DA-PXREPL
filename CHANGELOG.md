@@ -5,6 +5,67 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.12.0] - 2026-04-30
+
+### Aggiunte
+- **Sistema notifiche globale** (`stores/toast.ts` + `components/ui/ToastContainer.vue`):
+  toast non bloccanti per success/error/warning/info, sostituiscono i
+  blocking `alert()` nativi. Override globale di `window.alert` in
+  `main.ts` instrada automaticamente i `alert()` legacy verso i toast
+  senza modificare le viste esistenti.
+- **Dialog di conferma promise-based** (`stores/confirm.ts` +
+  `components/ui/ConfirmDialog.vue`): per nuove viste, `confirm()`
+  asincrono con titolo/messaggio/danger; quello nativo resta come
+  fallback dove ancora usato.
+- **Libreria UI condivisa** in `components/ui/`:
+  - `Icon.vue` — set Heroicons inline (50+ icone), wrapper unico per
+    sostituire gli SVG ad-hoc sparsi nelle viste.
+  - `PageHeader.vue` — header coerente (titolo, sottotitolo, icona,
+    slot azioni).
+  - `StatusPill.vue` — pill di stato unificata
+    (success/danger/warning/info/zfs/pbs/neutral) con dot/icon/pulse.
+  - `EmptyState.vue`, `LoadingState.vue`, `ErrorState.vue` —
+    placeholder coerenti per le tabelle e le sezioni dati.
+  - `DataTable.vue` — tabella enterprise riusabile: sticky header,
+    sortable per colonna, filtro di testo, paginazione, colonne
+    `numeric/mono`, slot `cell-<key>` e `actions`.
+
+### Modifiche
+- **`MainLayout.vue` ridisegnato**: sidebar 240px piu' densa, navigazione
+  raggruppata (Operativo / Cluster / Repliche & Backup / Sistema),
+  icone via componente `Icon`, footer utente con chip + logout. I
+  componenti globali `ToastContainer` e `ConfirmDialog` sono montati
+  qui per essere disponibili in tutte le viste.
+- **`Dashboard.vue` riscritta**: header standardizzato, KPI grid con
+  icona tonale (zfs/pbs/info/neutral), tabella metriche con barre di
+  progresso ed empty/loading state coerenti.
+- **Pulizia emoji nei titoli** delle pagine principali (Nodi, VM, Logs,
+  Cluster, Load Balancer, Host Backup, Updates, Config Backup,
+  Settings, BackupJobs/RecoveryJobs/MigrationJobs/SyncJobs).
+- **`main.ts`**: monta Pinia, intercetta `window.alert` e lo instrada
+  al toast store (con fallback nativo se l'override fallisce).
+
+### Note
+- Le viste pesanti (LoadBalancer ~3.3k LOC, Cluster ~1.7k, Nodes ~1.1k)
+  beneficiano automaticamente del nuovo `alert→toast` ma non sono state
+  riscritte: il refactor incrementale puo' procedere usando i componenti
+  in `components/ui/` (DataTable, PageHeader, StatusPill).
+
+## [3.11.4] - 2026-04-30
+
+### Correzioni
+- **JobModal**: dopo aver scelto l'host sorgente, le VM ora compaiono
+  correttamente. L'endpoint `/nodes/{id}/vms` non includeva `node_id` nel
+  payload e il getter `vmsByNode()` dello store le filtrava tutte fuori
+  (`frontend/src/components/jobs/JobModal.vue`).
+- **VMs view**: il pulsante "Configura Replica" sulla riga della VM ora
+  apre il nuovo `JobModal` unificato (con preset della VM) invece del
+  vecchio `ReplicationWizard` (`frontend/src/views/VMs.vue`).
+
+### Modifiche
+- Aggiunta prop `presetVm` a `JobModal` per pre-compilare lo step
+  "Origine" quando il modale viene aperto da una vista VM-centrica.
+
 ## [3.11.3] - 2026-04-30
 
 ### Correzioni

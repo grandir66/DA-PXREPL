@@ -1,7 +1,7 @@
 <template>
   <div class="migration-jobs-page">
     <div class="page-header">
-        <h1 class="page-title">🚚 Migrazioni</h1>
+        <h1 class="page-title">Migrazioni</h1>
         <p class="page-subtitle">Spostamento e copia VM tra i nodi</p>
         <div style="display: flex; align-items: center; gap: 12px; margin-top: 12px;">
             <button class="btn btn-secondary btn-sm" @click="loadJobs" :disabled="loading">

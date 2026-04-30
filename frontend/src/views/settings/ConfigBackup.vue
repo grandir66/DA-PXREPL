@@ -1,14 +1,14 @@
 <template>
     <div class="config-backup-page">
         <div class="page-header">
-            <h2>💾 Backup & Migrazione Configurazione</h2>
+            <h2>Backup & Migrazione Configurazione</h2>
             <p class="text-secondary">Esporta/importa configurazione completa per backup o migrazione tra macchine</p>
         </div>
 
         <!-- System Info -->
         <div class="card info-card">
             <div class="card-header">
-                <h3>📊 Stato Sistema</h3>
+                <h3>Stato Sistema</h3>
                 <button class="btn btn-secondary btn-sm" @click="loadSystemInfo" :disabled="loading">
                     🔄 Aggiorna
                 </button>
@@ -67,7 +67,7 @@
         <!-- Export Section -->
         <div class="card export-card">
             <div class="card-header">
-                <h3>📤 Esporta Configurazione</h3>
+                <h3>Esporta Configurazione</h3>
             </div>
             <div class="card-body">
                 <p class="mb-4">Crea un backup completo da scaricare e importare su un'altra installazione.</p>
@@ -102,7 +102,7 @@
         <!-- Import Section -->
         <div class="card import-card">
             <div class="card-header">
-                <h3>📥 Importa Configurazione</h3>
+                <h3>Importa Configurazione</h3>
             </div>
             <div class="card-body">
                 <p class="mb-4">Carica un file di backup per ripristinare la configurazione.</p>
@@ -190,7 +190,7 @@
         <!-- Available Backups -->
         <div class="card backups-card">
             <div class="card-header">
-                <h3>📋 Backup Disponibili</h3>
+                <h3>Backup Disponibili</h3>
                 <button class="btn btn-secondary btn-sm" @click="loadBackups">🔄 Aggiorna</button>
             </div>
             <div class="card-body">

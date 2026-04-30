@@ -1,6 +1,6 @@
 <template>
     <div class="user-profile">
-        <h3>👤 Il Tuo Profilo</h3>
+        <h3>Il Tuo Profilo</h3>
         
         <div class="card-section mt-4">
             <h4>Cambia Password</h4>

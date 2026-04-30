@@ -2,7 +2,7 @@
   <div class="cluster-page">
     <div class="page-header">
       <div>
-        <h1 class="page-title">🖥️ Cluster Management</h1>
+        <h1 class="page-title">Cluster Management</h1>
         <p class="page-subtitle">Manage Proxmox Cluster, HA, and Configuration</p>
       </div>
       <div class="actions">
@@ -597,8 +597,7 @@
       <!-- DANGEROUS OPS TAB -->
       <div v-if="activeTab === 'dangerous'" class="dangerous-panel">
           <div class="alert alert-danger mb-6 border-l-4 border-red-600">
-              <h3 class="text-red-500 font-bold text-lg flex items-center gap-2">
-                  ⚠️ DANGER ZONE
+              <h3 class="text-red-500 font-bold text-lg flex items-center gap-2">DANGER ZONE
               </h3>
               <p class="mt-2 text-primary">
                   The operations in this section are <strong>destructive</strong>. 

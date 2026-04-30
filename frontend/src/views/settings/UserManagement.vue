@@ -1,7 +1,7 @@
 <template>
     <div class="user-management">
         <div class="header-actions">
-            <h3>👥 Gestione Utenti</h3>
+            <h3>Gestione Utenti</h3>
             <button class="btn btn-primary btn-sm" @click="openCreateModal">
                 + Nuovo Utente
             </button>

@@ -1,7 +1,7 @@
 <template>
   <div class="vms-page">
     <div class="page-header">
-        <h1 class="page-title">🖥️ Virtual Machines</h1>
+        <h1 class="page-title">Virtual Machines</h1>
         <p class="page-subtitle">Gestione risorse, lifecycle, snapshot e backup</p>
         <div class="header-actions">
             <button class="btn btn-secondary btn-sm" @click="loadVMs(false)" :disabled="loading">
@@ -334,7 +334,7 @@
         <div v-else class="restore-wizard">
             <!-- Restore Wizard -->
             <div class="mb-4 pb-2 border-b border-gray-700 flex justify-between items-center">
-                <h3>🔄 {{ zfsCloneMode ? 'ZFS Clone Wizard' : 'Restore Wizard' }}</h3>
+                <h3>{{ zfsCloneMode ? 'ZFS Clone Wizard' : 'Restore Wizard' }}</h3>
                 <button class="btn-xs btn-secondary" @click="restoreMode = false; zfsCloneMode = false; showBackupModal = zfsCloneMode ? false : true">Back</button>
             </div>
             
@@ -555,12 +555,12 @@
         </template>
     </ModalDialog>
 
-    <!-- Replication Wizard -->
-    <ReplicationWizard 
-      v-if="showReplicationWizard" 
-      :initial-vm="selectedReplicationVM"
-      @close="showReplicationWizard = false" 
-      @created="showReplicationWizard = false; loadVMs()" 
+    <!-- Modale unificato VM-centrico (sostituisce il vecchio ReplicationWizard) -->
+    <JobModal
+      v-model:visible="showReplicationWizard"
+      mode="syncoid"
+      :preset-vm="selectedReplicationVM"
+      @saved="onReplicationSaved"
     />
 
   </div>
@@ -572,7 +572,7 @@ import { useRoute } from 'vue-router';
 import vmsService, { type VM, type Snapshot, type Backup, type SanoidConfig, type ZFSSnapshot } from '../services/vms';
 import nodesService from '../services/nodes';
 import ModalDialog from '../components/ModalDialog.vue';
-import ReplicationWizard from './replication/ReplicationWizard.vue';
+import JobModal from '../components/jobs/JobModal.vue';
 
 // State
 const vms = ref<VM[]>([]);
@@ -657,8 +657,18 @@ const showReplicationWizard = ref(false);
 const selectedReplicationVM = ref<any>(null);
 
 const openReplicationWizard = (vm: VM) => {
-    selectedReplicationVM.value = vm;
+    selectedReplicationVM.value = {
+        vmid: vm.vmid,
+        name: vm.name,
+        type: vm.type,
+        node_id: vm.node_id,
+    };
     showReplicationWizard.value = true;
+};
+
+const onReplicationSaved = () => {
+    showReplicationWizard.value = false;
+    loadVMs();
 };
 
 // Nodes and Storages for Restore Wizard

@@ -8,7 +8,7 @@
         <!-- Stato Versione -->
         <div class="card version-card">
             <div class="card-header">
-                <h3>📦 Versione Installata</h3>
+                <h3>Versione Installata</h3>
                 <button class="btn btn-secondary" @click="checkForUpdates" :disabled="checking">
                     {{ checking ? 'Controllo...' : '🔄 Verifica Aggiornamenti' }}
                 </button>
@@ -37,7 +37,7 @@
         <!-- Changelog -->
         <div v-if="updateInfo?.changelog" class="card changelog-card">
             <div class="card-header">
-                <h3>📝 Note di Rilascio</h3>
+                <h3>Note di Rilascio</h3>
                 <a v-if="updateInfo?.release_url" :href="updateInfo.release_url" target="_blank" class="btn btn-sm">
                     🔗 Vedi su GitHub
                 </a>
@@ -53,7 +53,7 @@
         <!-- Azione Aggiornamento -->
         <div v-if="updateInfo?.update_available" class="card action-card">
             <div class="card-header">
-                <h3>🚀 Esegui Aggiornamento</h3>
+                <h3>Esegui Aggiornamento</h3>
             </div>
             <div class="card-body">
                 <div class="warning-box">
@@ -77,7 +77,7 @@
         <!-- Log Aggiornamento -->
         <div v-if="updateStatus && (updateStatus.in_progress || updateStatus.log.length > 0)" class="card log-card">
             <div class="card-header">
-                <h3>📋 Log Aggiornamento</h3>
+                <h3>Log Aggiornamento</h3>
                 <span v-if="updateStatus.in_progress" class="badge badge-warning">In corso...</span>
                 <span v-else-if="updateStatus.error" class="badge badge-danger">Errore</span>
                 <span v-else-if="updateStatus.success" class="badge badge-success">Completato</span>
@@ -97,7 +97,7 @@
         <!-- Alternative: Script da terminale -->
         <div class="card terminal-card">
             <div class="card-header">
-                <h3>💻 Aggiornamento da Terminale</h3>
+                <h3>Aggiornamento da Terminale</h3>
             </div>
             <div class="card-body">
                 <p>In alternativa, puoi eseguire l'aggiornamento direttamente dal terminale:</p>

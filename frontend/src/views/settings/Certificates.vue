@@ -3,7 +3,7 @@
         <!-- Server Configuration Section -->
         <div class="card-section mb-6 settings-header-card">
             <div class="header-row">
-                 <h3 class="flex items-center gap-2">⚙️ Configurazione Server</h3>
+                 <h3 class="flex items-center gap-2">Configurazione Server</h3>
                  <label class="checkbox-label">
                     <input type="checkbox" v-model="serverConfig.ssl_enabled"> Abilita HTTPS
                 </label>
@@ -28,7 +28,7 @@
         </div>
 
         <div class="header mb-4">
-            <h3>🔒 Stato SSL/HTTPS</h3>
+            <h3>Stato SSL/HTTPS</h3>
              <div class="status-indicators">
                 <div class="indicator">
                     HTTPS: <span :class="status?.ssl_enabled ? 'text-success' : 'text-danger'">{{ status?.ssl_enabled ? '✅ Attivo' : '❌ Disabilitato' }}</span>

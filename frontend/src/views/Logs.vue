@@ -1,7 +1,7 @@
 <template>
   <div class="logs-page">
     <div class="page-header">
-        <h1 class="page-title">📜 Logs</h1>
+        <h1 class="page-title">Logs</h1>
         <p class="page-subtitle">Registro eventi, backup e sistema</p>
         
         <div class="tabs-header">
