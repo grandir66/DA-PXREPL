@@ -59,7 +59,7 @@
         <small>Se compilato, sovrascrive completamente il nome (ignora il suffisso).</small>
       </div>
 
-      <div class="field field-full">
+      <div class="field field-full" v-if="!hideStorage">
         <label>Storage destinazione (per i dischi)</label>
         <StoragePicker
           :model-value="modelValue?.dest_storage ?? null"
@@ -145,11 +145,16 @@ const props = withDefaults(
     storageType?: 'zfs' | 'pbs' | 'dir' | 'lvm' | 'any'
     showStartVm?: boolean
     showOverwrite?: boolean
+    /** Nasconde il selettore "Storage destinazione" — usato quando lo
+     *  storage e' gia' definito a un livello superiore (es. dest_pool
+     *  in un job Syncoid). */
+    hideStorage?: boolean
   }>(),
   {
     storageType: 'any',
     showStartVm: false,
     showOverwrite: false,
+    hideStorage: false,
   }
 )
 

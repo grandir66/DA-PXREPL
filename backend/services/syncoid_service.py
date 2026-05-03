@@ -230,6 +230,39 @@ class SyncoidService:
                 endpoints=remote_endpoints,
             )
 
+        # Pre-flight: verifica che il dataset sorgente esista realmente
+        # sul nodo executor (o sul source remoto). Se manca, ritorna un
+        # errore parlante invece di scaricare il problema su syncoid che
+        # produce un messaggio criptico ("cannot open '<ds>': dataset
+        # does not exist").
+        precheck_host = source_host or executor_host
+        precheck_port = source_port if source_host else executor_port
+        precheck_user = source_user if source_host else executor_user
+        precheck = await ssh_service.execute(
+            hostname=precheck_host,
+            command=f"zfs list -H -o name {source_dataset} 2>&1",
+            port=precheck_port,
+            username=precheck_user,
+            key_path=executor_key,
+            timeout=15,
+        )
+        if not precheck.success or source_dataset not in (precheck.stdout or ""):
+            err_text = (precheck.stdout or precheck.stderr or "").strip()
+            msg = (
+                f"Dataset sorgente '{source_dataset}' non trovato su "
+                f"{precheck_host}. Verifica che lo storage Proxmox punti "
+                f"al pool ZFS corretto. Output: {err_text[:200]}"
+            )
+            logger.warning(msg)
+            return {
+                "success": False,
+                "output": "",
+                "error": msg,
+                "duration": 0,
+                "transferred": None,
+                "command": cmd,
+            }
+
         logger.info(f"Esecuzione syncoid: {cmd}")
 
         # Esegui comando

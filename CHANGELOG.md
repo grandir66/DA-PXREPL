@@ -5,6 +5,27 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.16.1] - 2026-05-03
+
+### Correzioni
+
+- **Wizard creazione job: storage destinazione non più duplicato**.
+  Allo step "Destinazione" il pool ZFS (`dest_pool`) appariva, e poi
+  allo step "Registrazione VM" appariva di nuovo lo "Storage destinazione
+  (per i dischi)" con praticamente la stessa funzione. Ora per i job
+  Syncoid il secondo selettore è nascosto e il backend usa
+  automaticamente `dest_pool` come storage Proxmox di destinazione (lo
+  step Registrazione VM mostra solo i campi che cambiano: VMID, nome,
+  bridge/VLAN, force-cpu).
+- **Errore "dataset does not exist" più parlante**.
+  `syncoid_service.run_sync` ora fa un **pre-flight check**: prima di
+  lanciare syncoid verifica che `source_dataset` esista realmente sul
+  nodo executor. Se non esiste, l'errore restituito è
+  *"Dataset sorgente 'dev/pve/vm-686-disk-0' non trovato su <host>.
+  Verifica che lo storage Proxmox punti al pool ZFS corretto"*
+  invece del vecchio output criptico di syncoid (che parlava di lz4 +
+  ZFS resume + dataset mancante in mezzo a un blob di stderr).
+
 ## [3.16.0] - 2026-05-03
 
 ### Coerenza UI (round 2)

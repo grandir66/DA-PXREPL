@@ -221,6 +221,7 @@
             :source-vmid="form.vm_id"
             :source-vm-name="form.vm_name"
             :storage-type="form.kind === 'syncoid' ? 'zfs' : 'any'"
+            :hide-storage="form.kind === 'syncoid'"
             :show-start-vm="form.kind === 'recovery_pbs'"
             :show-overwrite="form.kind === 'recovery_pbs'"
           />
@@ -706,6 +707,10 @@ function humanBytes(v: any) {
 }
 
 function buildSyncoidPayload() {
+  // Per syncoid, dest_storage non viene piu' chiesto separatamente
+  // (era duplicazione di dest_pool). Usiamo dest_pool come storage
+  // Proxmox di destinazione se l'utente non ne ha specificato uno.
+  const destStorage = form.value.registration.dest_storage || form.value.dest_pool
   return {
     vm_id: form.value.vm_id,
     vm_type: form.value.vm_type,
@@ -714,7 +719,7 @@ function buildSyncoidPayload() {
     dest_node_id: form.value.dest_node_id,
     dest_pool: form.value.dest_pool,
     dest_subfolder: form.value.dest_subfolder || '',
-    dest_storage: form.value.registration.dest_storage,
+    dest_storage: destStorage,
     dest_vm_id: form.value.registration.dest_vm_id,
     dest_vm_name_suffix: form.value.registration.dest_vm_name_suffix,
     schedule: form.value.schedule,
