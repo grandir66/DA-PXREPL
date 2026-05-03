@@ -18,6 +18,41 @@ from services.ssh_service import ssh_service
 logger = logging.getLogger(__name__)
 
 
+# Pattern di validazione per evitare command injection nei comandi
+# vzdump/qmrestore/pct restore costruiti via SSH. Tutti gli identifier
+# che finiscono in shell devono passare uno di questi check.
+_PBS_STORAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\-.]*$")
+_PBS_DATASTORE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\-.]*$")
+_PBS_BACKUP_ID_RE = re.compile(r"^(?:vm|ct)/\d+/[0-9TZ:.\-]+$")
+_PBS_USER_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.\-]*@[A-Za-z0-9_][A-Za-z0-9_.\-]*$")
+_PBS_HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.\-]*$")
+_PBS_MODE_ALLOWED = {"snapshot", "stop", "suspend"}
+_PBS_COMPRESS_ALLOWED = {"none", "lzo", "gzip", "zstd"}
+_PBS_VMTYPE_ALLOWED = {"qemu", "lxc"}
+
+
+def _check(value: Optional[str], regex: re.Pattern, label: str) -> str:
+    if value is None or not regex.match(value):
+        raise ValueError(f"PBS {label} non valido: {value!r}")
+    return value
+
+
+def _check_in(value: Optional[str], allowed: set, label: str) -> str:
+    if value is None or value not in allowed:
+        raise ValueError(f"PBS {label} non valido: {value!r}")
+    return value
+
+
+def _check_int(value, label: str, lo: int = 100, hi: int = 999_999_999) -> int:
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"PBS {label} non valido: {value!r}")
+    if not (lo <= n <= hi):
+        raise ValueError(f"PBS {label} fuori range: {n}")
+    return n
+
+
 class PBSService:
     """Servizio per integrazione con Proxmox Backup Server"""
     
@@ -617,7 +652,33 @@ for match in re.finditer(r'pbs:\\s+(\\S+)\\n((?:^\\s+.*\\n)*)', content, re.MULT
             Dict con success, backup_id, message, output
         """
         start_time = datetime.utcnow()
-        
+
+        # Validazione difensiva di TUTTI gli input che finiranno nel
+        # comando vzdump/pvesm via SSH come root. Senza questi check un
+        # valore controllato (anche da DB compromesso) e' RCE.
+        try:
+            vm_id_int = _check_int(vm_id, "vm_id")
+            _check(source_node_hostname, _PBS_HOST_RE, "source_node_hostname")
+            _check(pbs_hostname, _PBS_HOST_RE, "pbs_hostname")
+            _check(datastore, _PBS_DATASTORE_RE, "datastore")
+            _check(pbs_user, _PBS_USER_RE, "pbs_user")
+            _check_in(vm_type, _PBS_VMTYPE_ALLOWED, "vm_type")
+            _check_in(mode, _PBS_MODE_ALLOWED, "mode")
+            _check_in(compress, _PBS_COMPRESS_ALLOWED, "compress")
+            if pbs_storage_id:
+                _check(pbs_storage_id, _PBS_STORAGE_RE, "pbs_storage_id")
+            if pbs_fingerprint:
+                # accettiamo formati con `:` o senza
+                fp = self._normalize_fingerprint(pbs_fingerprint)
+                if not re.fullmatch(r"[0-9A-F]{64}", fp):
+                    raise ValueError("pbs_fingerprint deve essere SHA-256 (64 hex)")
+        except Exception as e:
+            return {
+                "success": False, "backup_id": None,
+                "message": f"Validazione input PBS fallita: {e}",
+                "output": "", "error": str(e), "duration": 0,
+            }
+
         # Se è specificato uno storage esistente, usalo; altrimenti crea/usa uno standard
         if pbs_storage_id:
             # Verifica che lo storage esista
@@ -671,16 +732,25 @@ for match in re.finditer(r'pbs:\\s+(\\S+)\\n((?:^\\s+.*\\n)*)', content, re.MULT
             # Use the actual storage name returned (could be different if existing one was found)
             storage_name = actual_storage_name
         
-        # Setup comando backup vzdump
+        # storage_name puo' provenire da _ensure_pbs_storage; rivalido
+        # difensivamente prima di costruire il comando.
+        try:
+            _check(storage_name, _PBS_STORAGE_RE, "storage_name")
+        except Exception as e:
+            return {
+                "success": False, "backup_id": None,
+                "message": f"Storage name non valido: {e}",
+                "output": "", "error": str(e), "duration": 0,
+            }
+
+        # Setup comando backup vzdump (tutti i token validati)
         vzdump_parts = [
-            "vzdump", str(vm_id),
+            "vzdump", str(vm_id_int),
             "--mode", mode,
             "--compress", compress,
             "--storage", storage_name,
-            "--remove", "0"  # Non rimuovere backup precedenti
+            "--remove", "0"
         ]
-        
-        # Esegui backup
         vzdump_cmd = " ".join(vzdump_parts)
         logger.info(f"Running backup: {vzdump_cmd}")
         
@@ -765,9 +835,47 @@ for match in re.finditer(r'pbs:\\s+(\\S+)\\n((?:^\\s+.*\\n)*)', content, re.MULT
             Dict con success, message, output
         """
         start_time = datetime.utcnow()
-        
+
         target_vmid = dest_vm_id or vm_id
-        
+
+        # Validazione difensiva: tutti gli input finiscono in qmrestore /
+        # qm / pct / pvesm via SSH come root. Senza questi check siamo
+        # vulnerabili a command injection da DB compromesso.
+        try:
+            vm_id_int = _check_int(vm_id, "vm_id")
+            target_vmid_int = _check_int(target_vmid, "dest_vm_id")
+            _check(dest_node_hostname, _PBS_HOST_RE, "dest_node_hostname")
+            _check(pbs_hostname, _PBS_HOST_RE, "pbs_hostname")
+            _check(datastore, _PBS_DATASTORE_RE, "datastore")
+            _check(pbs_user, _PBS_USER_RE, "pbs_user")
+            _check_in(vm_type, _PBS_VMTYPE_ALLOWED, "vm_type")
+            if pbs_storage_id:
+                _check(pbs_storage_id, _PBS_STORAGE_RE, "pbs_storage_id")
+            if dest_storage:
+                _check(dest_storage, _PBS_STORAGE_RE, "dest_storage")
+            if backup_id:
+                # Accettiamo "vm/100/2026-...Z" oppure il volid completo
+                # con prefisso "<storage>:backup/...". Validiamo entrambi.
+                if ":backup/" in backup_id:
+                    storage_part, backup_part = backup_id.split(":", 1)
+                    _check(storage_part, _PBS_STORAGE_RE, "backup_id storage")
+                    if not re.fullmatch(r"backup/(?:vm|ct)/\d+/[0-9TZ:.\-]+", backup_part):
+                        raise ValueError(f"backup_id volid non valido: {backup_id!r}")
+                else:
+                    _check(backup_id, _PBS_BACKUP_ID_RE, "backup_id")
+            if dest_vm_name_suffix and not re.fullmatch(r"[A-Za-z0-9_\-]{1,50}", dest_vm_name_suffix):
+                raise ValueError(f"dest_vm_name_suffix non valido: {dest_vm_name_suffix!r}")
+            if pbs_fingerprint:
+                fp = self._normalize_fingerprint(pbs_fingerprint)
+                if not re.fullmatch(r"[0-9A-F]{64}", fp):
+                    raise ValueError("pbs_fingerprint deve essere SHA-256 (64 hex)")
+        except Exception as e:
+            return {
+                "success": False, "vm_id": target_vmid,
+                "message": f"Validazione input PBS fallita: {e}",
+                "output": "", "error": str(e), "duration": 0,
+            }
+
         # Se è specificato uno storage esistente, usalo; altrimenti crea/usa uno standard
         if pbs_storage_id:
             # Verifica che lo storage esista sul nodo destinazione
@@ -872,15 +980,20 @@ sleep 2
                     timeout=120
                 )
         
-        # Build restore command
-        restore_cmd = f"qmrestore {backup_id} {target_vmid}"
-        
+        # Build restore command (tutti i token validati a inizio funzione).
+        # Per LXC il comando e' `pct restore`. backup_id deve essere il
+        # volid (storage:backup/...) per qmrestore/pct restore.
+        if vm_type == "lxc":
+            restore_cmd = f"pct restore {target_vmid_int} {backup_id}"
+        else:
+            restore_cmd = f"qmrestore {backup_id} {target_vmid_int}"
+
         if dest_storage:
             restore_cmd += f" --storage {dest_storage}"
-        
+
         if unique:
             restore_cmd += " --unique"
-        
+
         if start_vm:
             restore_cmd += " --start"
         
@@ -912,19 +1025,16 @@ sleep 2
                 
                 if name_result.success and name_result.stdout.strip():
                     current_name = name_result.stdout.strip()
-                    # Rimuovi eventuale suffisso esistente prima di aggiungerne uno nuovo
-                    # Also normalize suffix to use dashes (underscores not allowed in DNS names)
+                    # Sanitize: solo caratteri DNS-safe nel nome finale.
                     normalized_suffix = dest_vm_name_suffix.replace('_', '-')
                     if normalized_suffix in current_name or dest_vm_name_suffix in current_name:
                         new_vm_name = current_name
                     else:
                         new_vm_name = f"{current_name}{normalized_suffix}"
-                    
-                    # Sanitize the full name to be DNS-compliant
-                    new_vm_name = new_vm_name.replace('_', '-')
-                    
-                    # Rinomina VM
-                    rename_cmd = f"qm set {target_vmid} --name '{new_vm_name}'"
+                    new_vm_name = re.sub(r"[^A-Za-z0-9.\-]", "-", new_vm_name)[:63]
+
+                    # Rinomina VM (nome whitelisted)
+                    rename_cmd = f"qm set {target_vmid_int} --name '{new_vm_name}'"
                     logger.info(f"Renaming VM {target_vmid}: {rename_cmd}")
                     rename_result = await ssh_service.execute(
                         hostname=dest_node_hostname,

@@ -73,7 +73,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="DAPX-backandrepl",
     description="Sistema centralizzato di backup e replica per Proxmox VE. Supporta ZFS (Sanoid/Syncoid), BTRFS (btrfs send/receive) e PBS (Proxmox Backup Server).",
-    version="3.13.0",
+    version="3.14.0",
     lifespan=lifespan
 )
 
@@ -94,14 +94,18 @@ app.add_middleware(
 )
 
 
-# Exception handler globale
+# Exception handler globale.
+# In produzione (DAPX_ENV != "dev") nasconde il detail; in dev espone il
+# tipo di eccezione + messaggio per facilitare il debug. Lo stack trace
+# completo va sempre nei file di log.
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Unhandled exception: {exc}", exc_info=True)
-    return JSONResponse(
-        status_code=500,
-        content={"detail": "Errore interno del server"}
+    logger.error(f"Unhandled exception su {request.method} {request.url.path}: {exc}", exc_info=True)
+    is_dev = os.environ.get("DAPX_ENV", "production").lower() in ("dev", "development", "local")
+    detail = (
+        f"{type(exc).__name__}: {exc}" if is_dev else "Errore interno del server"
     )
+    return JSONResponse(status_code=500, content={"detail": detail})
 
 
 
@@ -140,16 +144,49 @@ if dapx_mode == "full":
     app.include_router(schedule_router.router, prefix="/api/schedule", tags=["Schedule"])
 
 
-# Health check (non richiede autenticazione)
+# Health check (non richiede autenticazione).
+# Verifica DB + scheduler vivo. Ritorna 503 se uno dei controlli fallisce
+# (utile per liveness probe / monitoring esterno).
 @app.get("/api/health")
 async def health_check():
-    return {
+    from sqlalchemy import text as _sql_text
+    from datetime import datetime as _dt
+    payload: dict = {
         "status": "healthy",
-        "version": "3.13.0",
+        "version": "3.14.0",
         "auth_enabled": True,
         "mode": dapx_mode,
-        "features": ["zfs", "btrfs", "pbs", "load_balancer"] if dapx_mode == "full" else ["load_balancer"]
+        "checks": {},
+        "features": ["zfs", "btrfs", "pbs", "load_balancer"] if dapx_mode == "full" else ["load_balancer"],
+        "ts": _dt.utcnow().isoformat() + "Z",
     }
+    healthy = True
+    # DB ping
+    try:
+        db = SessionLocal()
+        try:
+            db.execute(_sql_text("SELECT 1"))
+            payload["checks"]["db"] = "ok"
+        finally:
+            db.close()
+    except Exception as e:
+        payload["checks"]["db"] = f"error: {type(e).__name__}"
+        healthy = False
+    # Scheduler vivo
+    try:
+        if scheduler and getattr(scheduler, "_running", False):
+            payload["checks"]["scheduler"] = "running"
+        else:
+            payload["checks"]["scheduler"] = "stopped"
+            healthy = False
+    except Exception as e:
+        payload["checks"]["scheduler"] = f"error: {type(e).__name__}"
+        healthy = False
+
+    if not healthy:
+        payload["status"] = "degraded"
+        return JSONResponse(status_code=503, content=payload)
+    return payload
 
 
 # Setup check (verifica se è necessario il setup iniziale)

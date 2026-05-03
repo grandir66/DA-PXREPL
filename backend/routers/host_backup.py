@@ -530,6 +530,19 @@ async def list_node_backups(
     }
 
 
+def _safe_join(base: str, name: str) -> str:
+    """Concatena base+name e VERIFICA che il risultato resti dentro
+    `base` (no path traversal). Solleva HTTPException 400 altrimenti.
+    """
+    import posixpath
+    if "/" in name or "\\" in name or name in ("", ".", ".."):
+        raise HTTPException(status_code=400, detail="Nome file non valido")
+    full = posixpath.normpath(posixpath.join(base, name))
+    if not full.startswith(posixpath.normpath(base) + "/"):
+        raise HTTPException(status_code=400, detail="Path non valido (traversal rilevato)")
+    return full
+
+
 @router.get("/nodes/{node_id}/backups/{backup_file}/download")
 async def download_node_backup(
     node_id: int,
@@ -542,8 +555,8 @@ async def download_node_backup(
     node = db.query(Node).filter(Node.id == node_id).first()
     if not node:
         raise HTTPException(status_code=404, detail="Nodo non trovato")
-    
-    full_path = f"{backup_path}/{backup_file}"
+
+    full_path = _safe_join(backup_path, backup_file)
     
     content = await host_backup_service.get_backup_file(
         hostname=node.hostname,
@@ -577,8 +590,8 @@ async def delete_node_backup(
     node = db.query(Node).filter(Node.id == node_id).first()
     if not node:
         raise HTTPException(status_code=404, detail="Nodo non trovato")
-    
-    full_path = f"{backup_path}/{backup_file}"
+
+    full_path = _safe_join(backup_path, backup_file)
     
     result = await host_backup_service.delete_host_backup(
         hostname=node.hostname,
@@ -590,7 +603,7 @@ async def delete_node_backup(
     
     if not result['success']:
         raise HTTPException(status_code=500, detail=result.get('error'))
-    
+
     return {"success": True, "deleted": backup_file, "node_name": node.name}
 
 

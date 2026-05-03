@@ -40,9 +40,38 @@ os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
 SQLALCHEMY_DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
 
 engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, 
-    connect_args={"check_same_thread": False}
+    SQLALCHEMY_DATABASE_URL,
+    connect_args={"check_same_thread": False, "timeout": 30},
 )
+
+
+# Configurazione SQLite a livello di connessione: WAL mode (concorrenza
+# read-while-write), busy_timeout (evita "database is locked" sotto
+# contesa scheduler+API+UI), foreign_keys ON (integrita' referenziale
+# rispettata anche da SQLite). Synchronous=NORMAL e' un buon compromesso
+# durabilita'/performance per il nostro use case.
+from sqlalchemy import event as _sa_event
+
+
+@_sa_event.listens_for(engine, "connect")
+def _sqlite_pragmas(dbapi_connection, connection_record):
+    cur = dbapi_connection.cursor()
+    try:
+        cur.execute("PRAGMA journal_mode=WAL")
+        cur.execute("PRAGMA synchronous=NORMAL")
+        cur.execute("PRAGMA foreign_keys=ON")
+        cur.execute("PRAGMA busy_timeout=30000")
+        cur.execute("PRAGMA temp_store=MEMORY")
+    except Exception:
+        # Driver non SQLite o pragma non supportato: ignora.
+        pass
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()

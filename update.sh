@@ -296,9 +296,34 @@ frontend_use_prebuilt() {
     return 1
 }
 
+# Estrai major.minor di Node, ritorna 0 se >= MIN, 1 altrimenti.
+node_meets_min() {
+    local min_major="$1"
+    local min_minor="$2"
+    local v
+    v=$(node --version 2>/dev/null | sed 's/^v//') || return 1
+    local major=${v%%.*}
+    local rest=${v#*.}
+    local minor=${rest%%.*}
+    if [ -z "$major" ] || [ -z "$minor" ]; then return 1; fi
+    if [ "$major" -gt "$min_major" ]; then return 0; fi
+    if [ "$major" -lt "$min_major" ]; then return 1; fi
+    if [ "$minor" -ge "$min_minor" ]; then return 0; fi
+    return 1
+}
+
 if [ -d "frontend" ] && [ -f "frontend/package.json" ]; then
     if ! command -v npm >/dev/null 2>&1; then
         log_warn "npm non installato"
+        frontend_use_prebuilt
+    elif ! command -v node >/dev/null 2>&1; then
+        log_warn "node non installato"
+        frontend_use_prebuilt
+    elif ! node_meets_min 20 19; then
+        # Vite >= 7 richiede Node 20.19+ o 22.12+. Se il sistema ha
+        # Node 18 (default Debian 12) la build fallisce sicuro: saltiamo
+        # e usiamo il dist precompilato del repo (no spam di errori).
+        log_warn "Node $(node --version 2>/dev/null) troppo vecchio per Vite (richiede 20.19+ o 22.12+)"
         frontend_use_prebuilt
     else
         pushd frontend >/dev/null
@@ -311,7 +336,7 @@ if [ -d "frontend" ] && [ -f "frontend/package.json" ]; then
             log_success "Frontend ricompilato"
             popd >/dev/null
         else
-            log_warn "Build npm fallita (Node troppo vecchio? Vite >=7 richiede Node 20+)"
+            log_warn "Build npm fallita inaspettatamente"
             popd >/dev/null
             frontend_use_prebuilt
         fi

@@ -5,6 +5,69 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.14.0] - 2026-05-03
+
+### Sicurezza
+
+- **PBS run_backup / run_restore — input sanitization completa**
+  (`backend/services/pbs_service.py`): validazione regex/whitelist su
+  hostname, datastore, vmid, mode, compress, vm_type, pbs_user,
+  pbs_storage_id, dest_storage, backup_id (sia formato `vm/123/<ts>`
+  sia volid `<storage>:backup/...`), dest_vm_name_suffix, fingerprint.
+  Chiude potenziale RCE via parametri da DB controllabili.
+- **PBS pct restore per LXC** (`run_restore`): scelta corretta del
+  tool in base a `vm_type` (qmrestore per qemu, pct restore per lxc).
+- **Login rate-limit** (`backend/routers/auth.py`): finestra rolling
+  15 min, max 10 tentativi falliti per IP, ritorno 429 con Retry-After.
+  Reset al primo login andato a buon fine.
+- **Logout server-side effettivo** (`get_current_user`): se l'utente
+  ha fatto logout (UserSession.is_active=False) il token JWT residuo
+  viene rifiutato anche se non scaduto.
+- **Path traversal fix** (`routers/host_backup.py`,
+  `routers/config_backup.py`): helper `_safe_join` + check realpath
+  contro la directory base; rifiuta nomi contenenti `/`, `\`, `.`,
+  `..` o che escono dalla directory autorizzata.
+- **Visibilità BackupJob filtrata** (`routers/backup_jobs.py`):
+  utenti con `allowed_nodes` ristretto vedono solo job che toccano i
+  loro nodi (sorgente o PBS). 403 sull'accesso diretto a job non
+  visibili.
+- **vm-replica payload sanitization** (`routers/sync_jobs.py`):
+  `dest_pool` / `dest_subfolder` / `dest_storage` validati con regex
+  ZFS-safe; `dest_vm_name_suffix` whitelisted a 50 caratteri DNS-safe.
+
+### Stabilità / Production-readiness
+
+- **SQLite WAL + foreign_keys + busy_timeout**
+  (`backend/database.py`): event listener `connect` che attiva
+  `journal_mode=WAL`, `synchronous=NORMAL`, `foreign_keys=ON`,
+  `busy_timeout=30000`, `temp_store=MEMORY`. Risolve "database is
+  locked" sotto contesa (scheduler + API + UI polling).
+- **Schema migrations transazionali**
+  (`backend/update_db_schema.py`): wrap BEGIN/COMMIT con rollback su
+  errore (no schema parzialmente migrato).
+- **Cleanup automatico log** (`update_db_schema.cleanup_old_logs` +
+  `services/scheduler._daily_log_cleanup`): JobLog > 30gg e
+  AuditLog > 90gg eliminati ogni giorno alle 03:30 UTC. Evita la
+  crescita illimitata del DB.
+- **Health endpoint reale** (`backend/main.py`): `/api/health` ora
+  verifica DB ping e scheduler vivo; ritorna 503 se uno dei due
+  fallisce. Pronto per liveness probe / monitoring esterno.
+- **Exception handler env-driven**: `DAPX_ENV=development` espone il
+  tipo di eccezione nel body 500; in produzione resta nascosto, lo
+  stack trace va sempre nei log.
+- **update.sh + UI updates.py**: rilevamento preventivo di Node <
+  20.19 → skip diretto al fallback su `frontend/dist` precompilato,
+  niente più output di errore Vite "crypto.hash is not a function".
+
+### Note
+
+- Lavori posticipati al prossimo ciclo di hardening:
+  - cascade `Node → Job` da `CASCADE` a `SET NULL` (cambio schema
+    invasivo, richiede pianificazione migration)
+  - rollback parziale automatico della replica (cleanup snapshot/
+    dataset dest se `register_vm` fallisce)
+  - cifratura at-rest dei secrets in DB (Fernet con chiave da env)
+
 ## [3.13.0] - 2026-05-03
 
 ### Sicurezza / Correttezza (audit completo)

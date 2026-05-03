@@ -197,14 +197,27 @@ def job_to_response(job: BackupJob, db: Session) -> BackupJobResponse:
 
 # ============== CRUD ENDPOINTS ==============
 
+def _job_visible_to(user: User, job: BackupJob) -> bool:
+    """Filtra orizzontale: utenti con `allowed_nodes` ristretto vedono
+    solo job che toccano i loro nodi (sorgente o PBS)."""
+    if user.allowed_nodes is None:
+        return True
+    allowed = set(user.allowed_nodes)
+    if job.source_node_id and job.source_node_id not in allowed:
+        return False
+    if job.pbs_node_id and job.pbs_node_id not in allowed:
+        return False
+    return True
+
+
 @router.get("/", response_model=List[BackupJobResponse])
 async def list_backup_jobs(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Lista tutti i backup jobs"""
+    """Lista i backup jobs visibili all'utente (filtrati per allowed_nodes)."""
     jobs = db.query(BackupJob).order_by(desc(BackupJob.created_at)).all()
-    return [job_to_response(job, db) for job in jobs]
+    return [job_to_response(job, db) for job in jobs if _job_visible_to(user, job)]
 
 
 @router.get("/{job_id}", response_model=BackupJobResponse)
@@ -217,6 +230,8 @@ async def get_backup_job(
     job = db.query(BackupJob).filter(BackupJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Backup job non trovato")
+    if not _job_visible_to(user, job):
+        raise HTTPException(status_code=403, detail="Accesso negato")
     return job_to_response(job, db)
 
 

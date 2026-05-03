@@ -288,17 +288,17 @@ async def download_backup(
         raise HTTPException(status_code=401, detail="Autenticazione richiesta")
     
     if user.role != "admin":
-         raise HTTPException(status_code=403, detail="Richiesto ruolo admin")
+        raise HTTPException(status_code=403, detail="Richiesto ruolo admin")
 
-    
-    if user.role != "admin":
-         raise HTTPException(status_code=403, detail="Richiesto ruolo admin")
-    
-    # Valida nome file
-    if not filename.endswith(".dapx-backup.tar.gz"):
+    # Valida nome file: niente separator, no traversal, suffix corretto.
+    if "/" in filename or "\\" in filename or filename in ("", ".", "..") \
+            or not filename.endswith(".dapx-backup.tar.gz"):
         raise HTTPException(status_code=400, detail="Nome file non valido")
-    
-    backup_path = os.path.join(DATA_DIR, "backups", filename)
+
+    backups_dir = os.path.realpath(os.path.join(DATA_DIR, "backups"))
+    backup_path = os.path.realpath(os.path.join(backups_dir, filename))
+    if not backup_path.startswith(backups_dir + os.sep):
+        raise HTTPException(status_code=400, detail="Path non valido (traversal rilevato)")
     
     logger.info(f"Download backup da: {backup_path}")
     
@@ -456,18 +456,22 @@ async def restore_backup(
 @router.delete("/delete/{filename}")
 async def delete_backup(filename: str, user: User = Depends(require_admin)):
     """Elimina un backup"""
-    
-    if not filename.endswith(".dapx-backup.tar.gz"):
+
+    if "/" in filename or "\\" in filename or filename in ("", ".", "..") \
+            or not filename.endswith(".dapx-backup.tar.gz"):
         raise HTTPException(status_code=400, detail="Nome file non valido")
-    
-    backup_path = os.path.join(DATA_DIR, "backups", filename)
-    
+
+    backups_dir = os.path.realpath(os.path.join(DATA_DIR, "backups"))
+    backup_path = os.path.realpath(os.path.join(backups_dir, filename))
+    if not backup_path.startswith(backups_dir + os.sep):
+        raise HTTPException(status_code=400, detail="Path non valido (traversal rilevato)")
+
     if not os.path.exists(backup_path):
         raise HTTPException(status_code=404, detail="Backup non trovato")
-    
+
     os.remove(backup_path)
     logger.info(f"Backup eliminato: {filename}")
-    
+
     return {"success": True, "message": f"Backup {filename} eliminato"}
 
 

@@ -181,10 +181,33 @@ class SchedulerService:
                 await self._check_daily_summary()
                 await self._check_host_info_updates()
                 await self._refresh_vm_cache()
+                await self._daily_log_cleanup()
                 await asyncio.sleep(60)  # Check ogni minuto
             except Exception as e:
                 logger.error(f"Errore nello scheduler: {e}")
                 await asyncio.sleep(60)
+
+    async def _daily_log_cleanup(self):
+        """Una volta al giorno (UTC 03:30) cancella JobLog/AuditLog scaduti.
+        Evita la crescita illimitata del DB in produzione.
+        """
+        now = datetime.utcnow()
+        if now.hour != 3 or now.minute < 30 or now.minute >= 31:
+            return
+        # Doppia chiamata nel minuto: traccia ultima esecuzione.
+        if getattr(self, "_last_log_cleanup", None):
+            last = self._last_log_cleanup
+            if (now - last).total_seconds() < 12 * 3600:
+                return
+        self._last_log_cleanup = now
+        try:
+            from update_db_schema import cleanup_old_logs
+            counts = await asyncio.get_event_loop().run_in_executor(
+                None, cleanup_old_logs, 30, 90
+            )
+            logger.info(f"Log cleanup: {counts}")
+        except Exception as e:
+            logger.warning(f"Log cleanup fallito: {e}")
     
     async def _check_daily_summary(self):
         """Verifica se è ora di inviare il riepilogo giornaliero"""

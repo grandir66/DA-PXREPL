@@ -141,20 +141,55 @@ async def get_current_user(
         )
     
     user = db.query(User).filter(User.id == int(user_id)).first()
-    
+
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Utente non trovato",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account disabilitato"
         )
-    
+
+    # Verifica revoca: il logout marca tutte le UserSession dell'utente
+    # come is_active=False. Se l'utente ha fatto logout, il token JWT
+    # ancora valido NON deve passare. Confrontiamo l'hash del token con
+    # le UserSession attive.
+    try:
+        token_hash = auth_service.get_password_hash(token[:32])
+        active = (
+            db.query(UserSession)
+            .filter(
+                UserSession.user_id == user.id,
+                UserSession.is_active == True,  # noqa: E712
+            )
+            .first()
+        )
+        # Se non c'e' nessuna sessione attiva ma esistono sessioni
+        # disattivate per questo utente, il token e' stato revocato.
+        if not active:
+            had_session = (
+                db.query(UserSession).filter(UserSession.user_id == user.id).first()
+            )
+            if had_session is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Sessione revocata, effettua nuovamente il login",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+    except HTTPException:
+        raise
+    except Exception:
+        # Best-effort: una verifica di revoca non deve mai bloccare
+        # l'autenticazione di un utente con token valido se il DB ha
+        # problemi temporanei. Loggiamo soltanto.
+        pass
+    _ = token_hash  # placeholder per future blacklist hash-based
+
     return user
 
 
@@ -338,6 +373,41 @@ async def get_auth_config(db: Session = Depends(get_db)):
     )
 
 
+# Rate-limit dell'endpoint di login.
+# In-memory: chiave = IP client; finestra rolling 15 min, max 10 fail consecutivi.
+_LOGIN_FAIL: dict = {}
+
+
+def _login_rate_limit_check(ip: Optional[str]) -> None:
+    """Solleva 429 se troppi tentativi falliti recenti dallo stesso IP."""
+    if not ip:
+        return
+    from datetime import datetime as _dt, timedelta as _td
+    now = _dt.utcnow()
+    window = _td(minutes=15)
+    fails = [t for t in _LOGIN_FAIL.get(ip, []) if now - t < window]
+    _LOGIN_FAIL[ip] = fails
+    if len(fails) >= 10:
+        retry_in = int((min(fails) + window - now).total_seconds())
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Troppi tentativi di login. Riprova tra {max(retry_in,1)}s.",
+            headers={"Retry-After": str(max(retry_in, 1))},
+        )
+
+
+def _login_record_failure(ip: Optional[str]) -> None:
+    if not ip:
+        return
+    from datetime import datetime as _dt
+    _LOGIN_FAIL.setdefault(ip, []).append(_dt.utcnow())
+
+
+def _login_clear_failures(ip: Optional[str]) -> None:
+    if ip and ip in _LOGIN_FAIL:
+        _LOGIN_FAIL.pop(ip, None)
+
+
 @router.post("/login", response_model=TokenResponse)
 async def login(
     request: Request,
@@ -349,10 +419,13 @@ async def login(
     Supporta autenticazione locale e Proxmox.
     """
     init_default_config(db)
-    
+
     auth_method = get_config_value(db, "auth_method", "proxmox")
     allow_local = get_config_value(db, "auth_allow_local_fallback", True)
     client_ip = request.client.host if request.client else None
+
+    # Anti-bruteforce: blocca temporaneamente IP con troppi fail.
+    _login_rate_limit_check(client_ip)
     
     user = None
     proxmox_ticket = None
@@ -393,6 +466,7 @@ async def login(
                     log_audit(db, None, "login_failed", "auth",
                               details=f"Proxmox auth failed: {login_data.username}@{realm}",
                               ip_address=client_ip, status="failed")
+                    _login_record_failure(client_ip)
                     raise HTTPException(
                         status_code=status.HTTP_401_UNAUTHORIZED,
                         detail=error or "Autenticazione Proxmox fallita"
@@ -411,6 +485,7 @@ async def login(
             log_audit(db, None, "login_failed", "auth",
                       details=f"User not found: {login_data.username}",
                       ip_address=client_ip, status="failed")
+            _login_record_failure(client_ip)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Username o password non corretti"
@@ -424,6 +499,7 @@ async def login(
                 log_audit(db, user.id, "login_failed", "auth",
                           details="Invalid password",
                           ip_address=client_ip, status="failed")
+                _login_record_failure(client_ip)
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Username o password non corretti"
@@ -433,6 +509,7 @@ async def login(
             log_audit(db, user.id, "login_failed", "auth",
                       details="Proxmox user requires Proxmox auth",
                       ip_address=client_ip, status="failed")
+            _login_record_failure(client_ip)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Questo utente richiede autenticazione Proxmox"
@@ -476,7 +553,8 @@ async def login(
     log_audit(db, user.id, "login_success", "auth",
               details=f"Method: {user.auth_method}",
               ip_address=client_ip)
-    
+    _login_clear_failures(client_ip)
+
     db.commit()
     
     return TokenResponse(

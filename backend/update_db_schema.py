@@ -33,36 +33,89 @@ def _ensure_column(conn, table: str, column: str, ddl_type: str) -> None:
 
 
 def update_schema():
+    """Esegue le migrazioni leggere idempotenti.
+
+    Tutto e' wrappato in una BEGIN/COMMIT per evitare di lasciare lo
+    schema in stato inconsistente in caso di crash a meta'. SQLite non
+    supporta DDL transazionale completo (alcune ALTER non rollback)
+    ma `PRAGMA foreign_keys=OFF` + BEGIN ci mette al sicuro per le
+    ADD COLUMN che usiamo qui.
+    """
     logger.info(f"Updating database schema at {DATABASE_PATH}")
     engine = create_engine(f"sqlite:///{DATABASE_PATH}")
 
     with engine.connect() as conn:
-        # --- nodes: host info cache ---
-        _ensure_column(conn, "nodes", "host_info", "JSON")
-        _ensure_column(conn, "nodes", "host_info_updated_at", "DATETIME")
+        # SQLite: foreign keys off durante migrazione per non bloccare le
+        # ADD COLUMN su tabelle con FK.
+        try:
+            conn.execute(text("PRAGMA foreign_keys=OFF"))
+        except Exception:
+            pass
 
-        # --- schedule_config: struttura JSON "human" accanto al cron raw.
-        # Aggiunta su tutti i job che hanno un campo `schedule`. Il backend
-        # continua a usare `schedule` (cron) per APScheduler/croniter; la UI
-        # legge/scrive `schedule_config` per editing senza tornare al cron
-        # crudo.
-        for table in (
-            "sync_jobs",
-            "backup_jobs",
-            "recovery_jobs",
-            "host_backup_jobs",
-        ):
-            _ensure_column(conn, table, "schedule_config", "JSON")
+        trans = conn.begin()
+        try:
+            # --- nodes: host info cache ---
+            _ensure_column(conn, "nodes", "host_info", "JSON")
+            _ensure_column(conn, "nodes", "host_info_updated_at", "DATETIME")
 
-        # current_status su sync_jobs (allineato a backup_jobs/recovery_jobs).
-        _ensure_column(conn, "sync_jobs", "current_status", "VARCHAR(20)")
+            # --- schedule_config: struttura JSON "human" accanto al cron raw.
+            for table in (
+                "sync_jobs",
+                "backup_jobs",
+                "recovery_jobs",
+                "host_backup_jobs",
+            ):
+                _ensure_column(conn, table, "schedule_config", "JSON")
 
+            # current_status su sync_jobs (allineato a backup_jobs/recovery_jobs).
+            _ensure_column(conn, "sync_jobs", "current_status", "VARCHAR(20)")
+
+            trans.commit()
+        except Exception as e:
+            trans.rollback()
+            logger.error(f"Migration rolled back: {e}")
+            raise
+        finally:
+            try:
+                conn.execute(text("PRAGMA foreign_keys=ON"))
+            except Exception:
+                pass
+
+    logger.info("Schema update completed")
+
+
+def cleanup_old_logs(days_jobs: int = 30, days_audit: int = 90) -> dict:
+    """Elimina JobLog piu' vecchi di `days_jobs` e AuditLog piu' vecchi
+    di `days_audit`. Idempotente; chiamato dallo scheduler giornalmente.
+    Ritorna {jobs_deleted, audits_deleted}.
+    """
+    from datetime import datetime, timedelta
+    engine = create_engine(f"sqlite:///{DATABASE_PATH}")
+    counts = {"jobs_deleted": 0, "audits_deleted": 0}
+    with engine.connect() as conn:
+        try:
+            cutoff_jobs = (datetime.utcnow() - timedelta(days=days_jobs)).isoformat()
+            r = conn.execute(
+                text("DELETE FROM job_logs WHERE started_at < :c"),
+                {"c": cutoff_jobs},
+            )
+            counts["jobs_deleted"] = r.rowcount or 0
+        except Exception as e:
+            logger.warning(f"cleanup job_logs: {e}")
+        try:
+            cutoff_audit = (datetime.utcnow() - timedelta(days=days_audit)).isoformat()
+            r = conn.execute(
+                text("DELETE FROM audit_logs WHERE timestamp < :c"),
+                {"c": cutoff_audit},
+            )
+            counts["audits_deleted"] = r.rowcount or 0
+        except Exception as e:
+            logger.warning(f"cleanup audit_logs: {e}")
         try:
             conn.commit()
         except Exception:
             pass
-
-    logger.info("Schema update completed")
+    return counts
 
 
 if __name__ == "__main__":

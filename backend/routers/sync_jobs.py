@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel
+import re
 
 from database import get_db, Node, SyncJob, JobLog, User, SyncMethod
 from services.syncoid_service import syncoid_service
@@ -892,6 +893,18 @@ async def create_vm_replica_jobs(
     
     created_jobs = []
     total_size = 0
+
+    # Validazione difensiva: dest_pool / dest_subfolder / dest_storage
+    # finiscono nei comandi syncoid via SSH. Solo identifier ZFS-safe.
+    _ZFS_PART = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_./\-]*$")
+    if vm_data.dest_pool and not _ZFS_PART.match(vm_data.dest_pool):
+        raise HTTPException(status_code=400, detail=f"dest_pool non valido: {vm_data.dest_pool!r}")
+    if vm_data.dest_subfolder and not _ZFS_PART.match(vm_data.dest_subfolder):
+        raise HTTPException(status_code=400, detail=f"dest_subfolder non valido: {vm_data.dest_subfolder!r}")
+    if vm_data.dest_storage and not _ZFS_PART.match(vm_data.dest_storage):
+        raise HTTPException(status_code=400, detail=f"dest_storage non valido: {vm_data.dest_storage!r}")
+    if vm_data.dest_vm_name_suffix and not re.fullmatch(r"[A-Za-z0-9_\-]{1,50}", vm_data.dest_vm_name_suffix):
+        raise HTTPException(status_code=400, detail=f"dest_vm_name_suffix non valido")
 
     # Allinea lo schedule UNA volta sola: tutti i job della VM condividono
     # la stessa pianificazione.

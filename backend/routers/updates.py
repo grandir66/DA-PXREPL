@@ -345,8 +345,23 @@ async def run_update_process():
         frontend_dir = os.path.join(INSTALL_DIR, "frontend")
         dist_dir = os.path.join(frontend_dir, "dist")
         npm_path = shutil.which("npm")
+        node_path = shutil.which("node")
 
-        if npm_path and os.path.exists(os.path.join(frontend_dir, "package.json")):
+        # Vite >=7 richiede Node 20.19+. Se il sistema ha Node 18, la
+        # build fallisce sicuro: saltiamo e usiamo il dist precompilato.
+        node_ok = False
+        if node_path:
+            try:
+                v = subprocess.run([node_path, "--version"], capture_output=True, text=True, timeout=10)
+                ver = (v.stdout or "").strip().lstrip("v")
+                parts = ver.split(".")
+                if len(parts) >= 2:
+                    major, minor = int(parts[0]), int(parts[1])
+                    node_ok = (major, minor) >= (20, 19)
+            except Exception:
+                node_ok = False
+
+        if npm_path and node_ok and os.path.exists(os.path.join(frontend_dir, "package.json")):
             try:
                 result = subprocess.run(
                     [npm_path, "install", "--silent"],
@@ -370,10 +385,17 @@ async def run_update_process():
             except FileNotFoundError as e:
                 log(f"Warning: npm non eseguibile ({e}). Uso dist pre-compilato.")
         else:
-            if os.path.isdir(dist_dir) and os.listdir(dist_dir):
-                log("npm non installato: uso frontend/dist pre-compilato dal repo (OK)")
+            reason = ""
+            if not npm_path:
+                reason = "npm non installato"
+            elif not node_ok:
+                reason = "Node troppo vecchio per Vite >=7 (serve 20.19+ o 22.12+)"
             else:
-                log("Warning: npm assente e dist non disponibile — UI potrebbe non aggiornarsi")
+                reason = "frontend/package.json non trovato"
+            if os.path.isdir(dist_dir) and os.listdir(dist_dir):
+                log(f"{reason}: uso frontend/dist pre-compilato dal repo (OK)")
+            else:
+                log(f"Warning: {reason} e dist non disponibile — UI potrebbe non aggiornarsi")
         
         # Ricarica e riavvia servizio
         log("Ricarica configurazione systemd...")
