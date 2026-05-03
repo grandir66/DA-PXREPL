@@ -5,6 +5,49 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.13.0] - 2026-05-03
+
+### Sicurezza / Correttezza (audit completo)
+
+- **Scheduler hardening** (`backend/services/scheduler.py`):
+  reset all'avvio dei job rimasti in stato `running` da un crash; lock
+  in-memory per chiave job (no double-fire / dataset locked); `last_run`
+  settato all'avvio del run (non a fine: un crash non fa più re-fire
+  immediato); wrapper `_guarded_execute` che rilascia sempre il lock.
+- **`SyncJob.current_status`** aggiunto (allineato a BackupJob /
+  RecoveryJob); migrazione idempotente in `update_db_schema.py`.
+- **Run manuale anti double-fire** (`POST /sync-jobs/{id}/run`):
+  ritorna `409 Conflict` se il job e' gia' in esecuzione.
+- **PBS TLS pinning** (`services/pbs_service.py`): `_get_ticket()` e
+  `list_backups_api()` accettano `pbs_fingerprint` e verificano lo
+  SHA-256 del cert peer prima di trasmettere le credenziali. Se il
+  fingerprint non corrisponde la chiamata viene abortita.
+- **SSH `authorized_keys` safe-append** (`services/ssh_key_service.py`,
+  `services/syncoid_service.py`): encoding base64 della pubkey lato
+  remoto. Niente piu' shell-injection con apici/backtick/newline nella
+  pubkey, niente piu' "salto" su pubkey con apostrofi.
+- **Syncoid input sanitization** (`services/syncoid_service.py`):
+  validazione regex su dataset/host/user, whitelist `compress`, regex
+  `mbuffer_size`, blacklist metacaratteri shell in `extra_args`.
+- **`register_vm` race fix** (`services/proxmox_service.py`):
+  validazione VMID + check combinato status/conf-file (rifiuta
+  sovrascrittura silenziosa), warning su storage dest mancante.
+
+### Aggiunte
+
+- **Endpoint live-progress** `GET /api/sync-jobs/{id}/progress?tail=200`:
+  stato corrente + tail dell'ultimo log; polling-friendly (no WebSocket).
+- **Componente `JobLogViewer.vue`**: visualizzatore log full-screen con
+  auto-scroll, copia, status pill animata. Integrato nella `JobsList`
+  come azione "…" sui job Syncoid.
+
+### Note
+
+- L'endpoint `/progress` per ora esiste solo per i job Syncoid; PBS
+  arrivera' nella prossima minor.
+- Info-leak su `JobLog` cross-nodo (utenti con `allowed_nodes`
+  ristretto): non chiuso in questa release.
+
 ## [3.12.3] - 2026-04-30
 
 ### Correzioni

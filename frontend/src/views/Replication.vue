@@ -85,6 +85,7 @@
         @edit="onEdit"
         @run="onRun"
         @delete="onDelete"
+        @show-log="onShowLog"
       />
     </main>
 
@@ -94,6 +95,12 @@
       :job="editingJob"
       @saved="onSaved"
     />
+
+    <JobLogViewer
+      v-model:visible="logVisible"
+      :job-id="logJobId"
+      :job-name="logJobName"
+    />
   </div>
 </template>
 
@@ -102,6 +109,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useReplicationStore, type UnifiedJob, type JobKind } from '../stores/replication'
 import JobsList from '../components/jobs/JobsList.vue'
 import JobModal from '../components/jobs/JobModal.vue'
+import JobLogViewer from '../components/jobs/JobLogViewer.vue'
 import PVELegacy from './replication/PVEReplicationJobs.vue'
 import syncJobsService from '../services/syncJobs'
 import backupJobsService from '../services/backupJobs'
@@ -115,6 +123,10 @@ const newMenuOpen = ref(false)
 const modalVisible = ref(false)
 const editingJob = ref<UnifiedJob | null>(null)
 const createKind = ref<JobKind>('syncoid')
+
+const logVisible = ref(false)
+const logJobId = ref<number | string | null>(null)
+const logJobName = ref<string>('')
 
 const tabs = computed(() => [
   { id: 'all', label: 'Tutti', count: store.jobs.length },
@@ -167,6 +179,16 @@ function onEdit(j: UnifiedJob) {
   editingJob.value = j
   createKind.value = j.kind
   modalVisible.value = true
+}
+
+function onShowLog(j: UnifiedJob) {
+  // Per ora l'endpoint /progress e' implementato per Syncoid; per i job
+  // PBS ricadiamo sul vecchio "Logs" generico — la UI semplicemente non
+  // apre il viewer per non mostrare un payload incoerente.
+  if (j.kind !== 'syncoid') return
+  logJobId.value = j.id
+  logJobName.value = j.name
+  logVisible.value = true
 }
 
 async function onRun(j: UnifiedJob) {

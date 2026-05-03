@@ -94,6 +94,12 @@
                 title="Esegui ora"
               >▶</button>
               <button
+                v-if="g.jobs[0].kind === 'syncoid'"
+                class="btn btn-secondary btn-sm"
+                @click="$emit('show-log', g.jobs[0])"
+                title="Mostra log live"
+              >…</button>
+              <button
                 class="btn btn-secondary btn-sm"
                 @click="$emit('edit', g.jobs[0])"
                 title="Modifica"
@@ -128,6 +134,7 @@
               </td>
               <td class="jl-actions">
                 <button class="btn btn-secondary btn-sm" @click="$emit('run', j)" title="Esegui">▶</button>
+                <button v-if="j.kind === 'syncoid'" class="btn btn-secondary btn-sm" @click="$emit('show-log', j)" title="Log live">…</button>
                 <button class="btn btn-secondary btn-sm" @click="$emit('edit', j)" title="Modifica">✎</button>
                 <button class="btn btn-danger btn-sm" @click="$emit('delete', j)" title="Elimina">×</button>
               </td>
@@ -167,6 +174,7 @@ defineEmits<{
   (e: 'run', j: UnifiedJob): void
   (e: 'delete', j: UnifiedJob): void
   (e: 'refresh'): void
+  (e: 'show-log', j: UnifiedJob): void
 }>()
 
 const filter = ref('')

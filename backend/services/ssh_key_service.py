@@ -189,27 +189,41 @@ class SSHKeyService:
                         else:
                             raise
                     
-                    # Verifica se la chiave è già presente
-                    stdin, stdout, stderr = client.exec_command(
-                        f"grep -F '{public_key}' ~/.ssh/authorized_keys 2>/dev/null"
+                    # Encoding base64 della pubkey: evita ogni problema di
+                    # shell-quoting (apici/backtick/newline) nel comando
+                    # remoto. La pubkey reale viene ricostruita in remote
+                    # via `base64 -d`.
+                    import base64 as _b64
+                    pubkey_clean = public_key.strip().splitlines()[0].strip() if public_key else ""
+                    pubkey_b64 = _b64.b64encode(pubkey_clean.encode("utf-8")).decode("ascii")
+
+                    # Verifica presenza: confronta tutte le righe già in
+                    # authorized_keys con quella nuova (decoded), senza
+                    # passare la pubkey letterale a grep.
+                    check_cmd = (
+                        f'KEY="$(echo {pubkey_b64} | base64 -d)"; '
+                        'test -f ~/.ssh/authorized_keys && '
+                        'awk -v k="$KEY" \'$0==k {found=1} END{exit !found}\' '
+                        '~/.ssh/authorized_keys'
                     )
-                    if stdout.read().decode().strip():
+                    stdin, stdout, stderr = client.exec_command(check_cmd)
+                    if stdout.channel.recv_exit_status() == 0:
                         return KeyDistributionResult(
                             host=hostname,
                             success=True,
                             message="Chiave già presente",
                             already_present=True
                         )
-                    
-                    # Aggiungi la chiave
+
+                    # Aggiungi la chiave (sempre via decode base64).
                     commands = [
-                        "mkdir -p ~/.ssh",
-                        "chmod 700 ~/.ssh",
-                        f"echo '{public_key}' >> ~/.ssh/authorized_keys",
-                        "chmod 600 ~/.ssh/authorized_keys",
-                        "sort -u ~/.ssh/authorized_keys -o ~/.ssh/authorized_keys"  # Rimuovi duplicati
+                        "mkdir -p ~/.ssh && chmod 700 ~/.ssh",
+                        "touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys",
+                        f'echo {pubkey_b64} | base64 -d >> ~/.ssh/authorized_keys',
+                        "echo '' >> ~/.ssh/authorized_keys",
+                        "sort -u ~/.ssh/authorized_keys -o ~/.ssh/authorized_keys",
                     ]
-                    
+
                     for cmd in commands:
                         stdin, stdout, stderr = client.exec_command(cmd)
                         exit_code = stdout.channel.recv_exit_status()

@@ -13,6 +13,35 @@ from services.ssh_service import ssh_service, SSHResult
 logger = logging.getLogger(__name__)
 
 
+# Pattern di validazione conservativo per identificatori che andranno
+# nella riga di comando syncoid. ZFS dataset accetta lettere, cifre,
+# `-`, `_`, `.`, `:`, `/`. Storage Proxmox e hostnames sono piu' stretti.
+# Rifiutare input fuori range previene shell-injection da DB.
+_DATASET_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_./:\-]*$")
+_HOSTNAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.\-]*$")
+_USER_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_\-]*$")
+_COMPRESS_ALLOWED = {"none", "lz4", "gzip", "zstd", "xz", "lzo", "pigz"}
+_MBUFFER_RE = re.compile(r"^\d+[KMG]?$", re.IGNORECASE)
+
+
+def _assert_dataset(value: str, label: str = "dataset") -> str:
+    if value is None or not _DATASET_RE.match(value):
+        raise ValueError(f"{label} non valido: {value!r}")
+    return value
+
+
+def _assert_hostname(value: str, label: str = "host") -> str:
+    if value is None or not _HOSTNAME_RE.match(value):
+        raise ValueError(f"{label} non valido: {value!r}")
+    return value
+
+
+def _assert_user(value: str, label: str = "user") -> str:
+    if value is None or not _USER_RE.match(value):
+        raise ValueError(f"{label} non valido: {value!r}")
+    return value
+
+
 class SyncoidService:
     """Servizio per replica ZFS con Syncoid"""
     
@@ -46,15 +75,35 @@ class SyncoidService:
         - syncoid user@host:source user@host:dest  (remoto -> remoto)
         """
         
+        # Validazione input — ogni stringa qui sotto finira' nella shell
+        # del nodo executor, quindi non possiamo permettere caratteri di
+        # controllo o metacaratteri shell.
+        _assert_dataset(source_dataset, "source_dataset")
+        _assert_dataset(dest_dataset, "dest_dataset")
+        _assert_user(source_user or "root", "source_user")
+        _assert_user(dest_user or "root", "dest_user")
+        if source_host:
+            _assert_hostname(source_host, "source_host")
+        if dest_host:
+            _assert_hostname(dest_host, "dest_host")
+        if compress and compress != "none" and compress not in _COMPRESS_ALLOWED:
+            raise ValueError(f"compress non valido: {compress!r}")
+        if mbuffer_size and not _MBUFFER_RE.match(mbuffer_size):
+            raise ValueError(f"mbuffer_size non valido: {mbuffer_size!r}")
+        # extra_args: rifiutiamo metacaratteri shell pericolosi.
+        if extra_args:
+            if any(c in extra_args for c in ";|&`$<>\n\r"):
+                raise ValueError(f"extra_args contiene metacaratteri non consentiti")
+
         cmd_parts = ["syncoid"]
-        
+
         # Opzioni base
         if recursive:
             cmd_parts.append("--recursive")
-        
+
         if compress and compress != "none":
             cmd_parts.append(f"--compress={compress}")
-        
+
         if mbuffer_size:
             cmd_parts.append(f"--mbuffer-size={mbuffer_size}")
         
@@ -329,8 +378,7 @@ class SyncoidService:
 
         # Sanitize: prendi solo la prima riga, niente caratteri di controllo
         pubkey_line = pubkey.splitlines()[0].strip()
-        if "'" in pubkey_line:
-            logger.warning("Pub key contiene apostrofi, salto distribuzione")
+        if not pubkey_line:
             return
 
         # Marker per le chiavi gestite da dapx: ci permette di rimuovere
@@ -339,17 +387,29 @@ class SyncoidService:
         marker = f"# dapx-executor:{executor_host}"
         managed_line = f"{pubkey_line} {marker}"
 
+        # Encoding base64 della managed line per neutralizzare ogni
+        # problema di quoting (la pubkey può contenere `, ', $, ecc.).
+        # Marker contiene solo l'hostname dell'executor — assumibilmente
+        # safe, ma lo trattiamo nello stesso payload.
+        import base64 as _b64
+        managed_b64 = _b64.b64encode(managed_line.encode("utf-8")).decode("ascii")
+        marker_b64 = _b64.b64encode(marker.encode("utf-8")).decode("ascii")
+
         # 2) Per ogni endpoint: rimuovi vecchie voci con lo stesso marker e
         #    appendi la riga corrente (idempotente).
         for host, port in endpoints:
             cmd = (
                 "mkdir -p ~/.ssh && chmod 700 ~/.ssh && "
                 "touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && "
-                # rimuovi righe stale con lo stesso marker
-                f"sed -i '\\|{marker}|d' ~/.ssh/authorized_keys && "
-                # appendi la riga corrente (con marker)
-                f"grep -qxF '{managed_line}' ~/.ssh/authorized_keys || "
-                f"echo '{managed_line}' >> ~/.ssh/authorized_keys"
+                # rimuovi righe stale con lo stesso marker (decodificato).
+                f'MARKER="$(echo {marker_b64} | base64 -d)" && '
+                'awk -v m="$MARKER" \'index($0, m)==0\' ~/.ssh/authorized_keys '
+                '> ~/.ssh/authorized_keys.dapx.tmp && '
+                'mv ~/.ssh/authorized_keys.dapx.tmp ~/.ssh/authorized_keys && '
+                # appendi la riga corrente (decodificata).
+                f'LINE="$(echo {managed_b64} | base64 -d)" && '
+                'grep -qxF "$LINE" ~/.ssh/authorized_keys || '
+                'printf "%s\\n" "$LINE" >> ~/.ssh/authorized_keys'
             )
             try:
                 r = await ssh_service.execute(

@@ -600,8 +600,24 @@ class ProxmoxService:
         else:
             config_path = f"/etc/pve/lxc/{vmid}.conf"
         
-        # Verifica che il VMID non sia già in uso
-        check_cmd = f"qm status {vmid} 2>/dev/null || pct status {vmid} 2>/dev/null"
+        # Validazione difensiva del VMID (no shell injection)
+        try:
+            vmid_int = int(vmid)
+        except (TypeError, ValueError):
+            return False, f"VMID non valido: {vmid!r}", []
+        if vmid_int < 100 or vmid_int > 999999999:
+            return False, f"VMID fuori range: {vmid_int}", []
+
+        # Verifica esistenza VMID + presenza file config in un'unica
+        # call. La presenza di un .conf gia' esistente blocca la
+        # scrittura (evita sovrascritture mute).
+        check_cmd = (
+            f"qm status {vmid_int} 2>/dev/null; "
+            f"pct status {vmid_int} 2>/dev/null; "
+            f"test -f /etc/pve/qemu-server/{vmid_int}.conf "
+            f"  -o -f /etc/pve/lxc/{vmid_int}.conf "
+            f"&& echo existing-config"
+        )
         result = await ssh_service.execute(
             hostname=hostname,
             command=check_cmd,
@@ -609,9 +625,30 @@ class ProxmoxService:
             username=username,
             key_path=key_path
         )
-        
-        if result.success and ("status:" in result.stdout or "running" in result.stdout or "stopped" in result.stdout):
-            return False, f"VMID {vmid} già in uso su questo nodo", []
+
+        if result.success and (
+            "status:" in result.stdout
+            or "running" in result.stdout
+            or "stopped" in result.stdout
+            or "existing-config" in result.stdout
+        ):
+            return False, f"VMID {vmid_int} già in uso su questo nodo", []
+
+        # Verifica esistenza dello storage destinazione: evita config
+        # orphan. Se abbiamo dest_zfs_pool proviamo a crearlo nello step
+        # successivo (ensure_zfs_storage), altrimenti warning.
+        if dest_storage:
+            stor_check = await ssh_service.execute(
+                hostname=hostname,
+                command=f"pvesm status --storage {dest_storage} 2>/dev/null | tail -n +2 | wc -l",
+                port=port, username=username, key_path=key_path,
+            )
+            count = (stor_check.stdout or "0").strip()
+            if not stor_check.success or count == "0":
+                if not dest_zfs_pool:
+                    warnings.append(
+                        f"Storage destinazione '{dest_storage}' non trovato sul nodo (creare prima della replica)"
+                    )
         
         # Se abbiamo un dest_storage e dest_zfs_pool, creiamo/verifichiamo lo storage
         if dest_storage and dest_zfs_pool:

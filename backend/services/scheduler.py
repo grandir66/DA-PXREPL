@@ -27,23 +27,111 @@ class SchedulerService:
     def __init__(self):
         self._running = False
         self._task: Optional[asyncio.Task] = None
-        self._jobs: Dict[int, datetime] = {}  # job_id -> next_run
+        self._jobs: Dict[str, datetime] = {}  # job_key -> next_run
+        # Lock di esecuzione: previene il fire concorrente dello stesso
+        # job (race scheduler vs durata > intervallo cron). Le chiavi sono
+        # le stesse usate per `_jobs` (es. "sync_42", "backup_pbs_3").
+        self._running_jobs: set = set()
         self._last_daily_summary: Optional[datetime] = None
         self._last_vm_cache_refresh: Optional[datetime] = None
         self._daily_summary_hour: int = 8  # Ora predefinita: 08:00 UTC
         self._daily_summary_enabled: bool = True
-    
+
     async def start(self):
         """Avvia lo scheduler"""
         if self._running:
             return
-        
+
+        # Pulizia di job rimasti in stato `running` da un crash precedente.
+        # Senza questo step un crash del backend lascia per sempre i job
+        # come "in esecuzione" e impedisce nuove run.
+        self._reset_stale_running_jobs()
+
         self._running = True
         self._task = asyncio.create_task(self._scheduler_loop())
         logger.info("Scheduler avviato")
-        
+
         # Carica configurazione orario riepilogo
         self._load_daily_summary_config()
+
+    def _reset_stale_running_jobs(self) -> None:
+        """All'avvio, marca come failed/idle i job lasciati in stato
+        'running' o 'backing_up'/'restoring'/'registering' da un crash.
+        """
+        from database import RecoveryJob, BackupJob  # lazy import per evitare cicli
+        db = SessionLocal()
+        try:
+            stale_msg = "reset allo startup (backend riavviato durante esecuzione)"
+            # SyncJob: ha last_status; current_status puo' esistere se
+            # aggiunto in versioni recenti (verificato dinamicamente).
+            for sj in db.query(SyncJob).filter(SyncJob.last_status == "running").all():
+                sj.last_status = "failed"
+                sj.last_error = stale_msg
+                if hasattr(sj, "current_status"):
+                    try:
+                        setattr(sj, "current_status", "idle")
+                    except Exception:
+                        pass
+            # RecoveryJob / BackupJob hanno current_status enumerato.
+            for rj in db.query(RecoveryJob).filter(
+                RecoveryJob.current_status.in_(["backing_up", "restoring", "registering", "running"])
+            ).all():
+                rj.current_status = "failed"
+                rj.last_status = "failed"
+                rj.last_error = stale_msg
+            for bj in db.query(BackupJob).filter(
+                BackupJob.current_status.in_(["running", "backing_up"])
+            ).all():
+                bj.current_status = "failed"
+                bj.last_status = "failed"
+                bj.last_error = stale_msg
+            db.commit()
+            logger.info("Stato job stale (running/in-progress) riazzerato")
+        except Exception as e:
+            logger.warning(f"Reset stale jobs fallito: {e}")
+            try:
+                db.rollback()
+            except Exception:
+                pass
+        finally:
+            db.close()
+
+    def _try_lock(self, key: str) -> bool:
+        """Acquisisce il lock di esecuzione per un job. Ritorna False se
+        il job e' gia' in esecuzione (no double-fire)."""
+        if key in self._running_jobs:
+            return False
+        self._running_jobs.add(key)
+        return True
+
+    def _unlock(self, key: str) -> None:
+        self._running_jobs.discard(key)
+
+    async def _guarded_execute(self, key: str, fn: Callable, *args):
+        """Esegue `fn(*args)` rilasciando sempre il lock alla fine,
+        anche su eccezione. Le exception vengono solo loggate per non
+        far propagare errori al loop principale."""
+        try:
+            await fn(*args)
+        except Exception as e:
+            logger.error(f"Job {key} fallito: {e}", exc_info=True)
+        finally:
+            self._unlock(key)
+
+    def is_running(self, key: str) -> bool:
+        """API pubblica: verifica se un job e' attualmente in esecuzione
+        secondo lo scheduler in-memory. Usata dagli endpoint /run-now per
+        evitare double-fire manuale.
+        """
+        return key in self._running_jobs
+
+    def mark_running(self, key: str) -> bool:
+        """API pubblica per i router: tenta di acquisire il lock.
+        Ritorna False se gia' in esecuzione."""
+        return self._try_lock(key)
+
+    def mark_done(self, key: str) -> None:
+        self._unlock(key)
     
     async def stop(self):
         """Ferma lo scheduler"""
@@ -213,8 +301,11 @@ class SchedulerService:
                     next_run = self._jobs[job_key]
                     
                     if now >= next_run:
-                        logger.info(f"Esecuzione SyncJob schedulato: {job.name} (ID: {job.id})")
-                        asyncio.create_task(self._execute_job(job.id))
+                        if self._try_lock(job_key):
+                            logger.info(f"Esecuzione SyncJob schedulato: {job.name} (ID: {job.id})")
+                            asyncio.create_task(self._guarded_execute(job_key, self._execute_job, job.id))
+                        else:
+                            logger.info(f"SyncJob {job.id} ancora in esecuzione: skip fire schedulato")
                         cron = croniter(job.schedule, now)
                         self._jobs[job_key] = cron.get_next(datetime)
                         
@@ -238,8 +329,11 @@ class SchedulerService:
                     next_run = self._jobs[job_key]
                     
                     if now >= next_run:
-                        logger.info(f"Esecuzione HostBackupJob schedulato: {job.name} (ID: {job.id})")
-                        asyncio.create_task(self._execute_host_backup_job(job.id))
+                        if self._try_lock(job_key):
+                            logger.info(f"Esecuzione HostBackupJob schedulato: {job.name} (ID: {job.id})")
+                            asyncio.create_task(self._guarded_execute(job_key, self._execute_host_backup_job, job.id))
+                        else:
+                            logger.info(f"HostBackupJob {job.id} ancora in esecuzione: skip fire schedulato")
                         cron = croniter(job.schedule, now)
                         self._jobs[job_key] = cron.get_next(datetime)
                         
@@ -263,8 +357,11 @@ class SchedulerService:
                     next_run = self._jobs[job_key]
                     
                     if now >= next_run:
-                        logger.info(f"Esecuzione MigrationJob schedulato: {job.name} (ID: {job.id})")
-                        asyncio.create_task(self._execute_migration_job(job.id))
+                        if self._try_lock(job_key):
+                            logger.info(f"Esecuzione MigrationJob schedulato: {job.name} (ID: {job.id})")
+                            asyncio.create_task(self._guarded_execute(job_key, self._execute_migration_job, job.id))
+                        else:
+                            logger.info(f"MigrationJob {job.id} ancora in esecuzione: skip fire schedulato")
                         cron = croniter(job.schedule, now)
                         self._jobs[job_key] = cron.get_next(datetime)
                         
@@ -306,6 +403,14 @@ class SchedulerService:
             
             # Aggiorna stato job
             job.last_status = "running"
+            if hasattr(job, "current_status"):
+                try:
+                    job.current_status = "running"
+                except Exception:
+                    pass
+            # last_run impostato all'avvio (non a fine) cosi' un crash
+            # non fa rifire il cron immediatamente al riavvio.
+            job.last_run = datetime.utcnow()
             db.commit()
             
             # Determina da dove eseguire (sorgente)
@@ -332,22 +437,31 @@ class SchedulerService:
                 extra_args=job.extra_args or ""
             )
             
-            # Aggiorna job
-            job.last_run = datetime.utcnow()
+            # Aggiorna job (NB: last_run e' gia' stato settato in apertura)
             job.last_duration = result["duration"]
             job.last_transferred = result.get("transferred")
             job.run_count += 1
-            
+
             if result["success"]:
                 job.last_status = "success"
+                if hasattr(job, "current_status"):
+                    try:
+                        job.current_status = "success"
+                    except Exception:
+                        pass
                 log_entry.status = "success"
                 log_entry.message = "Sincronizzazione completata"
-                
+
                 # Registra VM se richiesto
                 if job.register_vm and job.vm_id:
                     await self._register_vm_after_sync(db, job, source_node, dest_node, log_entry)
             else:
                 job.last_status = "failed"
+                if hasattr(job, "current_status"):
+                    try:
+                        job.current_status = "failed"
+                    except Exception:
+                        pass
                 job.error_count += 1
                 log_entry.status = "failed"
                 log_entry.message = "Sincronizzazione fallita"

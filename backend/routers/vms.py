@@ -1026,7 +1026,8 @@ async def get_vm_backups(
                     datastore=datastore,
                     pbs_user=pbs_node.pbs_username or "root@pam",
                     pbs_password=pbs_node.pbs_password,
-                    vm_id=vmid
+                    vm_id=vmid,
+                    pbs_fingerprint=pbs_node.pbs_fingerprint,
                 )
                 
                 for snap in snaps:

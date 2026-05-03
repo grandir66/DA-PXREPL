@@ -430,6 +430,9 @@ class SyncJob(Base):
     schedule = Column(String(100), nullable=True)  # es: "0 */4 * * *" ogni 4 ore
     schedule_config = Column(JSON, nullable=True)  # Struttura "human" {kind, time, weekdays, ...} (vedi services/schedule_translator.py)
     is_active = Column(Boolean, default=True)
+    # Stato in tempo reale (per coerenza con BackupJob/RecoveryJob).
+    # Valori: 'idle' | 'running' | 'failed' | 'success'.
+    current_status = Column(String(20), default="idle", nullable=True)
 
     # VM Registration
     register_vm = Column(Boolean, default=False)

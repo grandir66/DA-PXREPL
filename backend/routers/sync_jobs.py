@@ -1227,18 +1227,29 @@ async def run_sync_job(
     job = db.query(SyncJob).filter(SyncJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job non trovato")
-    
+
     if not check_job_access(user, job, db):
         raise HTTPException(status_code=403, detail="Accesso negato")
-    
+
     source_node = db.query(Node).filter(Node.id == job.source_node_id).first()
     dest_node = db.query(Node).filter(Node.id == job.dest_node_id).first()
-    
+
     if not source_node or not dest_node:
         raise HTTPException(status_code=400, detail="Nodi non configurati correttamente")
-    
-    # Esegui in background usando la funzione helper
-    background_tasks.add_task(execute_sync_job_task, job_id, user.id)
+
+    # No double-fire: se lo scheduler ha gia' marcato il job come running,
+    # rifiuta la run manuale (l'utente vedra' il progress in UI).
+    job_key = f"sync_{job_id}"
+    if not scheduler_service.mark_running(job_key):
+        raise HTTPException(status_code=409, detail="Job già in esecuzione")
+
+    def _wrapped_task():
+        try:
+            return execute_sync_job_task(job_id, user.id)
+        finally:
+            scheduler_service.mark_done(job_key)
+
+    background_tasks.add_task(_wrapped_task)
     
     log_audit(
         db, user.id, "sync_job_started", "sync_job",
@@ -1261,15 +1272,94 @@ async def get_job_logs(
     job = db.query(SyncJob).filter(SyncJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job non trovato")
-    
+
     if not check_job_access(user, job, db):
         raise HTTPException(status_code=403, detail="Accesso negato")
-    
+
     logs = db.query(JobLog).filter(
         JobLog.job_id == job_id
     ).order_by(JobLog.started_at.desc()).limit(limit).all()
-    
+
     return logs
+
+
+@router.get("/{job_id}/progress")
+async def get_job_progress(
+    job_id: int,
+    tail: int = 200,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Stato live del job + ultime righe di output del log piu' recente.
+
+    Polling-friendly (nessun WebSocket): la UI puo' chiamarlo ogni 1-2s
+    durante l'esecuzione. Risposta:
+      {
+        is_running: bool,            # secondo lo scheduler in-memory
+        current_status: str | null,
+        last_status: str | null,
+        last_run: iso str | null,
+        last_duration: int | null,
+        last_transferred: str | null,
+        run_count: int,
+        error_count: int,
+        log: {
+          id: int,
+          status: str,
+          started_at: iso,
+          completed_at: iso | null,
+          message: str,
+          output_tail: [str, ...]    # ultime `tail` righe di stdout
+        } | null
+      }
+    """
+    job = db.query(SyncJob).filter(SyncJob.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job non trovato")
+    if not check_job_access(user, job, db):
+        raise HTTPException(status_code=403, detail="Accesso negato")
+
+    last_log = (
+        db.query(JobLog)
+        .filter(JobLog.job_id == job_id)
+        .order_by(JobLog.started_at.desc())
+        .first()
+    )
+
+    log_payload = None
+    if last_log:
+        output_full = (last_log.output or "")
+        # tail logico: ultime N righe, niente HTML/ANSI ripuliamo solo
+        # \r in eccesso (progress bar di syncoid).
+        cleaned = output_full.replace("\r", "\n")
+        lines = [l for l in cleaned.split("\n") if l.strip()]
+        if tail > 0:
+            lines = lines[-tail:]
+        log_payload = {
+            "id": last_log.id,
+            "status": last_log.status,
+            "started_at": last_log.started_at.isoformat() if last_log.started_at else None,
+            "completed_at": last_log.completed_at.isoformat() if last_log.completed_at else None,
+            "message": last_log.message,
+            "duration": last_log.duration,
+            "transferred": last_log.transferred,
+            "error": last_log.error,
+            "output_tail": lines,
+        }
+
+    return {
+        "id": job.id,
+        "name": job.name,
+        "is_running": scheduler_service.is_running(f"sync_{job_id}"),
+        "current_status": getattr(job, "current_status", None),
+        "last_status": job.last_status,
+        "last_run": job.last_run.isoformat() if job.last_run else None,
+        "last_duration": getattr(job, "last_duration", None),
+        "last_transferred": getattr(job, "last_transferred", None),
+        "run_count": getattr(job, "run_count", 0),
+        "error_count": getattr(job, "error_count", 0),
+        "log": log_payload,
+    }
 
 
 @router.post("/{job_id}/toggle")

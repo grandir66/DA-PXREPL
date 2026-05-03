@@ -54,6 +54,9 @@ def update_schema():
         ):
             _ensure_column(conn, table, "schedule_config", "JSON")
 
+        # current_status su sync_jobs (allineato a backup_jobs/recovery_jobs).
+        _ensure_column(conn, "sync_jobs", "current_status", "VARCHAR(20)")
+
         try:
             conn.commit()
         except Exception:

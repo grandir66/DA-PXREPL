@@ -24,26 +24,102 @@ class PBSService:
     def __init__(self):
         self._ticket_cache = {}
 
-    def _get_ssl_context(self, verify_ssl: bool = False) -> ssl.SSLContext:
-        if verify_ssl:
+    def _get_ssl_context(
+        self,
+        verify_ssl: bool = False,
+        fingerprint: Optional[str] = None,
+    ) -> ssl.SSLContext:
+        """Contesto SSL per chiamate PBS.
+
+        - verify_ssl=True senza fingerprint -> CA bundle standard.
+        - fingerprint set -> CERT_NONE ma il chiamante deve verificare
+          manualmente lo SHA-256 del cert con `_verify_peer_fingerprint`.
+        - altrimenti -> CERT_NONE (legacy, sconsigliato).
+        """
+        if verify_ssl and not fingerprint:
             return ssl.create_default_context()
-        else:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        return ctx
+
+    @staticmethod
+    def _normalize_fingerprint(fp: str) -> str:
+        return (fp or "").replace(":", "").replace(" ", "").upper()
+
+    async def _verify_peer_fingerprint(
+        self,
+        hostname: str,
+        port: int,
+        expected_fp: str,
+    ) -> bool:
+        """SHA-256 pinning del cert PBS. True se combacia."""
+        if not expected_fp:
+            return False
+        expected = self._normalize_fingerprint(expected_fp)
+        try:
             ctx = ssl.create_default_context()
             ctx.check_hostname = False
             ctx.verify_mode = ssl.CERT_NONE
-            return ctx
+            loop = asyncio.get_event_loop()
 
-    async def _get_ticket(self, hostname: str, port: int, username: str, password: str) -> Optional[Dict]:
-        """Ottiene ticket di autenticazione da PBS"""
+            def _grab_cert():
+                import socket
+                with socket.create_connection((hostname, int(port)), timeout=5) as raw:
+                    with ctx.wrap_socket(raw, server_hostname=hostname) as sock:
+                        return sock.getpeercert(binary_form=True)
+
+            der = await loop.run_in_executor(None, _grab_cert)
+            import hashlib
+            actual = hashlib.sha256(der).hexdigest().upper()
+            ok = actual == expected
+            if not ok:
+                logger.warning(
+                    f"PBS fingerprint mismatch su {hostname}:{port} — "
+                    f"atteso={expected[:16]}…, attuale={actual[:16]}…"
+                )
+            return ok
+        except Exception as e:
+            logger.warning(f"Verifica fingerprint PBS {hostname} fallita: {e}")
+            return False
+
+    async def _get_ticket(
+        self,
+        hostname: str,
+        port: int,
+        username: str,
+        password: str,
+        fingerprint: Optional[str] = None,
+    ) -> Optional[Dict]:
+        """Ottiene ticket di autenticazione da PBS.
+
+        Se `fingerprint` e' impostato, viene verificato lo SHA-256 del
+        certificato peer prima di trasmettere le credenziali. Senza
+        fingerprint la chiamata resta funzionante (legacy) ma con un
+        warning di sicurezza.
+        """
         cache_key = f"{hostname}:{username}"
         if cache_key in self._ticket_cache:
             ticket_data = self._ticket_cache[cache_key]
-            # Expire after 1 hour (PBS tickets usually last 2h)
             if datetime.now() < ticket_data['expires']:
                 return ticket_data
 
+        if fingerprint:
+            ok = await self._verify_peer_fingerprint(hostname, port, fingerprint)
+            if not ok:
+                logger.error(
+                    f"PBS {hostname}:{port}: fingerprint TLS non corrisponde, "
+                    "rifiuto di trasmettere le credenziali."
+                )
+                return None
+        else:
+            logger.warning(
+                f"PBS {hostname}:{port}: nessun fingerprint configurato, "
+                "TLS non verificato (configura node.pbs_fingerprint)."
+            )
+
         api_url = f"https://{hostname}:{port}/api2/json/access/ticket"
-        ssl_ctx = self._get_ssl_context(False) # Trust self-signed
+        ssl_ctx = self._get_ssl_context(False, fingerprint)
         
         try:
             async with aiohttp.ClientSession() as session:
@@ -73,12 +149,17 @@ class PBSService:
         pbs_user: str,
         pbs_password: str,
         vm_id: int = None,
-        port: int = 8007
+        port: int = 8007,
+        pbs_fingerprint: Optional[str] = None,
     ) -> List[Dict]:
+        """Lista i backup usando l'API HTTP di PBS (porta 8007).
+
+        Se `pbs_fingerprint` e' impostato (dal record Node), viene
+        eseguito il pinning TLS prima della call.
         """
-        Lista i backup usando l'API HTTP di PBS (Port 8007)
-        """
-        ticket_data = await self._get_ticket(pbs_hostname, port, pbs_user, pbs_password)
+        ticket_data = await self._get_ticket(
+            pbs_hostname, port, pbs_user, pbs_password, pbs_fingerprint
+        )
         if not ticket_data:
             raise Exception("Authentication failed")
 
