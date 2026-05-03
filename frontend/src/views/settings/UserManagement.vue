@@ -33,7 +33,7 @@
                         <td>
                              <div class="btn-group">
                                 <button class="btn btn-danger btn-xs" @click="deleteUser(user)" v-if="user.id !== currentUserId" title="Elimina">
-                                    🗑️
+                                    <Icon name="trash" :size="14" />
                                 </button>
                             </div>
                         </td>
@@ -95,6 +95,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, reactive } from 'vue';
+import Icon from '../../components/ui/Icon.vue';
 import { confirmDangerous, confirmDelete } from '../../stores/confirm';
 import authService from '../../services/auth';
 

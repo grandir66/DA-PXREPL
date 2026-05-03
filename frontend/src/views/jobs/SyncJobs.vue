@@ -4,7 +4,7 @@
         <template #actions>
             <button class="btn btn-secondary btn-sm" @click="loadJobs" :disabled="loading">
                 <span v-if="loading" class="spinner-sm"></span>
-                <span v-else>🔄 Aggiorna</span>
+                <span v-else><Icon name="refresh" :size="14" /> Aggiorna</span>
             </button>
             <button class="btn btn-primary btn-sm" @click="showCreateModal = true">
                 + Nuovo Job
@@ -59,10 +59,10 @@
                         <td>
                             <div class="btn-group">
                                 <button class="btn btn-primary btn-xs" @click="runJob(job)" :disabled="job.last_status === 'running'">
-                                    ▶️ Run
+                                    <Icon name="play" :size="14" />️ Run
                                 </button>
-                                <button class="btn btn-secondary btn-xs" title="Modifica">✏️</button>
-                                <button class="btn btn-danger btn-xs" @click="deleteJob(job)" title="Elimina">🗑️</button>
+                                <button class="btn btn-secondary btn-xs" title="Modifica"><Icon name="pencil" :size="14" /></button>
+                                <button class="btn btn-danger btn-xs" @click="deleteJob(job)" title="Elimina"><Icon name="trash" :size="14" /></button>
                             </div>
                         </td>
                     </tr>
@@ -158,6 +158,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue';
+import Icon from '../../components/ui/Icon.vue';
 import { confirmDangerous, confirmDelete } from '../../stores/confirm';
 import PageHeader from '../../components/ui/PageHeader.vue';
 import syncJobsService, { type SyncJob } from '../../services/syncJobs';

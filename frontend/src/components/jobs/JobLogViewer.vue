@@ -1,5 +1,5 @@
 <template>
-  <div v-if="visible" class="jlv-overlay" @click.self="close">
+  <div v-if="visible" class="jlv-overlay">
     <div class="jlv-modal">
       <header class="jlv-head">
         <div>
@@ -211,6 +211,17 @@ onUnmounted(stopPolling)
 function close() {
   emit('update:visible', false)
 }
+
+function onKeydown(e: KeyboardEvent) {
+  if (!props.visible) return
+  if (e.key === 'Escape') {
+    e.preventDefault()
+    close()
+  }
+}
+import { onMounted as _onM, onUnmounted as _onU } from 'vue'
+_onM(() => window.addEventListener('keydown', onKeydown))
+_onU(() => window.removeEventListener('keydown', onKeydown))
 
 async function copyOutput() {
   try {

@@ -9,7 +9,7 @@
     <div class="header-actions" v-if="embedded" style="margin-bottom: 12px; display: flex; justify-content: flex-end;">
          <button class="btn btn-secondary btn-sm" @click="loadJobs" :disabled="loading">
             <span v-if="loading" class="spinner-sm"></span>
-            <span v-else>🔄 Aggiorna</span>
+            <span v-else><Icon name="refresh" :size="14" /> Aggiorna</span>
         </button>
     </div>
     
@@ -17,7 +17,7 @@
          <div style="display: flex; align-items: center; gap: 12px; margin-top: 12px;">
             <button class="btn btn-secondary btn-sm" @click="loadJobs" :disabled="loading">
                 <span v-if="loading" class="spinner-sm"></span>
-                <span v-else>🔄 Aggiorna</span>
+                <span v-else><Icon name="refresh" :size="14" /> Aggiorna</span>
             </button>
             <button class="btn btn-primary btn-sm" @click="showCreateModal = true">
                 + Nuova Replica
@@ -80,15 +80,15 @@
                         <td>
                             <div class="btn-group">
                                 <button class="btn btn-primary btn-xs" @click="runJob(job)" :disabled="job.last_status === 'running'" title="Esegui Ora">
-                                    ▶️
+                                    <Icon name="play" :size="14" />️
                                 </button>
                                 <button class="btn btn-secondary btn-xs" @click="selectedJobForLogs = job" title="Visualizza Log">
-                                    📜
+                                    <Icon name="file-text" :size="14" />
                                 </button>
                                 <button class="btn btn-secondary btn-xs" @click="openEditModal(job)" title="Modifica">
-                                    ✏️
+                                    <Icon name="pencil" :size="14" />
                                 </button>
-                                <button class="btn btn-danger btn-xs" @click="deleteJob(job)" title="Elimina">🗑️</button>
+                                <button class="btn btn-danger btn-xs" @click="deleteJob(job)" title="Elimina"><Icon name="trash" :size="14" /></button>
                             </div>
                         </td>
                     </tr>
@@ -265,6 +265,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, reactive, defineProps } from 'vue';
+import Icon from '../../components/ui/Icon.vue';
 import { confirmDangerous, confirmDelete } from '../../stores/confirm';
 import recoveryJobsService, { type RecoveryJob } from '../../services/recoveryJobs';
 

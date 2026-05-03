@@ -55,7 +55,7 @@
         class="tab-btn danger-tab" 
         :class="{ active: activeTab === 'dangerous' }" 
         @click="activeTab = 'dangerous'">
-        ⚠️ Dangerous Ops
+        <Icon name="alert-triangle" :size="14" /> Dangerous Ops
       </button>
     </div>
 
@@ -131,8 +131,8 @@
                        </div>
                    </div>
                    <div class="flex gap-2">
-                       <button class="btn btn-sm btn-secondary" @click.stop="startEditCluster(cluster)">✏️ Edit</button>
-                       <button class="btn btn-sm btn-danger" @click.stop="deleteCluster(cluster.id)">🗑️ Delete</button>
+                       <button class="btn btn-sm btn-secondary" @click.stop="startEditCluster(cluster)"><Icon name="pencil" :size="14" /> Edit</button>
+                       <button class="btn btn-sm btn-danger" @click.stop="deleteCluster(cluster.id)"><Icon name="trash" :size="14" /> Delete</button>
                    </div>
                </div>
           </div>
@@ -177,7 +177,7 @@
            
            <div class="mt-8 flex justify-end gap-2 border-t border-gray-700 pt-4">
                <button class="btn btn-secondary" @click="cancelEditCluster">Cancel</button>
-               <button class="btn btn-primary" @click="saveCluster">💾 {{ editingClusterId ? 'Update Connection' : 'Create Connection' }}</button>
+               <button class="btn btn-primary" @click="saveCluster"><Icon name="download" :size="14" /> {{ editingClusterId ? 'Update Connection' : 'Create Connection' }}</button>
            </div>
         </div>
       </div>

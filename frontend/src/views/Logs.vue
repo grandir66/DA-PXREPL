@@ -22,10 +22,10 @@
         <div class="controls-bar">
             <button class="btn btn-secondary btn-sm" @click="loadLogs(1)" :disabled="loading">
                 <span v-if="loading" class="spinner-sm"></span>
-                <span v-else>🔄 Aggiorna</span>
+                <span v-else><Icon name="refresh" :size="14" /> Aggiorna</span>
             </button>
             <button class="btn btn-danger btn-sm" @click="clearLogs">
-                🗑️ Pulisci Log
+                <Icon name="trash" :size="14" /> Pulisci Log
             </button>
             <select v-model="filterLevel" @change="loadLogs(1)" class="form-input" style="width: auto;">
                 <option value="">Tutti gli stati</option>
@@ -91,7 +91,7 @@
         <div class="controls-bar">
             <button class="btn btn-secondary btn-sm" @click="loadSystemLogs" :disabled="sysLoading">
                 <span v-if="sysLoading" class="spinner-sm"></span>
-                <span v-else>🔄 Aggiorna</span>
+                <span v-else><Icon name="refresh" :size="14" /> Aggiorna</span>
             </button>
             
             <select v-model="selectedFile" @change="loadSystemLogs" class="form-input" style="width: auto; min-width: 200px;">

@@ -5,6 +5,26 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.16.0] - 2026-05-03
+
+### Coerenza UI (round 2)
+
+- **77 button con emoji** in 18 viste → `<Icon name="..." :size="14" />`
+  (Heroicons inline, set unico). Coerenza visiva delle azioni
+  ovunque: nelle tabelle, nei toolbar, nelle modali. Nessuna
+  ridipendenza, nessun fallback unicode.
+- **Modali resistenti al click accidentale**: `JobModal` (wizard
+  creazione/modifica replica) e `JobLogViewer` non chiudono piu' per
+  click fuori dal modale. La chiusura va fatta esplicitamente con
+  "Annulla" / X / **Esc**. Su Esc/Annulla, se il form e' "sporco"
+  (step > 0, VM gia' selezionata, modalita' edit) appare un dialog
+  di conferma "I dati inseriti andranno persi".
+
+### Note
+
+- `ConfirmDialog` continua a chiudersi per click fuori — è
+  intenzionale, è un dialog di sola conferma, nessun dato viene perso.
+
 ## [3.15.0] - 2026-05-03
 
 ### Coerenza UI

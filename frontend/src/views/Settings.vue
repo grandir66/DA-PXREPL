@@ -1,182 +1,183 @@
 <template>
-  <div class="settings-page">
-    <PageHeader
-        title="Impostazioni"
-        subtitle="Configurazione sistema, utenti e sicurezza"
-        icon="settings"
-    />
+ <div class="settings-page">
+ <PageHeader
+ title="Impostazioni"
+ subtitle="Configurazione sistema, utenti e sicurezza"
+ icon="settings"
+ />
 
-    <div class="settings-layout">
-        <!-- Sidebar Navigation -->
-        <div class="settings-sidebar">
-            <div class="nav-item" :class="{ active: activeTab === 'general' }" @click="activeTab = 'general'">
-                🛠️ Generale
-            </div>
-            <div class="nav-item" :class="{ active: activeTab === 'notifications' }" @click="activeTab = 'notifications'">
-                🔔 Notifiche
-            </div>
-            <div class="nav-item" :class="{ active: activeTab === 'users' }" @click="activeTab = 'users'" v-if="isAdmin">
-                👥 Utenti
-            </div>
-            <div class="nav-item" :class="{ active: activeTab === 'profile' }" @click="activeTab = 'profile'">
-                👤 Profilo
-            </div>
-            <div class="nav-item" :class="{ active: activeTab === 'certs' }" @click="activeTab = 'certs'" v-if="isAdmin">
-                🔒 Certificati SSL
-            </div>
-        </div>
+ <div class="settings-layout">
+ <!-- Sidebar Navigation -->
+ <div class="settings-sidebar">
+ <div class="nav-item" :class="{ active: activeTab === 'general' }" @click="activeTab = 'general'">
+ 🛠️ Generale
+ </div>
+ <div class="nav-item" :class="{ active: activeTab === 'notifications' }" @click="activeTab = 'notifications'">
+ 🔔 Notifiche
+ </div>
+ <div class="nav-item" :class="{ active: activeTab === 'users' }" @click="activeTab = 'users'" v-if="isAdmin">
+ 👥 Utenti
+ </div>
+ <div class="nav-item" :class="{ active: activeTab === 'profile' }" @click="activeTab = 'profile'">
+ 👤 Profilo
+ </div>
+ <div class="nav-item" :class="{ active: activeTab === 'certs' }" @click="activeTab = 'certs'" v-if="isAdmin">
+ 🔒 Certificati SSL
+ </div>
+ </div>
 
-        <!-- Content Area -->
-        <div class="settings-content">
-            <!-- GENERAL TAB -->
-            <div v-if="activeTab === 'general'" class="card">
-                <h3>Autenticazione Sistema</h3>
-                <div class="card-body" v-if="authConfig">
-                     <div class="form-group">
-                         <label>Metodo Autenticazione</label>
-                         <select v-model="authConfig.auth_method" class="form-input">
-                             <option value="proxmox">Proxmox PVE (PAM/PVE)</option>
-                             <option value="local">Locale</option>
-                         </select>
-                     </div>
-                     <button class="btn btn-primary btn-sm mt-2" @click="saveAuth">Salva Auth</button>
-                </div>
-            </div>
+ <!-- Content Area -->
+ <div class="settings-content">
+ <!-- GENERAL TAB -->
+ <div v-if="activeTab === 'general'" class="card">
+ <h3>Autenticazione Sistema</h3>
+ <div class="card-body" v-if="authConfig">
+ <div class="form-group">
+ <label>Metodo Autenticazione</label>
+ <select v-model="authConfig.auth_method" class="form-input">
+ <option value="proxmox">Proxmox PVE (PAM/PVE)</option>
+ <option value="local">Locale</option>
+ </select>
+ </div>
+ <button class="btn btn-primary btn-sm mt-2" @click="saveAuth">Salva Auth</button>
+ </div>
+ </div>
 
-            <!-- NOTIFICATIONS TAB -->
-            <div v-if="activeTab === 'notifications'" class="card">
-                <div class="card-header">
-                    <h3>Configurazione Notifiche</h3>
-                    <div style="display: flex; gap: 12px; align-items: center;">
-                        <button class="btn btn-secondary btn-sm" @click="testNotification('email')">Test Email</button>
-                        <button class="btn btn-primary btn-sm" @click="saveNotifications" :disabled="saving">
-                            {{ saving ? 'Salvataggio...' : '💾 Salva Configurazione' }}
-                        </button>
-                    </div>
-                </div>
-                <div class="card-body" v-if="notifications">
-                    
-                    <!-- SMTP Section -->
-                    <div class="form-section">
-                        <div class="section-title">
-                            <h4>Configurazione Server SMTP</h4>
-                            <label class="checkbox-label">
-                                <input type="checkbox" v-model="notifications.smtp_enabled"> Abilita Notifiche Email
-                            </label>
-                        </div>
-                        
-                        <div v-if="notifications.smtp_enabled" class="animate-fade">
-                            <div class="grid-2">
-                                <div class="form-group">
-                                    <label>Server SMTP</label>
-                                    <input type="text" v-model="notifications.smtp_host" class="form-input" placeholder="smtp.example.com">
-                                </div>
-                                <div class="form-group">
-                                    <label>Porta</label>
-                                    <input type="number" v-model.number="notifications.smtp_port" class="form-input" placeholder="587">
-                                </div>
-                            </div>
-                            
-                            <div class="grid-2">
-                                <div class="form-group">
-                                    <label>Username SMTP</label>
-                                    <input type="text" v-model="notifications.smtp_user" class="form-input" placeholder="user@example.com">
-                                </div>
-                                <div class="form-group">
-                                    <label>Password SMTP</label>
-                                    <input type="password" v-model="notifications.smtp_password" class="form-input" placeholder="••••••••">
-                                </div>
-                            </div>
+ <!-- NOTIFICATIONS TAB -->
+ <div v-if="activeTab === 'notifications'" class="card">
+ <div class="card-header">
+ <h3>Configurazione Notifiche</h3>
+ <div style="display: flex; gap: 12px; align-items: center;">
+ <button class="btn btn-secondary btn-sm" @click="testNotification('email')">Test Email</button>
+ <button class="btn btn-primary btn-sm" @click="saveNotifications" :disabled="saving">
+ {{ saving ? 'Salvataggio...' : 'Salva Configurazione' }}
+ </button>
+ </div>
+ </div>
+ <div class="card-body" v-if="notifications">
+ 
+ <!-- SMTP Section -->
+ <div class="form-section">
+ <div class="section-title">
+ <h4>Configurazione Server SMTP</h4>
+ <label class="checkbox-label">
+ <input type="checkbox" v-model="notifications.smtp_enabled"> Abilita Notifiche Email
+ </label>
+ </div>
+ 
+ <div v-if="notifications.smtp_enabled" class="animate-fade">
+ <div class="grid-2">
+ <div class="form-group">
+ <label>Server SMTP</label>
+ <input type="text" v-model="notifications.smtp_host" class="form-input" placeholder="smtp.example.com">
+ </div>
+ <div class="form-group">
+ <label>Porta</label>
+ <input type="number" v-model.number="notifications.smtp_port" class="form-input" placeholder="587">
+ </div>
+ </div>
+ 
+ <div class="grid-2">
+ <div class="form-group">
+ <label>Username SMTP</label>
+ <input type="text" v-model="notifications.smtp_user" class="form-input" placeholder="user@example.com">
+ </div>
+ <div class="form-group">
+ <label>Password SMTP</label>
+ <input type="password" v-model="notifications.smtp_password" class="form-input" placeholder="••••••••">
+ </div>
+ </div>
 
-                            <div class="form-group">
-                                <label class="checkbox-label">
-                                    <input type="checkbox" v-model="notifications.smtp_tls"> Usa TLS (STARTTLS)
-                                </label>
-                                <div class="help-text">
-                                    • Porta 25: disabilita TLS<br>
-                                    • Porta 465: SSL automatico<br>
-                                    • Porta 587: abilita TLS (STARTTLS)
-                                </div>
-                            </div>
+ <div class="form-group">
+ <label class="checkbox-label">
+ <input type="checkbox" v-model="notifications.smtp_tls"> Usa TLS (STARTTLS)
+ </label>
+ <div class="help-text">
+ • Porta 25: disabilita TLS<br>
+ • Porta 465: SSL automatico<br>
+ • Porta 587: abilita TLS (STARTTLS)
+ </div>
+ </div>
 
-                            <h4 class="mt-4">Mittente e Destinatari</h4>
-                            
-                            <div class="grid-2">
-                                <div class="form-group">
-                                    <label>Email Mittente (From)</label>
-                                    <input type="text" v-model="notifications.smtp_from" class="form-input" placeholder="noreply@example.com">
-                                </div>
-                                <div class="form-group">
-                                    <label>Email Destinatari (To)</label>
-                                    <input type="text" v-model="notifications.smtp_to" class="form-input" placeholder="admin@example.com">
-                                    <span class="help-text">Separare più indirizzi con virgola</span>
-                                </div>
-                            </div>
+ <h4 class="mt-4">Mittente e Destinatari</h4>
+ 
+ <div class="grid-2">
+ <div class="form-group">
+ <label>Email Mittente (From)</label>
+ <input type="text" v-model="notifications.smtp_from" class="form-input" placeholder="noreply@example.com">
+ </div>
+ <div class="form-group">
+ <label>Email Destinatari (To)</label>
+ <input type="text" v-model="notifications.smtp_to" class="form-input" placeholder="admin@example.com">
+ <span class="help-text">Separare più indirizzi con virgola</span>
+ </div>
+ </div>
 
-                             <div class="form-group">
-                                <label>Prefisso Oggetto Email</label>
-                                <input type="text" v-model="notifications.smtp_subject_prefix" class="form-input" placeholder="[DAPX]">
-                            </div>
+ <div class="form-group">
+ <label>Prefisso Oggetto Email</label>
+ <input type="text" v-model="notifications.smtp_subject_prefix" class="form-input" placeholder="[DAPX]">
+ </div>
 
-                        </div>
-                    </div>
+ </div>
+ </div>
 
-                    <hr class="separator">
+ <hr class="separator">
 
-                    <!-- Triggers Section -->
-                    <div class="form-section">
-                        <h4 class="trigger-title">⚠️ Quando Notificare</h4>
-                        <div class="triggers-grid">
-                            <label class="trigger-option error">
-                                <input type="checkbox" v-model="notifications.notify_on_failure">
-                                <span>❌ Notifica su errori</span>
-                            </label>
-                             <label class="trigger-option warning">
-                                <input type="checkbox" v-model="notifications.notify_on_warning">
-                                <span>⚠️ Notifica su warning</span>
-                            </label>
-                            <label class="trigger-option success">
-                                <input type="checkbox" v-model="notifications.notify_on_success">
-                                <span>✅ Notifica su successi</span>
-                            </label>
-                        </div>
-                    </div>
+ <!-- Triggers Section -->
+ <div class="form-section">
+ <h4 class="trigger-title">⚠️ Quando Notificare</h4>
+ <div class="triggers-grid">
+ <label class="trigger-option error">
+ <input type="checkbox" v-model="notifications.notify_on_failure">
+ <span>❌ Notifica su errori</span>
+ </label>
+ <label class="trigger-option warning">
+ <input type="checkbox" v-model="notifications.notify_on_warning">
+ <span>⚠️ Notifica su warning</span>
+ </label>
+ <label class="trigger-option success">
+ <input type="checkbox" v-model="notifications.notify_on_success">
+ <span>✅ Notifica su successi</span>
+ </label>
+ </div>
+ </div>
 
-                    <hr class="separator">
+ <hr class="separator">
 
-                     <!-- Daily Summary Placeholder -->
-                    <div class="form-section">
-                         <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <h4>📧 Riepilogo Giornaliero</h4>
-                             <button class="btn btn-xs btn-secondary" @click="sendDailySummary">Invia ORA</button>
-                         </div>
-                         <p class="text-secondary text-sm mb-2">Ricevi ogni giorno un riepilogo con lo stato di tutti i job.</p>
-                    </div>
-                </div>
-                <div v-else class="loading-state">Caricamento impostazioni...</div>
-            </div>
+ <!-- Daily Summary Placeholder -->
+ <div class="form-section">
+ <div style="display: flex; justify-content: space-between; align-items: center;">
+ <h4>📧 Riepilogo Giornaliero</h4>
+ <button class="btn btn-xs btn-secondary" @click="sendDailySummary">Invia ORA</button>
+ </div>
+ <p class="text-secondary text-sm mb-2">Ricevi ogni giorno un riepilogo con lo stato di tutti i job.</p>
+ </div>
+ </div>
+ <div v-else class="loading-state">Caricamento impostazioni...</div>
+ </div>
 
-            <!-- USERS TAB -->
-            <div v-if="activeTab === 'users'" class="card">
-                <UserManagement />
-            </div>
+ <!-- USERS TAB -->
+ <div v-if="activeTab === 'users'" class="card">
+ <UserManagement />
+ </div>
 
-            <!-- PROFILE TAB -->
-            <div v-if="activeTab === 'profile'" class="card">
-                <UserProfile />
-            </div>
+ <!-- PROFILE TAB -->
+ <div v-if="activeTab === 'profile'" class="card">
+ <UserProfile />
+ </div>
 
-            <!-- CERTS TAB -->
-            <div v-if="activeTab === 'certs'" class="card">
-                <Certificates />
-            </div>
-        </div>
-    </div>
-  </div>
+ <!-- CERTS TAB -->
+ <div v-if="activeTab === 'certs'" class="card">
+ <Certificates />
+ </div>
+ </div>
+ </div>
+ </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
+import Icon from '../components/ui/Icon.vue';
 import settingsService, { type NotificationConfig, type AuthConfig } from '../services/settings';
 import apiClient from '../services/api';
 import authService from '../services/auth';
@@ -194,62 +195,62 @@ const currentUser = ref<any>(null);
 const isAdmin = computed(() => currentUser.value?.role === 'admin');
 
 onMounted(async () => {
-    try {
-        // Load user info for permissions
-        const userRes = await authService.getMe();
-        currentUser.value = userRes.data;
+ try {
+ // Load user info for permissions
+ const userRes = await authService.getMe();
+ currentUser.value = userRes.data;
 
-        // Load settings
-        const [notifRes, authRes] = await Promise.all([
-            settingsService.getNotificationConfig(),
-            settingsService.getAuthConfig()
-        ]);
-        notifications.value = notifRes.data;
-        authConfig.value = authRes.data;
-    } catch (e) {
-        console.error('Failed to load settings', e);
-    }
+ // Load settings
+ const [notifRes, authRes] = await Promise.all([
+ settingsService.getNotificationConfig(),
+ settingsService.getAuthConfig()
+ ]);
+ notifications.value = notifRes.data;
+ authConfig.value = authRes.data;
+ } catch (e) {
+ console.error('Failed to load settings', e);
+ }
 });
 
 const saveNotifications = async () => {
-    if (!notifications.value) return;
-    saving.value = true;
-    try {
-        await settingsService.updateNotificationConfig(notifications.value);
-        alert('Impostazioni salvate');
-    } catch (e) {
-        alert('Errore salvataggio');
-    } finally {
-        saving.value = false;
-    }
+ if (!notifications.value) return;
+ saving.value = true;
+ try {
+ await settingsService.updateNotificationConfig(notifications.value);
+ alert('Impostazioni salvate');
+ } catch (e) {
+ alert('Errore salvataggio');
+ } finally {
+ saving.value = false;
+ }
 };
 
 const saveAuth = async () => {
-    if (!authConfig.value) return;
-    try {
-         await settingsService.updateAuthConfig(authConfig.value);
-         alert('Impostazioni Auth salvate');
-    } catch (e) {
-        alert('Errore salvataggio');
-    }
+ if (!authConfig.value) return;
+ try {
+ await settingsService.updateAuthConfig(authConfig.value);
+ alert('Impostazioni Auth salvate');
+ } catch (e) {
+ alert('Errore salvataggio');
+ }
 };
 
 const testNotification = async (channel: string) => {
-    try {
-        await settingsService.testNotification(channel);
-        alert(`Test ${channel} inviato`);
-    } catch (e: any) {
-        alert('Errore test: ' + (e.response?.data?.detail || e.message));
-    }
+ try {
+ await settingsService.testNotification(channel);
+ alert(`Test ${channel} inviato`);
+ } catch (e: any) {
+ alert('Errore test: ' + (e.response?.data?.detail || e.message));
+ }
 }
 
 const sendDailySummary = async () => {
-    try {
-        await apiClient.post('/settings/notifications/send-daily-summary');
-        alert("Riepilogo giornaliero inviato ai canali configurati.");
-    } catch (e: any) {
-        alert("Errore invio riepilogo: " + (e.response?.data?.detail || e.message));
-    }
+ try {
+ await apiClient.post('/settings/notifications/send-daily-summary');
+ alert("Riepilogo giornaliero inviato ai canali configurati.");
+ } catch (e: any) {
+ alert("Errore invio riepilogo: " + (e.response?.data?.detail || e.message));
+ }
 };
 </script>
 
@@ -276,9 +277,9 @@ const sendDailySummary = async () => {
 /* Triggers */
 .triggers-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-top: 12px; }
 .trigger-option { 
-    display: flex; align-items: center; gap: 8px; padding: 12px; 
-    border-radius: 8px; border: 1px solid var(--border-color);
-    cursor: pointer; transition: all 0.2s;
+ display: flex; align-items: center; gap: 8px; padding: 12px; 
+ border-radius: 8px; border: 1px solid var(--border-color);
+ cursor: pointer; transition: all 0.2s;
 }
 .trigger-option:hover { background: rgba(255,255,255,0.05); }
 .trigger-option.error span { color: #ff5252; font-weight: 500; }
@@ -286,18 +287,18 @@ const sendDailySummary = async () => {
 .trigger-option.success span { color: #00b894; font-weight: 500; }
 
 .animate-fade {
-    animation: fadeIn 0.3s ease-out;
+ animation: fadeIn 0.3s ease-out;
 }
 @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(-5px); }
-    to { opacity: 1; transform: translateY(0); }
+ from { opacity: 0; transform: translateY(-5px); }
+ to { opacity: 1; transform: translateY(0); }
 }
 
 @media (max-width: 768px) {
-    .settings-layout { flex-direction: column; }
-    .settings-sidebar { width: 100%; display: flex; overflow-x: auto; gap: 4px; padding-bottom: 8px; border: none; background: transparent; }
-    .nav-item { border-radius: 4px; border-left: none; border-bottom: 2px solid transparent; white-space: nowrap; }
-    .nav-item.active { border-left: none; border-bottom-color: #00b894; }
-    .grid-2 { grid-template-columns: 1fr; }
+ .settings-layout { flex-direction: column; }
+ .settings-sidebar { width: 100%; display: flex; overflow-x: auto; gap: 4px; padding-bottom: 8px; border: none; background: transparent; }
+ .nav-item { border-radius: 4px; border-left: none; border-bottom: 2px solid transparent; white-space: nowrap; }
+ .nav-item.active { border-left: none; border-bottom-color: #00b894; }
+ .grid-2 { grid-template-columns: 1fr; }
 }
 </style>

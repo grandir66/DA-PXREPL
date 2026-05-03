@@ -202,8 +202,8 @@
                         </td>
                         <td>
                              <div class="btn-group">
-                                <button class="btn btn-primary btn-xs" @click="runJob(job)" :disabled="job.last_status === 'running'">▶️</button>
-                                <button class="btn btn-danger btn-xs" @click="deleteJob(job)">🗑️</button>
+                                <button class="btn btn-primary btn-xs" @click="runJob(job)" :disabled="job.last_status === 'running'"><Icon name="play" :size="14" />️</button>
+                                <button class="btn btn-danger btn-xs" @click="deleteJob(job)"><Icon name="trash" :size="14" /></button>
                             </div>
                         </td>
                     </tr>
@@ -223,6 +223,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue';
+import Icon from '../../components/ui/Icon.vue';
 import { confirmDangerous, confirmDelete } from '../../stores/confirm';
 import backupJobsService, { type BackupJob } from '../../services/backupJobs';
 import PageHeader from '../../components/ui/PageHeader.vue';

@@ -1,5 +1,5 @@
 <template>
-  <div v-if="visible" class="jm-overlay" @click.self="onClose">
+  <div v-if="visible" class="jm-overlay">
     <div class="jm-modal">
       <header class="jm-head">
         <div class="jm-head-title">
@@ -848,9 +848,34 @@ async function submit() {
   }
 }
 
-function onClose() {
+async function onClose() {
+  // Se l'utente ha toccato il form (vm selezionata o step > 0) chiediamo
+  // conferma prima di chiudere — un Esc accidentale non deve perdere il
+  // lavoro. In modalita' edit chiediamo sempre conferma.
+  const dirty = isEdit.value || currentStep.value > 0 || !!form.value.vm_id
+  if (dirty) {
+    const { confirmDangerous } = await import('../../stores/confirm')
+    const ok = await confirmDangerous(
+      isEdit.value ? 'Annullare le modifiche?' : 'Annullare la creazione?',
+      'I dati inseriti andranno persi.',
+      'Annulla'
+    )
+    if (!ok) return
+  }
   emit('update:visible', false)
 }
+
+// Esc per chiudere (con conferma se ci sono dati).
+function onKeydown(e: KeyboardEvent) {
+  if (!props.visible) return
+  if (e.key === 'Escape') {
+    e.preventDefault()
+    onClose()
+  }
+}
+import { onMounted, onUnmounted } from 'vue'
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
 <style scoped>

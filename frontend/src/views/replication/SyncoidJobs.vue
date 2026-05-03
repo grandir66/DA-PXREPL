@@ -47,11 +47,11 @@
                     <td>
                         <div class="btn-group">
                             <button class="btn btn-primary btn-xs" @click="runJob(job)" :disabled="job.last_status === 'running'">
-                                ▶️ Run
+                                <Icon name="play" :size="14" />️ Run
                             </button>
-                            <button class="btn btn-secondary btn-xs" @click="selectedJobForLogs = job">📜 Logs</button>
-                            <button class="btn btn-secondary btn-xs" @click="$emit('edit', job)">✏️</button>
-                            <button class="btn btn-danger btn-xs" @click="deleteJob(job)" title="Elimina">🗑️</button>
+                            <button class="btn btn-secondary btn-xs" @click="selectedJobForLogs = job"><Icon name="file-text" :size="14" /> Logs</button>
+                            <button class="btn btn-secondary btn-xs" @click="$emit('edit', job)"><Icon name="pencil" :size="14" /></button>
+                            <button class="btn btn-danger btn-xs" @click="deleteJob(job)" title="Elimina"><Icon name="trash" :size="14" /></button>
                         </div>
                     </td>
                 </tr>
@@ -75,6 +75,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import Icon from '../../components/ui/Icon.vue';
 import { confirmDangerous, confirmDelete } from '../../stores/confirm';
 import syncJobsService, { type SyncJob } from '../../services/syncJobs';
 import JobLogViewer from '../components/JobLogViewer.vue';
