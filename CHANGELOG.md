@@ -5,6 +5,22 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.14.1] - 2026-05-03
+
+### Correzioni
+
+- **`update.sh` Node 18 → niente piu' errore di Vite**:
+  rilevamento preventivo di Node < 20.19 piu' robusto + nuovo flag
+  `--upgrade-node` che installa Node 20 LTS via NodeSource. In modalita'
+  interattiva chiede conferma; in modalita' non interattiva (`-y` /
+  `--yes`) procede automatico. Se l'utente rifiuta, il fallback sul
+  `frontend/dist` precompilato avviene in silenzio (no piu' "crypto.hash
+  is not a function" nello stdout). Il log della build fallita viene
+  comunque salvato in `/tmp/dapx-vite-build.log`.
+- **`backend/routers/updates.py` (UI updater)**: stessa logica — su
+  build fallita scrive un log compatto e ricade sul dist precompilato
+  invece di mostrare lo stack trace di Vite.
+
 ## [3.14.0] - 2026-05-03
 
 ### Sicurezza

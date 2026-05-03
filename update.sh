@@ -12,15 +12,20 @@ DATA_DIR="/var/lib/dapx-unified"
 REPO_URL="https://github.com/grandir66/DA-PXREPL.git"
 BRANCH="main"
 ASSUME_YES=0
+UPGRADE_NODE=0
 for arg in "$@"; do
     case "$arg" in
         -y|--yes|--non-interactive)
             ASSUME_YES=1
             ;;
+        --upgrade-node)
+            UPGRADE_NODE=1
+            ;;
         -h|--help)
-            echo "Uso: $0 [-y|--yes] [branch]"
-            echo "  -y, --yes   Modalita' non interattiva (assume Y a tutti i prompt)"
-            echo "  branch      Branch git da cui aggiornare (default: main)"
+            echo "Uso: $0 [-y|--yes] [--upgrade-node] [branch]"
+            echo "  -y, --yes        Non interattivo (assume Y a tutti i prompt)"
+            echo "  --upgrade-node   Installa/aggiorna Node a 20 LTS prima del rebuild"
+            echo "  branch           Branch git da cui aggiornare (default: main)"
             exit 0
             ;;
         -*)
@@ -296,6 +301,23 @@ frontend_use_prebuilt() {
     return 1
 }
 
+install_node_20_lts() {
+    # Installa Node 20 LTS via NodeSource. Idempotente.
+    log_info "Installazione Node 20 LTS via NodeSource..."
+    if ! command -v curl >/dev/null 2>&1; then
+        apt-get update -qq >/dev/null 2>&1 || true
+        apt-get install -y -qq curl >/dev/null 2>&1 || true
+    fi
+    if curl -fsSL https://deb.nodesource.com/setup_20.x 2>/dev/null | bash - >/dev/null 2>&1; then
+        if apt-get install -y -qq nodejs >/dev/null 2>&1; then
+            log_success "Node $(node --version 2>/dev/null) installato"
+            return 0
+        fi
+    fi
+    log_warn "Installazione Node 20 fallita (verificare connettivita' o repo apt)"
+    return 1
+}
+
 # Estrai major.minor di Node, ritorna 0 se >= MIN, 1 altrimenti.
 node_meets_min() {
     local min_major="$1"
@@ -312,34 +334,57 @@ node_meets_min() {
     return 1
 }
 
-if [ -d "frontend" ] && [ -f "frontend/package.json" ]; then
-    if ! command -v npm >/dev/null 2>&1; then
-        log_warn "npm non installato"
-        frontend_use_prebuilt
-    elif ! command -v node >/dev/null 2>&1; then
-        log_warn "node non installato"
-        frontend_use_prebuilt
-    elif ! node_meets_min 20 19; then
-        # Vite >= 7 richiede Node 20.19+ o 22.12+. Se il sistema ha
-        # Node 18 (default Debian 12) la build fallisce sicuro: saltiamo
-        # e usiamo il dist precompilato del repo (no spam di errori).
-        log_warn "Node $(node --version 2>/dev/null) troppo vecchio per Vite (richiede 20.19+ o 22.12+)"
-        frontend_use_prebuilt
+do_npm_build() {
+    pushd frontend >/dev/null
+    log_info "Installazione dipendenze npm..."
+    if ! npm install --silent 2>/dev/null; then
+        log_warn "npm install ha riportato errori, proseguo comunque"
+    fi
+    log_info "Compilazione frontend..."
+    if npm run build >/tmp/dapx-vite-build.log 2>&1; then
+        log_success "Frontend ricompilato"
+        popd >/dev/null
+        return 0
     else
-        pushd frontend >/dev/null
-        log_info "Installazione dipendenze npm..."
-        if ! npm install --silent; then
-            log_warn "npm install ha riportato errori, proseguo comunque"
+        log_warn "Build npm fallita (log in /tmp/dapx-vite-build.log)"
+        popd >/dev/null
+        return 1
+    fi
+}
+
+if [ -d "frontend" ] && [ -f "frontend/package.json" ]; then
+    if ! command -v npm >/dev/null 2>&1 || ! command -v node >/dev/null 2>&1; then
+        log_warn "node/npm non installati"
+        if [ "$UPGRADE_NODE" -eq 1 ] || [ "$ASSUME_YES" -eq 1 ]; then
+            install_node_20_lts || true
         fi
-        log_info "Compilazione frontend..."
-        if npm run build; then
-            log_success "Frontend ricompilato"
-            popd >/dev/null
+        if command -v npm >/dev/null 2>&1 && command -v node >/dev/null 2>&1 && node_meets_min 20 19; then
+            do_npm_build || frontend_use_prebuilt
         else
-            log_warn "Build npm fallita inaspettatamente"
-            popd >/dev/null
             frontend_use_prebuilt
         fi
+    elif ! node_meets_min 20 19; then
+        # Vite >= 7 richiede Node 20.19+. Default Debian 12 = Node 18.
+        # Proponiamo l'aggiornamento (o lo facciamo se --upgrade-node /
+        # --yes), altrimenti silenziosamente usiamo il dist precompilato.
+        log_warn "Node $(node --version 2>/dev/null) troppo vecchio per Vite >=7 (richiede 20.19+)"
+        do_upgrade=0
+        if [ "$UPGRADE_NODE" -eq 1 ]; then
+            do_upgrade=1
+        elif [ "$ASSUME_YES" -eq 0 ]; then
+            read -p "Vuoi installare Node 20 LTS adesso? [y/N]: " yn
+            case "$yn" in
+                [yY]|[yY][eE][sS]) do_upgrade=1 ;;
+            esac
+        fi
+        if [ "$do_upgrade" -eq 1 ] && install_node_20_lts && node_meets_min 20 19; then
+            do_npm_build || frontend_use_prebuilt
+        else
+            log_info "Salto la build npm e uso il frontend precompilato dal repo"
+            frontend_use_prebuilt
+        fi
+    else
+        do_npm_build || frontend_use_prebuilt
     fi
 else
     log_warn "frontend/package.json non trovato, salto rebuild"

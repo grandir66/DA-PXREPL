@@ -370,7 +370,7 @@ async def run_update_process():
                     text=True,
                 )
                 if result.returncode != 0:
-                    log(f"Warning npm install: {result.stderr[:100] if result.stderr else ''}")
+                    log(f"npm install warnings (non bloccante): {(result.stderr or '')[:120]}")
 
                 result = subprocess.run(
                     [npm_path, "run", "build"],
@@ -381,9 +381,14 @@ async def run_update_process():
                 if result.returncode == 0:
                     log("Frontend ricompilato con successo")
                 else:
-                    log(f"Warning build frontend: {result.stderr[:200] if result.stderr else 'errore build'}")
+                    # Build fallita: log ridotto + fallback al dist precompilato
+                    snippet = ((result.stderr or result.stdout or "")[:200]).replace("\n", " ")
+                    log(f"Build frontend fallita ({snippet}); uso dist precompilato")
+                    # Forza il fallback marcando il flag node_ok=False
+                    node_ok = False
             except FileNotFoundError as e:
-                log(f"Warning: npm non eseguibile ({e}). Uso dist pre-compilato.")
+                log(f"npm non eseguibile ({e}); uso dist pre-compilato")
+                node_ok = False
         else:
             reason = ""
             if not npm_path:
