@@ -1,9 +1,10 @@
 <template>
     <div class="config-backup-page">
-        <div class="page-header">
-            <h2>Backup & Migrazione Configurazione</h2>
-            <p class="text-secondary">Esporta/importa configurazione completa per backup o migrazione tra macchine</p>
-        </div>
+        <PageHeader
+            title="Backup & Migrazione Configurazione"
+            subtitle="Esporta/importa configurazione completa per backup o migrazione tra macchine"
+            icon="download"
+        />
 
         <!-- System Info -->
         <div class="card info-card">
@@ -234,6 +235,8 @@
 
 <script setup lang="ts">
 import { ref, onMounted, reactive } from 'vue';
+import { confirmDangerous, confirmDelete } from '../../stores/confirm';
+import PageHeader from '../../components/ui/PageHeader.vue';
 import configBackupService from '../../services/configBackup';
 import type { BackupInfo, BackupSystemInfo, RestoreResult } from '../../services/configBackup';
 
@@ -348,7 +351,7 @@ const handleDrop = (event: DragEvent) => {
 const restoreBackup = async () => {
     if (!selectedFile.value) return;
     
-    if (!confirm('Sei sicuro di voler ripristinare questo backup? I dati esistenti verranno sovrascritti.')) {
+    if (!await confirmDangerous('Sei sicuro di voler ripristinare questo backup? I dati esistenti verranno sovrascritti.')) {
         return;
     }
     
@@ -381,7 +384,7 @@ const restoreBackup = async () => {
 };
 
 const deleteBackup = async (filename: string) => {
-    if (!confirm(`Eliminare il backup ${filename}?`)) return;
+    if (!await confirmDangerous(`Eliminare il backup ${filename}?`)) return;
     
     try {
         await configBackupService.deleteBackup(filename);

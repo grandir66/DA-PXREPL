@@ -97,6 +97,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue';
+import { confirmDangerous, confirmDelete } from '../../stores/confirm';
 import settingsService from '../../services/settings';
 
 const status = ref<any>(null);
@@ -156,7 +157,7 @@ const saveServerConfig = async () => {
 }
 
 const generateCert = async () => {
-    if (!confirm("Generare un nuovo certificato sovrascriverà quello esistente. Continuare?")) return;
+    if (!await confirmDangerous("Generare un nuovo certificato sovrascriverà quello esistente. Continuare?")) return;
     
     working.value = true;
     try {
@@ -198,7 +199,7 @@ const uploadCert = async () => {
 };
 
 const deleteCert = async () => {
-    if (!confirm("Eliminare il certificato SSL? HTTPS smetterà di funzionare.")) return;
+    if (!await confirmDangerous("Eliminare il certificato SSL? HTTPS smetterà di funzionare.")) return;
     
     try {
         await settingsService.deleteCert();

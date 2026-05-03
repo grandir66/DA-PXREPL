@@ -1,30 +1,28 @@
 
 <template>
 <div class="load-balancer-view">
-    <div class="page-header">
-        <div>
-            <h1 class="page-title">Cluster Load Balancer</h1>
-            <p class="page-subtitle">Powered by ProxLB</p>
+    <PageHeader
+        title="Cluster Load Balancer"
+        subtitle="Powered by ProxLB"
+        icon="scale"
+    >
+      <template #actions>
+        <div class="cluster-selector" v-if="clusters.length > 0">
+          <select
+            :value="selectedClusterId"
+            @change="selectCluster(Number(($event.target as HTMLSelectElement).value))"
+            class="form-input"
+            style="min-width: 200px;"
+          >
+            <option v-for="c in clusters" :key="c.id" :value="c.id">
+              {{ c.name }} {{ c.is_default ? '(Default)' : '' }}
+            </option>
+          </select>
         </div>
-        <div class="actions">
-            <!-- Cluster Selector -->
-            <div class="cluster-selector mr-3" v-if="clusters.length > 0">
-                 <select 
-                    :value="selectedClusterId" 
-                    @change="selectCluster(Number(($event.target as HTMLSelectElement).value))" 
-                    class="form-select text-sm"
-                    style="min-width: 200px;"
-                >
-                    <option v-for="c in clusters" :key="c.id" :value="c.id">
-                         {{ c.name }} {{ c.is_default ? '(Default)' : '' }}
-                    </option>
-                </select>
-            </div>
-
-            <button class="btn btn-secondary" @click="refreshConfig" v-if="activeTab === 'config'">❌ Reset</button>
-            <button class="btn btn-primary" @click="saveConfiguration" v-if="activeTab === 'config'">💾 Save Config</button>
-        </div>
-    </div>
+        <button class="btn btn-secondary btn-sm" @click="refreshConfig" v-if="activeTab === 'config'">Reset</button>
+        <button class="btn btn-primary btn-sm" @click="saveConfiguration" v-if="activeTab === 'config'">Save Config</button>
+      </template>
+    </PageHeader>
 
     <div class="tabs">
         <button 
@@ -902,6 +900,8 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue';
+import { confirmDangerous, confirmDelete } from '../stores/confirm';
+import PageHeader from '../components/ui/PageHeader.vue';
 import { useRoute } from 'vue-router';
 import { useHAStore } from '../stores/ha_store';
 import { storeToRefs } from 'pinia';
@@ -1242,7 +1242,7 @@ const getHAStateClass = (state: string) => {
 };
 
 const removeFromHA = async (resource: any) => {
-    if (!confirm(`Remove ${resource.sid} from HA?`)) return;
+    if (!await confirmDangerous(`Remove ${resource.sid} from HA?`)) return;
     
     const nodeId = await getFirstPVENodeId();
     if (!nodeId) return;
@@ -1265,7 +1265,7 @@ const removeFromHA = async (resource: any) => {
 };
 
 const deleteHAGroup = async (groupName: string) => {
-    if (!confirm(`Delete HA group "${groupName}"?`)) return;
+    if (!await confirmDangerous(`Delete HA group "${groupName}"?`)) return;
     
     const nodeId = await getFirstPVENodeId();
     if (!nodeId) return;
@@ -1423,7 +1423,7 @@ const createHAGroupFromSelection = async () => {
 };
 
 const removeNodeFromCluster = async (nodeName: string) => {
-    if (!confirm(`⚠️ DANGEROUS: Remove node "${nodeName}" from cluster?\n\nThe node must be POWERED OFF before removal!`)) return;
+    if (!await confirmDangerous(`⚠️ DANGEROUS: Remove node "${nodeName}" from cluster?\n\nThe node must be POWERED OFF before removal!`)) return;
     
     const nodeId = await getFirstPVENodeId();
     if (!nodeId) return;
@@ -1448,7 +1448,7 @@ const removeNodeFromCluster = async (nodeName: string) => {
 };
 
 const cleanNodeReferences = async (nodeName: string) => {
-    if (!confirm(`Clean leftover references for node "${nodeName}"?`)) return;
+    if (!await confirmDangerous(`Clean leftover references for node "${nodeName}"?`)) return;
     
     const nodeId = await getFirstPVENodeId();
     if (!nodeId) return;
@@ -1469,7 +1469,7 @@ const cleanNodeReferences = async (nodeName: string) => {
 const addNodeToCluster = async () => {
     if (!newNodeIP.value) return;
     
-    if (!confirm(`Add node ${newNodeIP.value} to cluster?\n\nThe new node must have:\n- Proxmox installed\n- SSH access configured\n- NOT already in a cluster`)) return;
+    if (!await confirmDangerous(`Add node ${newNodeIP.value} to cluster?\n\nThe new node must have:\n- Proxmox installed\n- SSH access configured\n- NOT already in a cluster`)) return;
     
     const nodeId = await getFirstPVENodeId();
     if (!nodeId) return;
@@ -2034,7 +2034,7 @@ onUnmounted(() => {
     content: '';
     width: 18px;
     height: 18px;
-    background: white;
+    background: var(--color-bg-surface);
     border-radius: 50%;
     position: absolute;
     top: 2px;
@@ -3270,7 +3270,7 @@ onUnmounted(() => {
 
 .badge-ignored {
     background: #f59e0b;
-    color: #fff;
+    color: var(--color-text-primary);
     font-size: 0.7rem;
     padding: 2px 6px;
     border-radius: 4px;

@@ -1,9 +1,10 @@
 <template>
   <div class="backup-jobs-page">
-    <div class="page-header">
-        <h1 class="page-title">Backup Jobs (PBS)</h1>
-        <p class="page-subtitle">Backup automatici VM verso Proxmox Backup Server</p>
-    </div>
+    <PageHeader
+        title="Backup Jobs (PBS)"
+        subtitle="Backup automatici VM verso Proxmox Backup Server"
+        icon="database"
+    />
 
     <!-- Info Banner -->
     <div class="info-banner mb-6">
@@ -222,7 +223,9 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue';
+import { confirmDangerous, confirmDelete } from '../../stores/confirm';
 import backupJobsService, { type BackupJob } from '../../services/backupJobs';
+import PageHeader from '../../components/ui/PageHeader.vue';
 import nodesService, { type Node } from '../../services/nodes';
 import vmsService from '../../services/vms';
 
@@ -357,7 +360,7 @@ const createJob = async () => {
 };
 
 const runJob = async (job: any) => {
-    if (!confirm(`Avviare job ${job.job_name}?`)) return;
+    if (!await confirmDangerous(`Avviare job ${job.job_name}?`)) return;
     try {
         await backupJobsService.runJob(job.id);
         loadJobs();
@@ -365,7 +368,7 @@ const runJob = async (job: any) => {
 };
 
 const deleteJob = async (job: any) => {
-    if (!confirm(`Eliminare job ${job.job_name}?`)) return;
+    if (!await confirmDangerous(`Eliminare job ${job.job_name}?`)) return;
     try {
         await backupJobsService.deleteJob(job.id);
         loadJobs();
@@ -415,7 +418,7 @@ const getStatusClass = (s: string) => {
     position: relative;
     overflow: hidden;
 }
-.stat-value { font-size: 1.8rem; font-weight: 700; color: white; margin-bottom: 4px; }
+.stat-value { font-size: 1.8rem; font-weight: 700; color: var(--color-text-primary); margin-bottom: 4px; }
 .stat-label { font-size: 0.8rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
 .stat-indicator { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; }
 .stat-indicator.active { background: #00d4ff; }
@@ -469,7 +472,7 @@ const getStatusClass = (s: string) => {
     background-color: #1a1a2e; /* Dark theme default */
     border: 1px solid var(--border-color);
     border-radius: 4px;
-    color: white;
+    color: var(--color-text-primary);
     font-size: 0.9rem;
 }
 .form-input:focus {
@@ -487,7 +490,7 @@ const getStatusClass = (s: string) => {
 .button-container { flex: 0 0 auto; }
 .btn-create {
     background: linear-gradient(135deg, #00b894 0%, #00a884 100%);
-    color: white;
+    color: var(--color-text-primary);
     font-weight: 600;
     padding: 10px 24px;
     border: none;
@@ -528,7 +531,7 @@ const getStatusClass = (s: string) => {
 
 .btn-group { display: flex; gap: 6px; }
 .btn-xs { padding: 4px 8px; font-size: 0.8rem; border-radius: 4px; border: none; cursor: pointer; }
-.btn-primary { background: var(--bg-hover); color: white; border: 1px solid var(--border-color); }
+.btn-primary { background: var(--bg-hover); color: var(--color-text-primary); border: 1px solid var(--border-color); }
 .btn-danger { background: rgba(255, 82, 82, 0.2); color: #ff5252; border: 1px solid #ff5252; }
 
 /* Responsive adjustments */

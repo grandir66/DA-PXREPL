@@ -527,7 +527,7 @@ onMounted(loadData);
 .wizard-header h2 {
   margin: 0;
   font-size: 1.25rem;
-  color: #fff;
+  color: var(--color-text-primary);
 }
 
 .close-btn {
@@ -616,7 +616,7 @@ onMounted(loadData);
   background: #252538;
   border: 1px solid #2d2d44;
   border-radius: 8px;
-  color: #fff;
+  color: var(--color-text-primary);
 }
 
 .pbs-node-row {
@@ -734,7 +734,7 @@ onMounted(loadData);
   background: #252538;
   border: 1px solid #2d2d44;
   border-radius: 6px;
-  color: #fff;
+  color: var(--color-text-primary);
   cursor: pointer;
 }
 
@@ -794,7 +794,7 @@ onMounted(loadData);
   background: #1a1a2e;
   border: 1px solid #2d2d44;
   border-radius: 6px;
-  color: #fff;
+  color: var(--color-text-primary);
 }
 
 .checkbox-cell {
@@ -857,7 +857,7 @@ onMounted(loadData);
   background: #252538;
   border: 1px solid #2d2d44;
   border-radius: 8px;
-  color: #fff;
+  color: var(--color-text-primary);
   cursor: pointer;
 }
 

@@ -1,9 +1,7 @@
 <template>
   <div class="migration-jobs-page">
-    <div class="page-header">
-        <h1 class="page-title">Migrazioni</h1>
-        <p class="page-subtitle">Spostamento e copia VM tra i nodi</p>
-        <div style="display: flex; align-items: center; gap: 12px; margin-top: 12px;">
+    <PageHeader title="Migrazioni" subtitle="Spostamento e copia VM tra i nodi" icon="arrow-right-left">
+        <template #actions>
             <button class="btn btn-secondary btn-sm" @click="loadJobs" :disabled="loading">
                 <span v-if="loading" class="spinner-sm"></span>
                 <span v-else>🔄 Aggiorna</span>
@@ -11,8 +9,8 @@
             <button class="btn btn-primary btn-sm" @click="showCreateModal = true">
                 + Nuova Migrazione
             </button>
-        </div>
-    </div>
+        </template>
+    </PageHeader>
 
     <div class="card">
         <div class="table-container">
@@ -86,6 +84,8 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import { confirmDangerous, confirmDelete } from '../../stores/confirm';
+import PageHeader from '../../components/ui/PageHeader.vue';
 import migrationJobsService, { type MigrationJob } from '../../services/migrationJobs';
 
 const jobs = ref<MigrationJob[]>([]);
@@ -109,7 +109,7 @@ const loadJobs = async () => {
 };
 
 const runJob = async (job: MigrationJob) => {
-    if (!confirm(`Avviare migrazione ${job.name}?`)) return;
+    if (!await confirmDangerous(`Avviare migrazione ${job.name}?`)) return;
     try {
         const res = await migrationJobsService.runJob(job.id);
         if (res.data.requires_confirmation) {
@@ -133,7 +133,7 @@ const toggleJob = async (job: MigrationJob) => {
 }
 
 const deleteJob = async (job: MigrationJob) => {
-    if (!confirm('Eliminare questo job di migrazione?')) return;
+    if (!await confirmDangerous('Eliminare questo job di migrazione?')) return;
     try {
         await migrationJobsService.deleteJob(job.id);
         loadJobs();

@@ -265,6 +265,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, reactive, defineProps } from 'vue';
+import { confirmDangerous, confirmDelete } from '../../stores/confirm';
 import recoveryJobsService, { type RecoveryJob } from '../../services/recoveryJobs';
 
 const props = defineProps({
@@ -369,7 +370,7 @@ const loadJobs = async () => {
 };
 
 const runJob = async (job: RecoveryJob) => {
-    if (!confirm(`Avviare replica per ${job.name}?`)) return;
+    if (!await confirmDangerous(`Avviare replica per ${job.name}?`)) return;
     try {
         await recoveryJobsService.runJob(job.id);
         loadJobs();
@@ -379,7 +380,7 @@ const runJob = async (job: RecoveryJob) => {
 };
 
 const deleteJob = async (job: RecoveryJob) => {
-    if (!confirm('Eliminare questo job di replica?')) return;
+    if (!await confirmDangerous('Eliminare questo job di replica?')) return;
     try {
         await recoveryJobsService.deleteJob(job.id);
         loadJobs();

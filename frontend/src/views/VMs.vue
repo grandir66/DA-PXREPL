@@ -1,19 +1,17 @@
 <template>
   <div class="vms-page">
-    <div class="page-header">
-        <h1 class="page-title">Virtual Machines</h1>
-        <p class="page-subtitle">Gestione risorse, lifecycle, snapshot e backup</p>
-        <div class="header-actions">
+    <PageHeader title="Virtual Machines" subtitle="Gestione risorse, lifecycle, snapshot e backup" icon="monitor">
+        <template #actions>
             <button class="btn btn-secondary btn-sm" @click="loadVMs(false)" :disabled="loading">
-                <span v-if="loading" class="spinner-sm"></span>
-                <span v-else>🔄 Aggiorna</span>
+                <Icon name="refresh" :size="14" :class="{ spin: loading }" />
+                {{ loading ? 'Aggiorno…' : 'Aggiorna' }}
             </button>
             <button class="btn btn-primary btn-sm" @click="loadVMs(true)" :disabled="loading" title="Forza refresh dati real-time (più lento)">
-                ⚡ Live
+                <Icon name="activity" :size="14" /> Live
             </button>
-            <input type="text" v-model="search" placeholder="Cerca VM o ID..." class="form-input search-input">
-        </div>
-    </div>
+            <input type="text" v-model="search" placeholder="Cerca VM o ID…" class="form-input search-input">
+        </template>
+    </PageHeader>
 
     <!-- Stats Summary -->
     <div class="grid-3 mb-4">
@@ -568,7 +566,10 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
+import { confirmDangerous, confirmDelete } from '../stores/confirm';
 import { useRoute } from 'vue-router';
+import PageHeader from '../components/ui/PageHeader.vue';
+import Icon from '../components/ui/Icon.vue';
 import vmsService, { type VM, type Snapshot, type Backup, type SanoidConfig, type ZFSSnapshot } from '../services/vms';
 import nodesService from '../services/nodes';
 import ModalDialog from '../components/ModalDialog.vue';
@@ -766,7 +767,7 @@ const fetchBackupCounts = async () => {
 };
 
 const manageState = async (vm: VM, action: any) => {
-    if (!confirm(`Sei sicuro di voler eseguire ${action} su ${vm.name}?`)) return;
+    if (!await confirmDangerous(`Sei sicuro di voler eseguire ${action} su ${vm.name}?`)) return;
     vm.loading = true;
     try {
         await vmsService.manageState(vm.node_id!, vm.vmid, action);
@@ -854,7 +855,7 @@ const createPveSnapshot = async () => {
 };
 
 const rollbackPveSnapshot = async (name: string) => {
-    if(!confirm(`Rollback a ${name}?`)) return;
+    if(!await confirmDangerous(`Rollback a ${name}?`)) return;
     try {
         await vmsService.rollbackSnapshot(selectedVM.value!.node_id!, selectedVM.value!.vmid, name, true);
         alert('Rollback avviato.');
@@ -863,7 +864,7 @@ const rollbackPveSnapshot = async (name: string) => {
 };
 
 const deletePveSnapshot = async (name: string) => {
-    if(!confirm(`Eliminare ${name}?`)) return;
+    if(!await confirmDangerous(`Eliminare ${name}?`)) return;
     try {
         await vmsService.deleteSnapshot(selectedVM.value!.node_id!, selectedVM.value!.vmid, name);
         loadPveSnapshots();
@@ -887,7 +888,7 @@ const loadZfsSnapshots = async () => {
 };
 
 const rollbackZfs = async (snap: ZFSSnapshot) => {
-    if(!confirm(`ATTENZIONE: Rollback distruttivo ZFS a ${snap.name} per dataset ${snap.dataset} (e altri). Confermi?`)) return;
+    if(!await confirmDangerous(`ATTENZIONE: Rollback distruttivo ZFS a ${snap.name} per dataset ${snap.dataset} (e altri). Confermi?`)) return;
     try {
         await vmsService.restoreZFSSnapshot(selectedVM.value!.node_id!, selectedVM.value!.vmid, snap.name, 'rollback');
         alert('Rollback ZFS eseguito.');
@@ -895,7 +896,7 @@ const rollbackZfs = async (snap: ZFSSnapshot) => {
 };
 
 const deleteZfsSnapshot = async (snap: ZFSSnapshot) => {
-    if(!confirm(`Eliminare lo snapshot "${snap.name}" da tutti i dischi della VM? Questa azione è irreversibile.`)) return;
+    if(!await confirmDangerous(`Eliminare lo snapshot "${snap.name}" da tutti i dischi della VM? Questa azione è irreversibile.`)) return;
     try {
         await vmsService.deleteZfsSnapshot(selectedVM.value!.node_id!, selectedVM.value!.vmid, snap.name);
         alert('Snapshot eliminato.');
@@ -917,7 +918,7 @@ const confirmZfsClone = async () => {
     const newId = zfsCloneOptions.value.newVmid;
     if (!newId) { alert("Devi specificare un Nuovo VMID per il clone."); return; }
     
-    if (!confirm(`Sei sicuro di voler clonare la VM ${selectedVM.value.vmid} su VM ${newId}?\nQuesta operazione creerà nuovi dischi.`)) return;
+    if (!await confirmDangerous(`Sei sicuro di voler clonare la VM ${selectedVM.value.vmid} su VM ${newId}?\nQuesta operazione creerà nuovi dischi.`)) return;
     
     try {
         await vmsService.restoreZFSSnapshot(
@@ -1050,7 +1051,7 @@ const startRestoreWizard = async (bak: Backup) => {
 const executeRestore = async () => {
     if(!selectedVM.value || !restoreSelection.value) return;
     
-    if(!confirm("Confermi l'avvio del ripristino?")) return;
+    if(!await confirmDangerous("Confermi l'avvio del ripristino?")) return;
     
     // Logic override if new VMID provided? Not supported by current restoreBackup signature fully in backend?
     // Wait, backend restore uses 'vmid' path param. If we want new VMID, we need to pass it? 
@@ -1144,7 +1145,7 @@ const getPolicyBadge = (name: string) => {
 .btn { padding: 8px 16px; border-radius: 6px; font-weight: 500; cursor: pointer; border: none; transition: all 0.2s; }
 .btn-sm { padding: 6px 12px; font-size: 0.85rem; }
 .btn-xs { padding: 4px 8px; font-size: 0.75rem; }
-.btn-primary { background: var(--accent-primary); color: white; }
+.btn-primary { background: var(--accent-primary); color: var(--color-text-primary); }
 .btn-secondary { background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border-color); }
 .btn-danger { background: rgba(239, 68, 68, 0.1); color: #f87171; }
 .btn-warning { background: rgba(245, 158, 11, 0.1); color: #fbbf24; }
@@ -1169,7 +1170,7 @@ const getPolicyBadge = (name: string) => {
 .switch { position: relative; display: inline-block; width: 40px; height: 24px; }
 .switch input { opacity: 0; width: 0; height: 0; }
 .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 24px; }
-.slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
+.slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 4px; bottom: 4px; background-color: var(--color-text-primary); transition: .4s; border-radius: 50%; }
 input:checked + .slider { background-color: var(--accent-primary); }
 input:checked + .slider:before { transform: translateX(16px); }
 

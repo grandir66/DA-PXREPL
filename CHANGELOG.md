@@ -5,6 +5,57 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.15.0] - 2026-05-03
+
+### Coerenza UI
+
+Audit dedicato + tre sprint mirati per uniformare l'interfaccia.
+
+**Foundation aggiunta**:
+
+- `components/ui/ActionButton.vue` — bottone azione standardizzato
+  (run/pause/stop/edit/delete/view/logs/info/refresh/download/upload/
+  add/copy/restore/test/lock/unlock) con toni semantici hover.
+- `stores/confirm.ts` — helper `confirmDelete(name, what)` e
+  `confirmDangerous(title, message, confirmText)` per dialoghi
+  promise-based standardizzati.
+- `style.css` — utility `.h1` / `.h2` / `.h3` per la tipografia,
+  `.modal-sm` / `-md` / `-lg` / `-xl` / `-full` per le dimensioni dei
+  modali (z-index 1000 unificato), classe globale `.empty-state-cell`
+  rifinita.
+- `.data-table thead th` ora è **sticky** di default (la tabella deve
+  stare in `.table-container`, gia' presente ovunque).
+
+**Sprint 1 — visibilità**:
+
+- `<PageHeader>` applicato a 11 viste (Nodes, VMs, Cluster, LoadBalancer,
+  Logs, Settings, HostBackup, Updates, ConfigBackup, BackupJobs,
+  RecoveryJobs, MigrationJobs, SyncJobs). Ogni pagina ora ha titolo +
+  sottotitolo + icona Heroicons coerente, con slot `#actions` per i
+  bottoni di pagina.
+- 30+ `confirm()` nativi migrati a `confirmDangerous` /
+  `confirmDelete` async — nessun più popup browser, dialog stilato
+  promise-based ovunque.
+
+**Sprint 3 — token migration**:
+
+- 19 colori bianchi hardcoded (`color: #fff`, `white`, `#FFFFFF`)
+  sostituiti con `var(--color-text-primary)` / `var(--color-bg-surface)`
+  in 7 file (LoadBalancer, ReplicationWizard, Nodes, BackupJobs,
+  Login, ecc.) — dark theme integrity migliorata.
+
+### Backlog dichiarato
+
+- Migrazione completa di `padding`/`margin` px → `var(--space-*)`
+  (~221 occorrenze): non chiusa, basso ROI vs rischio regressioni.
+- Sostituzione completa dei badge legacy con `<StatusPill>`: classi
+  `.badge-*` esistenti sono già allineate alla stessa palette di
+  StatusPill — migrazione cosmetica, non funzionale.
+- `<EmptyState>` component nelle tabelle al posto di
+  `.empty-state-cell`: richiede wrap `v-if/v-else` attorno alla table,
+  più sicuro lasciare la classe stilizzata.
+- Breadcrumb su rotte annidate (`settings/*`).
+
 ## [3.14.1] - 2026-05-03
 
 ### Correzioni

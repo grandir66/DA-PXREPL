@@ -106,6 +106,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { confirmDangerous, confirmDelete } from '../stores/confirm';
 import { useReplicationStore, type UnifiedJob, type JobKind } from '../stores/replication'
 import JobsList from '../components/jobs/JobsList.vue'
 import JobModal from '../components/jobs/JobModal.vue'
@@ -203,7 +204,7 @@ async function onRun(j: UnifiedJob) {
 }
 
 async function onDelete(j: UnifiedJob) {
-  if (!confirm(`Eliminare il job "${j.name}"?`)) return
+  if (!await confirmDangerous(`Eliminare il job "${j.name}"?`)) return
   try {
     if (j.kind === 'syncoid') await syncJobsService.deleteJob(String(j.id))
     else if (j.kind === 'backup_pbs') await backupJobsService.deleteJob(String(j.id))

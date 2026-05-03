@@ -1,9 +1,7 @@
 <template>
   <div class="recovery-jobs-page">
-    <div class="page-header">
-        <h1 class="page-title">Replica via PBS</h1>
-        <p class="page-subtitle">Sincronizzazione VM tra cluster tramite Proxmox Backup Server</p>
-        <div style="display: flex; align-items: center; gap: 12px; margin-top: 12px;">
+    <PageHeader title="Replica via PBS" subtitle="Sincronizzazione VM tra cluster tramite Proxmox Backup Server" icon="archive">
+        <template #actions>
             <button class="btn btn-secondary btn-sm" @click="loadJobs" :disabled="loading">
                 <span v-if="loading" class="spinner-sm"></span>
                 <span v-else>🔄 Aggiorna</span>
@@ -11,8 +9,8 @@
             <button class="btn btn-primary btn-sm" @click="showCreateModal = true">
                 + Nuova Replica
             </button>
-        </div>
-    </div>
+        </template>
+    </PageHeader>
 
     <div class="card">
         <div class="table-container">
@@ -145,6 +143,8 @@
 
 <script setup lang="ts">
 import { ref, onMounted, reactive } from 'vue';
+import { confirmDangerous, confirmDelete } from '../../stores/confirm';
+import PageHeader from '../../components/ui/PageHeader.vue';
 import recoveryJobsService, { type RecoveryJob } from '../../services/recoveryJobs';
 
 const jobs = ref<RecoveryJob[]>([]);
@@ -204,7 +204,7 @@ const loadJobs = async () => {
 };
 
 const runJob = async (job: RecoveryJob) => {
-    if (!confirm(`Avviare replica per ${job.name}?`)) return;
+    if (!await confirmDangerous(`Avviare replica per ${job.name}?`)) return;
     try {
         await recoveryJobsService.runJob(job.id);
         loadJobs();
@@ -214,7 +214,7 @@ const runJob = async (job: RecoveryJob) => {
 };
 
 const deleteJob = async (job: RecoveryJob) => {
-    if (!confirm('Eliminare questo job di replica?')) return;
+    if (!await confirmDangerous('Eliminare questo job di replica?')) return;
     try {
         await recoveryJobsService.deleteJob(job.id);
         loadJobs();

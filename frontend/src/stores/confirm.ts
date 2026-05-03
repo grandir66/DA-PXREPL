@@ -64,3 +64,29 @@ export const useConfirmStore = defineStore('confirm', {
 export function useConfirm() {
   return useConfirmStore()
 }
+
+/** Helper rapido: conferma di eliminazione con stile danger. */
+export function confirmDelete(name: string, what: string = 'elemento'): Promise<boolean> {
+  return useConfirmStore().ask({
+    title: `Eliminare ${what}?`,
+    message: `"${name}" sarà rimosso. L'operazione è irreversibile.`,
+    confirmText: 'Elimina',
+    cancelText: 'Annulla',
+    danger: true,
+  })
+}
+
+/** Helper: conferma di operazione potenzialmente distruttiva non-delete. */
+export function confirmDangerous(
+  title: string,
+  message?: string,
+  confirmText: string = 'Procedi'
+): Promise<boolean> {
+  return useConfirmStore().ask({
+    title,
+    message,
+    confirmText,
+    cancelText: 'Annulla',
+    danger: true,
+  })
+}

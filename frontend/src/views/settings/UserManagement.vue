@@ -95,6 +95,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, reactive } from 'vue';
+import { confirmDangerous, confirmDelete } from '../../stores/confirm';
 import authService from '../../services/auth';
 
 const users = ref<any[]>([]);
@@ -154,7 +155,7 @@ const submitUser = async () => {
 };
 
 const deleteUser = async (user: any) => {
-    if (!confirm(`Eliminare utente ${user.username}?`)) return;
+    if (!await confirmDangerous(`Eliminare utente ${user.username}?`)) return;
     try {
         await authService.deleteUser(user.id);
         loadUsers();

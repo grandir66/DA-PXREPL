@@ -1,9 +1,10 @@
 <template>
   <div class="settings-page">
-    <div class="page-header">
-        <h1 class="page-title">Impostazioni</h1>
-        <p class="page-subtitle">Configurazione sistema, utenti e sicurezza</p>
-    </div>
+    <PageHeader
+        title="Impostazioni"
+        subtitle="Configurazione sistema, utenti e sicurezza"
+        icon="settings"
+    />
 
     <div class="settings-layout">
         <!-- Sidebar Navigation -->
@@ -179,6 +180,7 @@ import { ref, onMounted, computed } from 'vue';
 import settingsService, { type NotificationConfig, type AuthConfig } from '../services/settings';
 import apiClient from '../services/api';
 import authService from '../services/auth';
+import PageHeader from '../components/ui/PageHeader.vue';
 import UserManagement from './settings/UserManagement.vue';
 import UserProfile from './settings/UserProfile.vue';
 import Certificates from './settings/Certificates.vue';

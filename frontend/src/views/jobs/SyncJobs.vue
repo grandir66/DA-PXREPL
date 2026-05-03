@@ -1,9 +1,7 @@
 <template>
   <div class="sync-jobs-page">
-    <div class="page-header">
-        <h1 class="page-title">Replica ZFS / BTRFS</h1>
-        <p class="page-subtitle">Gestione job di sincronizzazione diretta tra server</p>
-        <div style="display: flex; align-items: center; gap: 12px; margin-top: 12px;">
+    <PageHeader title="Replica ZFS / BTRFS" subtitle="Gestione job di sincronizzazione diretta tra server" icon="archive">
+        <template #actions>
             <button class="btn btn-secondary btn-sm" @click="loadJobs" :disabled="loading">
                 <span v-if="loading" class="spinner-sm"></span>
                 <span v-else>🔄 Aggiorna</span>
@@ -11,8 +9,8 @@
             <button class="btn btn-primary btn-sm" @click="showCreateModal = true">
                 + Nuovo Job
             </button>
-        </div>
-    </div>
+        </template>
+    </PageHeader>
 
     <div class="card">
         <div class="table-container">
@@ -160,6 +158,8 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue';
+import { confirmDangerous, confirmDelete } from '../../stores/confirm';
+import PageHeader from '../../components/ui/PageHeader.vue';
 import syncJobsService, { type SyncJob } from '../../services/syncJobs';
 import nodesService, { type Node } from '../../services/nodes';
 
@@ -231,7 +231,7 @@ const createJob = async () => {
 }
 
 const runJob = async (job: SyncJob) => {
-    if (!confirm(`Avviare job ${job.job_name}?`)) return;
+    if (!await confirmDangerous(`Avviare job ${job.job_name}?`)) return;
     try {
         await syncJobsService.runJob(job.id);
         loadJobs();
@@ -241,7 +241,7 @@ const runJob = async (job: SyncJob) => {
 };
 
 const deleteJob = async (job: SyncJob) => {
-    if (!confirm(`Eliminare job ${job.job_name}? Irreversibile.`)) return;
+    if (!await confirmDangerous(`Eliminare job ${job.job_name}? Irreversibile.`)) return;
     try {
         await syncJobsService.deleteJob(job.id);
         loadJobs();

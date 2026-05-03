@@ -1,9 +1,10 @@
 <template>
     <div class="host-backup-page">
-        <div class="page-header">
-            <h1 class="page-title">Host Config Backup</h1>
-            <p class="page-subtitle">Backup configurazione host Proxmox PVE e PBS</p>
-        </div>
+        <PageHeader
+            title="Host Config Backup"
+            subtitle="Backup configurazione host Proxmox PVE e PBS"
+            icon="shield"
+        />
 
         <div class="info-banner mb-6">
             <div class="icon">💡</div>
@@ -228,6 +229,8 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue';
+import { confirmDangerous, confirmDelete } from '../stores/confirm';
+import PageHeader from '../components/ui/PageHeader.vue';
 import apiClient from '../services/api';
 import nodesService from '../services/nodes';
 
@@ -295,7 +298,7 @@ const createJob = async () => {
 };
 
 const deleteJob = async (job: any) => {
-    if (!confirm(`Eliminare job ${job.name}?`)) return;
+    if (!await confirmDangerous(`Eliminare job ${job.name}?`)) return;
     try {
         await apiClient.delete(`/host-backup/jobs/${job.id}`);
         loadJobs();
@@ -364,7 +367,7 @@ const loadBackups = async () => {
 };
 
 const deleteBackup = async (backup: any) => {
-    if (!confirm(`Eliminare backup ${backup.filename}?`)) return;
+    if (!await confirmDangerous(`Eliminare backup ${backup.filename}?`)) return;
     try {
         await apiClient.delete(`/host-backup/nodes/${backupListNodeId.value}/backups/${backup.filename}`);
         loadBackups();
@@ -420,7 +423,7 @@ const downloadBackup = async (backup: any) => {
 .badge-danger { background: rgba(255, 82, 82, 0.15); color: #ff5252; }
 .badge-secondary { background: rgba(255, 255, 255, 0.1); color: var(--text-secondary); }
 
-.btn-success { background: #00b894; color: white; border: none; }
+.btn-success { background: #00b894; color: var(--color-text-primary); border: none; }
 .btn-success:hover { background: #00a383; }
 
 @media (max-width: 768px) {

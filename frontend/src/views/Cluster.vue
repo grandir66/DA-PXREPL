@@ -1,31 +1,29 @@
 <template>
   <div class="cluster-page">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">Cluster Management</h1>
-        <p class="page-subtitle">Manage Proxmox Cluster, HA, and Configuration</p>
-      </div>
-      <div class="actions">
-        <!-- Cluster Selector -->
-        <div class="cluster-selector mr-3" v-if="clusters.length > 0">
-             <select 
-                :value="selectedClusterId" 
-                @change="selectCluster(Number(($event.target as HTMLSelectElement).value))" 
-                class="form-select text-sm"
-                style="min-width: 200px;"
-            >
-                <option v-for="c in clusters" :key="c.id" :value="c.id">
-                    {{ c.name }} {{ c.is_default ? '(Default)' : '' }}
-                </option>
-            </select>
+    <PageHeader
+        title="Cluster Management"
+        subtitle="Manage Proxmox Cluster, HA, and Configuration"
+        icon="cluster"
+    >
+      <template #actions>
+        <div class="cluster-selector" v-if="clusters.length > 0">
+          <select
+            :value="selectedClusterId"
+            @change="selectCluster(Number(($event.target as HTMLSelectElement).value))"
+            class="form-input"
+            style="min-width: 200px;"
+          >
+            <option v-for="c in clusters" :key="c.id" :value="c.id">
+              {{ c.name }} {{ c.is_default ? '(Default)' : '' }}
+            </option>
+          </select>
         </div>
-
         <button class="btn btn-secondary btn-sm" @click="refreshAll" :disabled="loading">
-            <span v-if="loading" class="spinner-sm"></span>
-            {{ loading ? 'Updating...' : '🔄 Refresh All' }}
+          <Icon name="refresh" :size="14" :class="{ spin: loading }" />
+          {{ loading ? 'Updating…' : 'Refresh' }}
         </button>
-      </div>
-    </div>
+      </template>
+    </PageHeader>
 
     <!-- Tabs -->
     <div class="tabs">
@@ -655,6 +653,9 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed, watch } from 'vue';
+import { confirmDangerous, confirmDelete } from '../stores/confirm';
+import Icon from '../components/ui/Icon.vue';
+import PageHeader from '../components/ui/PageHeader.vue';
 import { useRouter } from 'vue-router';
 import { useHAStore } from '../stores/ha_store';
 import loadBalancerService from '../services/loadBalancer';
@@ -975,7 +976,7 @@ const saveCluster = async () => {
 };
 
 const deleteCluster = async (id: number) => {
-    if (!confirm("Sei sicuro di voler eliminare questa configurazione cluster?\n\nI nodi Proxmox e le sincronizzazioni NON verranno toccati.\nVerrà rimossa solo la connessione per il monitoraggio e HA.")) return;
+    if (!await confirmDangerous("Sei sicuro di voler eliminare questa configurazione cluster?\n\nI nodi Proxmox e le sincronizzazioni NON verranno toccati.\nVerrà rimossa solo la connessione per il monitoraggio e HA.")) return;
     try {
         await axios.delete(`/api/clusters/${id}`);
         await fetchClusters();
@@ -1045,7 +1046,7 @@ const loadClusterConfig = async () => {
 
 // --- CLUSTER MGMT ACTIONS ---
 const addNodeToCluster = async () => {
-   if(!confirm(`Add ${newNodeIP.value} to cluster?`)) return;
+   if(!await confirmDangerous(`Add ${newNodeIP.value} to cluster?`)) return;
    const nodeId = await getFirstPVENodeId();
    if (!nodeId) return;
    
@@ -1071,7 +1072,7 @@ const getHAStateClass = (state: string) => {
 };
 
 const removeFromHA = async (res: any) => {
-    if(!confirm('Remove resource?')) return;
+    if(!await confirmDangerous('Remove resource?')) return;
     const nodeId = await getFirstPVENodeId();
     if (!nodeId) return;
     try {
@@ -1084,7 +1085,7 @@ const removeFromHA = async (res: any) => {
 };
 
 const deleteHAGroup = async (groupName: string) => {
-     if(!confirm('Delete Group?')) return;
+     if(!await confirmDangerous('Delete Group?')) return;
      const nodeId = await getFirstPVENodeId();
      if (!nodeId) return;
      try {
@@ -1175,8 +1176,8 @@ const triggerClusterBackup = async () => {
 };
 
 const removeNodeFromCluster = async (name: string) => {
-    if(!confirm(`DANGER: Remove ${name}? Node must be OFFLINE.`)) return;
-    if(!confirm(`Are you really sure? This can break quorum.`)) return;
+    if(!await confirmDangerous(`DANGER: Remove ${name}? Node must be OFFLINE.`)) return;
+    if(!await confirmDangerous(`Are you really sure? This can break quorum.`)) return;
     
     await triggerClusterBackup();
 
@@ -1193,7 +1194,7 @@ const removeNodeFromCluster = async (name: string) => {
 };
 
 const cleanNodeReferences = async (name: string) => {
-    if(!confirm(`Clean references for ${name}?`)) return;
+    if(!await confirmDangerous(`Clean references for ${name}?`)) return;
     
     await triggerClusterBackup();
 

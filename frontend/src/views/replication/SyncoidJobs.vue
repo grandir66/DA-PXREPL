@@ -75,6 +75,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import { confirmDangerous, confirmDelete } from '../../stores/confirm';
 import syncJobsService, { type SyncJob } from '../../services/syncJobs';
 import JobLogViewer from '../components/JobLogViewer.vue';
 
@@ -99,7 +100,7 @@ const loadJobs = async () => {
 };
 
 const runJob = async (job: SyncJob) => {
-    if (!confirm(`Avviare job ${job.job_name}?`)) return;
+    if (!await confirmDangerous(`Avviare job ${job.job_name}?`)) return;
     try {
         await syncJobsService.runJob(job.id);
         loadJobs();
@@ -109,7 +110,7 @@ const runJob = async (job: SyncJob) => {
 };
 
 const deleteJob = async (job: SyncJob) => {
-    if (!confirm(`Eliminare job ${job.job_name}? Irreversibile.`)) return;
+    if (!await confirmDangerous(`Eliminare job ${job.job_name}? Irreversibile.`)) return;
     try {
         await syncJobsService.deleteJob(job.id);
         loadJobs();

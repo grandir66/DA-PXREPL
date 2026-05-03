@@ -1,9 +1,10 @@
 <template>
     <div class="updates-page">
-        <div class="page-header">
-            <h2>⬆️ Aggiornamenti Sistema</h2>
-            <p class="text-secondary">Gestisci gli aggiornamenti di DAPX-Unified</p>
-        </div>
+        <PageHeader
+            title="Aggiornamenti Sistema"
+            subtitle="Gestisci gli aggiornamenti di DAPX-Unified"
+            icon="package"
+        />
 
         <!-- Stato Versione -->
         <div class="card version-card">
@@ -112,6 +113,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
+import PageHeader from '../../components/ui/PageHeader.vue';
 import updatesService from '../../services/updates';
 import type { UpdateCheckResult, UpdateStatus } from '../../services/updates';
 

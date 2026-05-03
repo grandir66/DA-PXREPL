@@ -64,6 +64,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import { confirmDangerous, confirmDelete } from '../../stores/confirm';
 import { pveReplicationService, type PVEReplicationJob } from '../../services/pveReplication';
 
 const jobs = ref<PVEReplicationJob[]>([]);
@@ -95,7 +96,7 @@ const runJob = async (id: string) => {
 };
 
 const confirmDelete = async (id: string) => {
-  if (!confirm(`Sei sicuro di voler eliminare il job ${id}?`)) return;
+  if (!await confirmDangerous(`Sei sicuro di voler eliminare il job ${id}?`)) return;
   try {
     await pveReplicationService.deleteJob(id);
     await loadJobs();

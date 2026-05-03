@@ -1,23 +1,20 @@
 <template>
   <div class="logs-page">
-    <div class="page-header">
-        <h1 class="page-title">Logs</h1>
-        <p class="page-subtitle">Registro eventi, backup e sistema</p>
-        
-        <div class="tabs-header">
-            <button 
-                class="tab-btn" 
-                :class="{ active: activeTab === 'jobs' }" 
-                @click="activeTab = 'jobs'">
-                🔄 Job History
-            </button>
-            <button 
-                class="tab-btn" 
-                :class="{ active: activeTab === 'system' }" 
-                @click="activeTab = 'system'; loadSystemFiles()">
-                🖥️ System Logs
-            </button>
-        </div>
+    <PageHeader title="Log" subtitle="Registro eventi, backup e sistema" icon="file-text" />
+
+    <div class="tabs-header">
+        <button
+            class="tab-btn"
+            :class="{ active: activeTab === 'jobs' }"
+            @click="activeTab = 'jobs'">
+            <Icon name="refresh" :size="14" /> Job History
+        </button>
+        <button
+            class="tab-btn"
+            :class="{ active: activeTab === 'system' }"
+            @click="activeTab = 'system'; loadSystemFiles()">
+            <Icon name="server" :size="14" /> System Logs
+        </button>
     </div>
 
     <!-- JOB LOGS TAB -->
@@ -147,7 +144,10 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import { confirmDangerous, confirmDelete } from '../stores/confirm';
 import logsService, { type LogEntry } from '../services/logs';
+import PageHeader from '../components/ui/PageHeader.vue';
+import Icon from '../components/ui/Icon.vue';
 
 const activeTab = ref('jobs');
 
@@ -199,7 +199,7 @@ const loadLogs = async (p = 1) => {
 };
 
 const clearLogs = async () => {
-    if (!confirm('Eliminare tutti i log?')) return;
+    if (!await confirmDangerous('Eliminare tutti i log?')) return;
     try {
         await logsService.clearLogs();
         loadLogs();

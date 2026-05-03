@@ -228,7 +228,7 @@ const save = async () => {
     padding: 16px; border-radius: 8px; border: 1px solid var(--border-color);
 }
 .info-card .label { font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px; text-transform: uppercase; }
-.info-card .value { font-size: 1.1rem; font-weight: 600; color: white; margin-bottom: 2px; }
+.info-card .value { font-size: 1.1rem; font-weight: 600; color: var(--color-text-primary); margin-bottom: 2px; }
 .info-card .value.highlight { color: var(--accent-primary); }
 .info-card .sub-value { font-size: 0.9rem; color: #ccc; font-family: monospace; }
 .info-card .sub-label { font-size: 0.8rem; color: #888; margin-top: 4px; }
@@ -237,7 +237,7 @@ const save = async () => {
 .form-group label { font-size: 0.85rem; color: var(--text-secondary); }
 .form-input { 
     padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); 
-    background: rgba(0,0,0,0.2); color: white; font-family: inherit;
+    background: rgba(0,0,0,0.2); color: var(--color-text-primary); font-family: inherit;
 }
 .form-input:focus { border-color: var(--accent-primary); outline: none; }
 .help-text { font-size: 0.75rem; color: var(--text-secondary); }
@@ -254,11 +254,11 @@ const save = async () => {
 .btn { padding: 10px 20px; border-radius: 6px; border: none; cursor: pointer; font-weight: 600; transition: all 0.2s; }
 .btn-primary { background: var(--accent-primary); color: black; }
 .btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); }
-.btn-secondary { background: transparent; border: 1px solid var(--border-color); color: white; }
+.btn-secondary { background: transparent; border: 1px solid var(--border-color); color: var(--color-text-primary); }
 .btn-secondary:hover { background: rgba(255,255,255,0.05); }
 
 .btn-icon { background: none; border: none; color: #888; font-size: 1.5rem; cursor: pointer; }
-.btn-icon:hover { color: white; }
+.btn-icon:hover { color: var(--color-text-primary); }
 </style>
       
 

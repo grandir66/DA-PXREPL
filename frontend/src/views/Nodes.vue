@@ -1,18 +1,20 @@
 <template>
   <div class="nodes-page">
-    <div class="page-header">
-        <h1 class="page-title">Nodi Proxmox</h1>
-        <p class="page-subtitle">Gestione e monitoraggio nodi del cluster</p>
-        <div style="display: flex; align-items: center; gap: 12px; margin-top: 12px;">
+    <PageHeader
+        title="Nodi Proxmox"
+        subtitle="Gestione e monitoraggio nodi del cluster"
+        icon="server"
+    >
+        <template #actions>
             <button class="btn btn-primary btn-sm" @click="openModal">
-                + Nuovo Nodo
+                <Icon name="plus" :size="14" /> Nuovo nodo
             </button>
             <button class="btn btn-secondary btn-sm" @click="loadNodes" :disabled="loading">
-                <span v-if="loading" class="spinner-sm"></span>
-                <span v-else>🔄 Aggiorna</span>
+                <Icon name="refresh" :size="14" :class="{ spin: loading }" />
+                {{ loading ? 'Aggiorno…' : 'Aggiorna' }}
             </button>
-        </div>
-    </div>
+        </template>
+    </PageHeader>
 
     <div class="card">
         <div class="table-container">
@@ -471,6 +473,10 @@
 import { ref, reactive, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import nodesService, { type Node } from '../services/nodes';
+import PageHeader from '../components/ui/PageHeader.vue';
+import Icon from '../components/ui/Icon.vue';
+import { confirmDelete } from '../stores/confirm';
+import { useToast, errorMessage } from '../stores/toast';
 
 const nodes = ref<Node[]>([]);
 const loading = ref(false);
@@ -570,7 +576,7 @@ const refreshData = async () => {
         
     } catch (e) {
         console.error("Errore refresh dati", e);
-        alert("Errore durante l'aggiornamento dati");
+        _toast.error("Errore aggiornamento dati", errorMessage(e));
         refreshing.value = false;
     }
 };
@@ -694,35 +700,44 @@ const runDiagnosticStart = async () => {
     }
 };
 
+const _toast = useToast();
+
 const deleteNode = async (node: Node) => {
-    if(!confirm(`Sei sicuro di voler eliminare il nodo ${node.name}?`)) return;
+    if (!await confirmDelete(node.name, 'il nodo')) return;
     try {
         await nodesService.deleteNode(node.id);
+        _toast.success(`Nodo "${node.name}" eliminato`);
         loadNodes();
     } catch (e: any) {
-        alert('Errore eliminazione: ' + (e.response?.data?.detail || e.message));
+        _toast.error('Errore eliminazione', errorMessage(e));
     }
 };
 
 const testNode = async (node: Node) => {
     try {
         await nodesService.testNode(node.id);
-        alert(`Test connessione avviato per ${node.name}. Ricarica la pagina tra poco per vedere lo stato aggiornato.`);
+        _toast.info(`Test connessione avviato per ${node.name}`, 'Ricarica tra poco per vedere lo stato aggiornato.');
         loadNodes();
     } catch (e: any) {
-        alert('Errore test connessione: ' + (e.response?.data?.detail || e.message));
+        _toast.error('Errore test connessione', errorMessage(e));
     }
 };
 
 const installSanoid = async (node: Node) => {
-    if(!confirm(`Installare Sanoid/Syncoid sul nodo ${node.name}? Questo richiederà alcuni secondi.`)) return;
+    const { confirmDangerous } = await import('../stores/confirm');
+    const ok = await confirmDangerous(
+        `Installare Sanoid/Syncoid su ${node.name}?`,
+        'Operazione di alcuni secondi sul nodo remoto.',
+        'Installa'
+    );
+    if (!ok) return;
     try {
-        alert(`Installazione avviata su ${node.name}...`);
+        _toast.info(`Installazione avviata su ${node.name}…`);
         await nodesService.installSanoid(node.id);
-        alert('Installazione completata con successo!');
+        _toast.success('Installazione completata');
         loadNodes();
     } catch (e: any) {
-        alert('Errore installazione Sanoid: ' + (e.response?.data?.detail || e.message));
+        _toast.error('Errore installazione Sanoid', errorMessage(e));
     }
 };
 
@@ -735,7 +750,7 @@ const formatSize = (bytes: number) => {
 };
 
 const updateSanoid = async (node: Node) => {
-    if(!confirm(`Aggiornare Sanoid sul nodo ${node.name}? L'operazione potrebbe richiedere alcuni minuti.`)) return;
+    if(!await confirmDangerous(`Aggiornare Sanoid sul nodo ${node.name}? L'operazione potrebbe richiedere alcuni minuti.`)) return;
     try {
         alert(`Aggiornamento Sanoid avviato su ${node.name}...`);
         await nodesService.updateSanoid(node.id);
@@ -900,7 +915,7 @@ const getGuestVlanOnBridge = (guest: any, bridgeName: string): string | null => 
 }
 .kpi-row { display: flex; gap: 24px; margin-bottom: 12px; }
 .kpi { display: flex; flex-direction: column; }
-.kpi .val { font-size: 1.5rem; font-weight: bold; color: white; }
+.kpi .val { font-size: 1.5rem; font-weight: bold; color: var(--color-text-primary); }
 .kpi .lbl { font-size: 0.75rem; color: var(--text-secondary); }
 
 .list-info { font-size: 0.9rem; color: var(--text-primary); }
