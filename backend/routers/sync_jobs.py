@@ -442,7 +442,10 @@ class SyncJobCreate(BaseModel):
     dest_vm_id: Optional[int] = None  # ID VM destinazione (se diverso da sorgente)
     vm_type: Optional[str] = None
     vm_name: Optional[str] = None
+    dest_vm_name: Optional[str] = None  # Override completo nome VM (precede suffix)
     dest_vm_name_suffix: Optional[str] = None  # Suffisso per nome VM su destinazione (es: -replica)
+    dest_bridge: Optional[str] = None  # Bridge dest (sostituisce bridge=... nelle righe netN)
+    dest_vlan: Optional[int] = None    # VLAN tag dest (1-4094)
     disk_name: Optional[str] = None  # Nome disco (per BTRFS)
     force_cpu_host: bool = True  # Forza CPU type a 'host' su destinazione per compatibilità
     
@@ -489,7 +492,10 @@ class SyncJobUpdate(BaseModel):
     dest_vm_id: Optional[int] = None
     vm_type: Optional[str] = None
     vm_name: Optional[str] = None
+    dest_vm_name: Optional[str] = None  # Override completo nome VM
     dest_vm_name_suffix: Optional[str] = None  # Suffisso per nome VM su destinazione
+    dest_bridge: Optional[str] = None
+    dest_vlan: Optional[int] = None
     disk_name: Optional[str] = None
     force_cpu_host: Optional[bool] = None  # Forza CPU type a 'host' su destinazione
     source_storage: Optional[str] = None  # Storage Proxmox sorgente
@@ -539,7 +545,10 @@ class SyncJobResponse(BaseModel):
     dest_vm_id: Optional[int]
     vm_type: Optional[str]
     vm_name: Optional[str]
+    dest_vm_name: Optional[str] = None
     dest_vm_name_suffix: Optional[str] = None
+    dest_bridge: Optional[str] = None
+    dest_vlan: Optional[int] = None
     force_cpu_host: Optional[bool] = True
     vm_group_id: Optional[str]
     disk_name: Optional[str]
@@ -822,7 +831,11 @@ class VMReplicaCreate(BaseModel):
     dest_subfolder: str = "replica"  # Sottocartella (es: replica)
     dest_storage: Optional[str] = None  # Nome storage Proxmox destinazione (se vuoto, usa dest_subfolder)
     dest_vm_id: Optional[int] = None  # ID VM destinazione se diverso
+    dest_vm_name: Optional[str] = None  # Override completo nome VM
     dest_vm_name_suffix: Optional[str] = None  # Suffisso per nome VM su destinazione (es: -replica)
+    dest_bridge: Optional[str] = None   # Bridge dest (sostituisce bridge=...)
+    dest_vlan: Optional[int] = None     # VLAN tag dest (1-4094)
+    force_cpu_host: bool = True
     schedule: Optional[str] = None
     schedule_config: Optional[Dict[str, Any]] = None
     compress: str = "lz4"
@@ -905,6 +918,12 @@ async def create_vm_replica_jobs(
         raise HTTPException(status_code=400, detail=f"dest_storage non valido: {vm_data.dest_storage!r}")
     if vm_data.dest_vm_name_suffix and not re.fullmatch(r"[A-Za-z0-9_\-]{1,50}", vm_data.dest_vm_name_suffix):
         raise HTTPException(status_code=400, detail=f"dest_vm_name_suffix non valido")
+    if vm_data.dest_bridge and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.\-]{0,49}", vm_data.dest_bridge):
+        raise HTTPException(status_code=400, detail=f"dest_bridge non valido: {vm_data.dest_bridge!r}")
+    if vm_data.dest_vlan is not None and not (1 <= vm_data.dest_vlan <= 4094):
+        raise HTTPException(status_code=400, detail=f"dest_vlan fuori range (1-4094): {vm_data.dest_vlan}")
+    if vm_data.dest_vm_name and not re.fullmatch(r"[A-Za-z0-9.\-_ ]{1,100}", vm_data.dest_vm_name):
+        raise HTTPException(status_code=400, detail=f"dest_vm_name non valido")
 
     # Allinea lo schedule UNA volta sola: tutti i job della VM condividono
     # la stessa pianificazione.
@@ -949,7 +968,11 @@ async def create_vm_replica_jobs(
             dest_vm_id=dest_vmid if dest_vmid != vm_data.vm_id else None,
             vm_type=vm_data.vm_type,
             vm_name=vm_data.vm_name,
+            dest_vm_name=vm_data.dest_vm_name,
             dest_vm_name_suffix=vm_data.dest_vm_name_suffix,
+            dest_bridge=vm_data.dest_bridge,
+            dest_vlan=vm_data.dest_vlan,
+            force_cpu_host=vm_data.force_cpu_host,
             keep_snapshots=vm_data.keep_snapshots,
             vm_group_id=vm_group_id,
             disk_name=disk.get("disk_name"),
@@ -1533,8 +1556,11 @@ async def register_vm_manually(
         dest_storage=job.dest_storage,
         dest_zfs_pool=dest_zfs_pool,
         vm_name_suffix=job.dest_vm_name_suffix,
+        new_name=getattr(job, "dest_vm_name", None),
         force_cpu_host=force_cpu,
         dest_node_bridges=dest_bridges,
+        dest_bridge=getattr(job, "dest_bridge", None),
+        dest_vlan=getattr(job, "dest_vlan", None),
         port=dest_node.ssh_port,
         username=dest_node.ssh_user,
         key_path=dest_node.ssh_key_path

@@ -479,6 +479,13 @@ class SyncJob(Base):
     # Storage mapping per registrazione VM
     source_storage = Column(String(100), nullable=True)  # Storage Proxmox sorgente (es: local-zfs)
     dest_storage = Column(String(100), nullable=True)  # Storage Proxmox destinazione (es: replica-zfs)
+
+    # Override dei parametri VM sul nodo destinazione (registrazione VM).
+    # Se non impostati, i valori del file di config sorgente vengono
+    # mantenuti.
+    dest_vm_name = Column(String(100), nullable=True)  # Override completo del nome VM
+    dest_bridge = Column(String(50), nullable=True)    # es: "vmbr0" (sostituisce bridge=... in netN)
+    dest_vlan = Column(Integer, nullable=True)         # es: 100 (aggiunge/sostituisce tag=NN in netN)
     
     # Notifiche
     notify_mode = Column(String(20), default="daily")  # daily, always, failure, never

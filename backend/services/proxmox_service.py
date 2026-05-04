@@ -577,6 +577,8 @@ class ProxmoxService:
         new_name: Optional[str] = None,  # Override completo del nome
         force_cpu_host: bool = True,
         dest_node_bridges: Optional[List[str]] = None,
+        dest_bridge: Optional[str] = None,    # Override bridge per TUTTE le netN
+        dest_vlan: Optional[int] = None,      # Override VLAN tag (None = invariato)
         port: int = 22,
         username: str = "root",
         key_path: str = "/root/.ssh/id_rsa"
@@ -714,14 +716,52 @@ class ProxmoxService:
                     config_content = cpu_pattern.sub('cpu: host', config_content)
                     warnings.append(f"CPU cambiata da '{old_cpu}' a 'cpu: host' per compatibilità")
             
-            # Verifica bridge di rete
+            # Sostituzione bridge dest (se l'utente ha scelto un bridge
+            # specifico nel wizard). Sostituisce TUTTE le occorrenze
+            # di `bridge=...` nelle righe netN. Validato regex-safe.
+            if dest_bridge:
+                if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.\-]*", dest_bridge):
+                    warnings.append(f"dest_bridge non valido, ignorato: {dest_bridge!r}")
+                else:
+                    config_content = re.sub(
+                        r'(^net\d+:[^\n]*?\bbridge=)[^,\s]+',
+                        rf'\g<1>{dest_bridge}',
+                        config_content,
+                        flags=re.MULTILINE,
+                    )
+
+            # Sostituzione/aggiunta VLAN tag dest (se specificato).
+            if dest_vlan is not None:
+                try:
+                    vlan_int = int(dest_vlan)
+                    if not (1 <= vlan_int <= 4094):
+                        raise ValueError("vlan fuori range")
+                    def _apply_vlan(match: re.Match) -> str:
+                        line = match.group(0)
+                        if "tag=" in line:
+                            return re.sub(r'\btag=\d+', f'tag={vlan_int}', line)
+                        return f"{line},tag={vlan_int}"
+                    config_content = re.sub(
+                        r'^net\d+:[^\n]+',
+                        _apply_vlan,
+                        config_content,
+                        flags=re.MULTILINE,
+                    )
+                except Exception:
+                    warnings.append(f"dest_vlan non valido, ignorato: {dest_vlan!r}")
+
+            # Verifica bridge di rete (warning se non disponibile sul dest)
             if dest_node_bridges:
                 net_pattern = re.compile(r'^(net\d+):.+bridge=([^,\s]+)', re.MULTILINE)
                 for match in net_pattern.finditer(config_content):
                     net_iface = match.group(1)
                     bridge = match.group(2)
                     if bridge not in dest_node_bridges:
-                        warnings.append(f"⚠️ RETE: {net_iface} usa bridge '{bridge}' che non esiste sul nodo destinazione. Bridge disponibili: {', '.join(dest_node_bridges)}")
+                        warnings.append(
+                            f"RETE: {net_iface} usa bridge '{bridge}' "
+                            f"che non esiste sul nodo destinazione. "
+                            f"Bridge disponibili: {', '.join(dest_node_bridges)}"
+                        )
             
             # Crea il file di configurazione
             cmd = f"""

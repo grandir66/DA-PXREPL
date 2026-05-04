@@ -5,6 +5,42 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.16.5] - 2026-05-04
+
+### Correzioni critiche su registrazione VM dopo replica
+
+- **BUG GRAVE — VMID destinazione ignorato** (`services/scheduler.py`):
+  `_register_vm_after_sync` chiamava `proxmox_service.register_vm` con
+  `vmid=job.vm_id` (il VMID **sorgente**), ignorando completamente
+  `job.dest_vm_id`. Risultato: la VM replicata veniva sempre registrata
+  con il VMID del sorgente — l'utente vedeva la VM con l'ID di origine
+  invece di quello scelto nel wizard, e poteva sembrare di averne due
+  (una pre-esistente + una "duplicata"). Ora il scheduler usa
+  `job.dest_vm_id or job.vm_id`.
+- **BUG — parametri di registrazione persi**: lo stesso scheduler
+  passava SOLO `hostname/vmid/vm_type/config_content` al `register_vm`,
+  ignorando `dest_storage`, `vm_name_suffix`, `dest_vm_name`,
+  `force_cpu_host`, `dest_node_bridges`. Tutte le scelte del wizard
+  (override nome, force CPU host, mapping storage, ecc.) erano
+  effettivamente no-op nelle run schedulate. Ora vengono passati tutti.
+
+### Aggiunte (parametri rete destinazione)
+
+- **`dest_bridge` + `dest_vlan`** sul modello `SyncJob` + migration
+  idempotente. Quando impostati, il `register_vm` sostituisce le
+  occorrenze di `bridge=...` (e aggiunge/sostituisce `tag=NN`) nelle
+  righe `netN` del config replicato, validati con regex.
+- **`dest_vm_name`** override completo del nome (precede il suffisso)
+  sul modello `SyncJob`.
+- **Wizard JobModal**: i campi `bridge` / `vlan` / `dest_vm_name` del
+  passo "Registrazione VM" ora vengono effettivamente trasmessi al
+  backend (prima erano popolati nel form ma scartati nel payload).
+- **`POST /api/sync-jobs/vm-replica`**: i nuovi campi
+  `dest_bridge` / `dest_vlan` / `dest_vm_name` / `force_cpu_host` sono
+  validati (regex/range) e persistiti in `SyncJob`.
+- **`POST /api/sync-jobs/{id}/register-vm`** (registrazione manuale):
+  passa anche bridge/VLAN/nome custom al servizio.
+
 ## [3.16.4] - 2026-05-04
 
 ### Correzioni

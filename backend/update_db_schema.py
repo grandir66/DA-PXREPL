@@ -70,6 +70,11 @@ def update_schema():
             # current_status su sync_jobs (allineato a backup_jobs/recovery_jobs).
             _ensure_column(conn, "sync_jobs", "current_status", "VARCHAR(20)")
 
+            # Override registrazione VM (3.16.5): bridge/VLAN/nome destinazione.
+            _ensure_column(conn, "sync_jobs", "dest_vm_name", "VARCHAR(100)")
+            _ensure_column(conn, "sync_jobs", "dest_bridge", "VARCHAR(50)")
+            _ensure_column(conn, "sync_jobs", "dest_vlan", "INTEGER")
+
             trans.commit()
         except Exception as e:
             trans.rollback()

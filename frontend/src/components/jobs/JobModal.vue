@@ -514,7 +514,10 @@ function hydrateFromJob(j: UnifiedJob) {
     f.keep_snapshots = r.keep_snapshots ?? 0
     f.registration.dest_storage = r.dest_storage ?? null
     f.registration.dest_vm_id = r.dest_vm_id ?? null
+    f.registration.dest_vm_name = r.dest_vm_name ?? null
     f.registration.dest_vm_name_suffix = r.dest_vm_name_suffix ?? null
+    f.registration.bridge = r.dest_bridge ?? null
+    f.registration.vlan = r.dest_vlan ?? null
     f.registration.register_vm = r.register_vm ?? true
     f.registration.force_cpu_host = r.force_cpu_host ?? true
   } else if (j.kind === 'backup_pbs') {
@@ -721,7 +724,11 @@ function buildSyncoidPayload() {
     dest_subfolder: form.value.dest_subfolder || '',
     dest_storage: destStorage,
     dest_vm_id: form.value.registration.dest_vm_id,
+    dest_vm_name: form.value.registration.dest_vm_name,
     dest_vm_name_suffix: form.value.registration.dest_vm_name_suffix,
+    dest_bridge: form.value.registration.bridge,
+    dest_vlan: form.value.registration.vlan,
+    force_cpu_host: form.value.registration.force_cpu_host !== false,
     schedule: form.value.schedule,
     schedule_config: form.value.schedule_config,
     compress: form.value.compress,
@@ -809,7 +816,10 @@ async function submit() {
           keep_snapshots: form.value.keep_snapshots,
           register_vm: form.value.registration.register_vm,
           dest_vm_id: form.value.registration.dest_vm_id,
+          dest_vm_name: form.value.registration.dest_vm_name,
           dest_vm_name_suffix: form.value.registration.dest_vm_name_suffix,
+          dest_bridge: form.value.registration.bridge,
+          dest_vlan: form.value.registration.vlan,
           dest_storage: form.value.registration.dest_storage,
           force_cpu_host: form.value.registration.force_cpu_host,
           notify_mode: form.value.notify_mode,

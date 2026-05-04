@@ -675,44 +675,73 @@ class SchedulerService:
         dest_node: Node,
         log_entry: JobLog
     ):
-        """Registra una VM sul nodo destinazione dopo la sync"""
+        """Registra una VM sul nodo destinazione dopo la sync.
+
+        BUG FIX (3.16.5):
+          - prima il VMID passato a register_vm era SEMPRE quello sorgente
+            (`job.vm_id`), ignorando `job.dest_vm_id`. Risultato: la VM
+            replicata veniva registrata con il VMID sorgente — l'utente
+            si trovava la VM con vmid duplicato e quella scelta nel
+            wizard non veniva mai creata.
+          - inoltre TUTTI i parametri di registrazione (storage, bridge,
+            VLAN, nome, force-cpu) venivano persi perche' a register_vm
+            venivano passati solo hostname/vmid/vm_type/config_content.
+        """
         try:
-            # Ottieni config dalla sorgente
+            # 1) Config sorgente
             success, config = await proxmox_service.get_vm_config_file(
                 hostname=source_node.hostname,
                 vmid=job.vm_id,
                 vm_type=job.vm_type or "qemu",
                 port=source_node.ssh_port,
                 username=source_node.ssh_user,
-                key_path=source_node.ssh_key_path
+                key_path=source_node.ssh_key_path,
             )
-            
             if not success:
-                log_entry.message += f" | Registrazione VM fallita: impossibile ottenere config"
+                log_entry.message += " | Registrazione VM fallita: impossibile ottenere config"
                 return
-            
-            # Modifica config per il nuovo storage se necessario
-            # (potrebbe essere necessario adattare i path dei dischi)
-            modified_config = self._adapt_vm_config(config, job.source_dataset, job.dest_dataset)
-            
-            # Registra sul nodo destinazione
+
+            # 2) Bridge esistenti sul dest (per warning)
+            try:
+                dest_bridges = await proxmox_service.get_node_bridges(
+                    hostname=dest_node.hostname,
+                    port=dest_node.ssh_port,
+                    username=dest_node.ssh_user,
+                    key_path=dest_node.ssh_key_path,
+                )
+            except Exception:
+                dest_bridges = None
+
+            # 3) VMID destinazione: dest_vm_id se impostato, altrimenti
+            #    quello sorgente.
+            target_vmid = job.dest_vm_id or job.vm_id
+
+            # 4) Registra (passando TUTTI i parametri)
             success, msg, warnings = await proxmox_service.register_vm(
                 hostname=dest_node.hostname,
-                vmid=job.vm_id,
+                vmid=target_vmid,
                 vm_type=job.vm_type or "qemu",
-                config_content=modified_config,
+                config_content=config,
+                source_storage=getattr(job, "source_storage", None),
+                dest_storage=getattr(job, "dest_storage", None),
+                vm_name_suffix=getattr(job, "dest_vm_name_suffix", None),
+                new_name=getattr(job, "dest_vm_name", None),
+                force_cpu_host=bool(getattr(job, "force_cpu_host", True)),
+                dest_node_bridges=dest_bridges,
+                dest_bridge=getattr(job, "dest_bridge", None),
+                dest_vlan=getattr(job, "dest_vlan", None),
                 port=dest_node.ssh_port,
                 username=dest_node.ssh_user,
-                key_path=dest_node.ssh_key_path
+                key_path=dest_node.ssh_key_path,
             )
-            
+
             if success:
-                log_entry.message += f" | VM {job.vm_id} registrata"
+                log_entry.message += f" | VM {target_vmid} registrata su {dest_node.name}"
                 if warnings:
                     log_entry.message += f" [Avvisi: {'; '.join(warnings)}]"
             else:
                 log_entry.message += f" | Registrazione VM fallita: {msg}"
-                
+
         except Exception as e:
             log_entry.message += f" | Errore registrazione VM: {e}"
     
