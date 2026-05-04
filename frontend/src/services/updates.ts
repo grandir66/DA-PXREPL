@@ -37,5 +37,9 @@ export default {
 
     refreshVersion() {
         return apiClient.post<{ success: boolean; version: string; message: string }>('/updates/refresh-version');
+    },
+
+    getChangelog() {
+        return apiClient.get<{ path: string; content: string; size: number }>('/updates/changelog');
     }
 };

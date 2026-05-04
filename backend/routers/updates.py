@@ -547,6 +547,37 @@ async def get_version():
     }
 
 
+@router.get("/changelog")
+async def get_changelog():
+    """Ritorna il contenuto raw di CHANGELOG.md (markdown).
+
+    Cerca il file in più posizioni note: install dir di produzione,
+    cartella padre del backend (layout repo), cwd. Pubblico (no auth)
+    perché serve a leggere note di rilascio anche da utenti senza
+    privilegi admin.
+    """
+    candidates = [
+        os.path.join(INSTALL_DIR, "CHANGELOG.md"),
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", "CHANGELOG.md"),
+        os.path.join(os.getcwd(), "CHANGELOG.md"),
+    ]
+    for path in candidates:
+        try:
+            real = os.path.abspath(path)
+            if os.path.isfile(real):
+                with open(real, "r", encoding="utf-8") as f:
+                    content = f.read()
+                return {
+                    "path": real,
+                    "content": content,
+                    "size": len(content),
+                }
+        except Exception as e:
+            logger.warning(f"Errore lettura changelog candidato {path}: {e}")
+            continue
+    raise HTTPException(status_code=404, detail="CHANGELOG.md non trovato")
+
+
 @router.post("/refresh-version")
 async def refresh_version(user: User = Depends(require_admin)):
     """Forza refresh della versione (utile dopo aggiornamento)"""

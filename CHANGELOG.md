@@ -5,6 +5,49 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.3] - 2026-05-04
+
+### Aggiunte
+
+- **Storico CHANGELOG consultabile dall'UI** — la pagina
+  "Aggiornamenti Sistema" ora mostra una nuova card "Storico
+  Modifiche (CHANGELOG)" con bottone Mostra/Nascondi. Espandendola,
+  l'app fa fetch su `GET /api/updates/changelog` e renderizza il
+  contenuto raw di `CHANGELOG.md` (markdown, monospace, scroll
+  fino a 600px).
+  - Backend: nuovo endpoint pubblico in
+    [`backend/routers/updates.py`](backend/routers/updates.py)
+    che cerca `CHANGELOG.md` in più path candidati (install dir,
+    layout repo, cwd) per essere robusto in dev e prod.
+  - Frontend: card aggiunta in
+    [`frontend/src/views/settings/Updates.vue`](frontend/src/views/settings/Updates.vue),
+    metodo `getChangelog()` nel service
+    [`frontend/src/services/updates.ts`](frontend/src/services/updates.ts).
+    Lazy load: il fetch parte solo al primo Mostra.
+
+### Correzioni
+
+- **Cache browser bloccata sul vecchio `index.html`** — dopo un update
+  via `update.sh` o "Aggiorna" UI, alcuni browser continuavano a
+  servire la versione precedente dell'app (testi vecchi, dialog
+  obsoleti come `Annulla/Annulla` corretto in v3.17.2) finché
+  l'utente non faceva un hard-refresh manuale.
+
+  Causa: il backend serviva `index.html` (e gli altri file non
+  hashati del frontend) senza header `Cache-Control`, quindi il
+  browser applicava la sua euristica di cache standard.
+
+  Fix in [`backend/main.py`](backend/main.py): aggiunti header
+  `Cache-Control: no-cache, no-store, must-revalidate` +
+  `Pragma: no-cache` + `Expires: 0` su:
+  - `GET /` (root → `index.html`)
+  - `GET /{full_path:path}` (catch-all per file non `/assets/*`)
+
+  `/assets/*` (chunk Vite con hash nel nome, immutabili) resta
+  cachable a lungo come prima — quello è l'unico modo sano per
+  avere update istantanei senza perdere il vantaggio della cache
+  sui chunk hashati.
+
 ## [3.17.2] - 2026-05-04
 
 ### Correzioni

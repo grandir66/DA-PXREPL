@@ -51,6 +51,21 @@
  </div>
  </div>
 
+ <!-- Storico CHANGELOG.md locale -->
+ <div class="card history-card">
+ <div class="card-header">
+ <h3>Storico Modifiche (CHANGELOG)</h3>
+ <button class="btn btn-sm" @click="toggleHistory">
+ {{ historyExpanded ? 'Nascondi' : 'Mostra' }}
+ </button>
+ </div>
+ <div v-if="historyExpanded" class="card-body">
+ <div v-if="historyLoading" class="loading-msg">Caricamento changelog…</div>
+ <div v-else-if="historyError" class="error-msg">{{ historyError }}</div>
+ <pre v-else class="changelog-content history-content">{{ historyContent }}</pre>
+ </div>
+ </div>
+
  <!-- Azione Aggiornamento -->
  <div v-if="updateInfo?.update_available" class="card action-card">
  <div class="card-header">
@@ -123,6 +138,32 @@ const updateInfo = ref<UpdateCheckResult | null>(null);
 const updateStatus = ref<UpdateStatus | null>(null);
 const checking = ref(false);
 const logOutput = ref<HTMLElement | null>(null);
+
+const historyExpanded = ref(false);
+const historyLoading = ref(false);
+const historyError = ref<string | null>(null);
+const historyContent = ref<string>('');
+const historyLoaded = ref(false);
+
+const toggleHistory = async () => {
+ historyExpanded.value = !historyExpanded.value;
+ if (historyExpanded.value) await loadChangelog();
+};
+
+const loadChangelog = async () => {
+ if (historyLoaded.value) return;
+ historyLoading.value = true;
+ historyError.value = null;
+ try {
+ const res = await updatesService.getChangelog();
+ historyContent.value = res.data.content;
+ historyLoaded.value = true;
+ } catch (e: any) {
+ historyError.value = e?.response?.data?.detail || 'Impossibile caricare CHANGELOG.md';
+ } finally {
+ historyLoading.value = false;
+ }
+};
 
 let statusInterval: number | null = null;
 
@@ -284,6 +325,20 @@ onUnmounted(() => {
  font-size: 0.9rem;
  max-height: 300px;
  overflow: auto;
+}
+
+.history-content {
+ max-height: 600px;
+}
+
+.loading-msg, .error-msg {
+ color: var(--text-secondary);
+ font-style: italic;
+}
+
+.error-msg {
+ color: var(--error-color, #d33);
+ font-style: normal;
 }
 
 .release-date {

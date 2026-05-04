@@ -73,7 +73,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="DAPX-backandrepl",
     description="Sistema centralizzato di backup e replica per Proxmox VE. Supporta ZFS (Sanoid/Syncoid), BTRFS (btrfs send/receive) e PBS (Proxmox Backup Server).",
-    version="3.17.2",
+    version="3.17.3",
     lifespan=lifespan
 )
 
@@ -153,7 +153,7 @@ async def health_check():
     from datetime import datetime as _dt
     payload: dict = {
         "status": "healthy",
-        "version": "3.17.2",
+        "version": "3.17.3",
         "auth_enabled": True,
         "mode": dapx_mode,
         "checks": {},
@@ -213,28 +213,40 @@ for path in possible_frontend_paths:
         break
 
 if frontend_path:
-    # Mount assets directory
+    # /assets/* contiene i chunk Vite con hash nel nome (es.
+    # index-CURHmSzy.js): immutabili, possono essere cachati a lungo.
+    # Il problema "vecchia UI dopo update" sta su index.html (no hash),
+    # quindi quello va servito sempre con no-cache.
     assets_path = os.path.join(frontend_path, "assets")
     if os.path.exists(assets_path):
         app.mount("/assets", StaticFiles(directory=assets_path), name="assets")
-    
+
+    _NO_CACHE_HEADERS = {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+    }
+
     @app.get("/")
     async def serve_frontend():
-        return FileResponse(os.path.join(frontend_path, "index.html"))
-    
+        return FileResponse(
+            os.path.join(frontend_path, "index.html"),
+            headers=_NO_CACHE_HEADERS,
+        )
+
     @app.get("/{full_path:path}")
     async def catch_all(full_path: str):
-        # Non intercettare le API
         if full_path.startswith("api/"):
             raise HTTPException(status_code=404, detail="API endpoint not found")
-        
-        # Serve file statici se esistono
+
         file_path = os.path.join(frontend_path, full_path)
         if os.path.exists(file_path) and os.path.isfile(file_path):
-            return FileResponse(file_path)
-        
-        # SPA fallback
-        return FileResponse(os.path.join(frontend_path, "index.html"))
+            return FileResponse(file_path, headers=_NO_CACHE_HEADERS)
+
+        return FileResponse(
+            os.path.join(frontend_path, "index.html"),
+            headers=_NO_CACHE_HEADERS,
+        )
 else:
     logger.warning("Frontend non trovato! L'interfaccia web non sarà disponibile.")
     logger.warning(f"Percorsi cercati: {possible_frontend_paths}")
