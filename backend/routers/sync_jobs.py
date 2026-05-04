@@ -130,21 +130,39 @@ async def execute_sync_job_task(job_id: int, triggered_by_user_id: int = None):
         else:
             job_type = "sync"
         
-        # Crea log entry
+        # Crea log entry. Inizializziamo `output` con un header
+        # informativo cosi' il viewer di /progress vede subito qualcosa
+        # invece di "Nessun log" durante il run lungo (vzdump/syncoid
+        # scrivono solo a fine, e il polling incrementale appende
+        # progress messages via log_cb).
+        from datetime import datetime as _dt
+        _t0 = _dt.utcnow().strftime("%H:%M:%S")
+        _initial_output = (
+            f"[{_t0}] Job avviato — metodo={sync_method}\n"
+            f"[{_t0}] Source: {source_node.name} ({source_node.hostname})\n"
+            f"[{_t0}] Dest:   {dest_node.name} ({dest_node.hostname})\n"
+        )
         log_entry = JobLog(
             job_type=job_type,
             job_id=job_id,
             node_name=f"{source_node.name} -> {dest_node.name}",
             dataset=f"{job.source_dataset} -> {job.dest_dataset}",
             status="started",
+            output=_initial_output,
             triggered_by=triggered_by_user_id
         )
         db_session.add(log_entry)
         db_session.commit()
-        
+        db_session.refresh(log_entry)
+
         # Aggiorna stato
         job_record = db_session.query(SyncJob).filter(SyncJob.id == job_id).first()
         job_record.last_status = "running"
+        if hasattr(job_record, "current_status"):
+            try:
+                job_record.current_status = "running"
+            except Exception:
+                pass
         db_session.commit()
         
         # Esegui sync in base al metodo
@@ -155,6 +173,35 @@ async def execute_sync_job_task(job_id: int, triggered_by_user_id: int = None):
             # LVM-thin, RBD/Ceph, ZFS, btrfs). NON e' incrementale: ogni
             # run trasferisce l'archivio completo.
             from services.pve_native_replicate_service import pve_native_replicate_service
+
+            # Callback live: ogni progress message viene appeso a
+            # JobLog.output con un commit, cosi' il viewer di /progress
+            # vede l'avanzamento in tempo reale (polling 1.5s).
+            # NB: usa una sessione DB dedicata per evitare race con la
+            # transazione principale del task in background.
+            _log_id = log_entry.id
+            async def _live_log_cb(msg: str):
+                from datetime import datetime as _dt
+                from database import SessionLocal as _SL
+                ts = _dt.utcnow().strftime("%H:%M:%S")
+                line = f"[{ts}] {msg}"
+                _s = _SL()
+                try:
+                    le = _s.query(JobLog).filter(JobLog.id == _log_id).first()
+                    if le is not None:
+                        prev = le.output or ""
+                        le.output = (prev + ("\n" if prev else "") + line)
+                        _s.commit()
+                except Exception:
+                    try:
+                        _s.rollback()
+                    except Exception:
+                        pass
+                finally:
+                    try:
+                        _s.close()
+                    except Exception:
+                        pass
 
             result = await pve_native_replicate_service.run(
                 source_host=source_node.hostname,
@@ -179,6 +226,7 @@ async def execute_sync_job_task(job_id: int, triggered_by_user_id: int = None):
                 dest_bridge=job.dest_bridge,
                 dest_vlan=job.dest_vlan,
                 force_cpu_host=bool(job.force_cpu_host) if job.force_cpu_host is not None else True,
+                log_cb=_live_log_cb,
             )
             # transferred mappato per coerenza con altri metodi
             if result.get("warnings"):
@@ -397,7 +445,16 @@ async def execute_sync_job_task(job_id: int, triggered_by_user_id: int = None):
             error_msg = f"Comando: {result.get('command', 'N/A')}\n\n{error_msg}" if error_msg else f"Comando: {result.get('command', 'N/A')}\nErrore sconosciuto"
             log_entry.error = error_msg
         
-        log_entry.output = result.get("output")
+        # Append dell'output finale al log progressivo (prodotto da
+        # log_cb durante la run). Senza append, perderemmo i progress
+        # message scritti incrementalmente.
+        _final_out = result.get("output") or ""
+        if _final_out:
+            # Refresha per leggere progress eventualmente scritti dal callback
+            db_session.refresh(log_entry)
+            prev = log_entry.output or ""
+            sep = "\n--- output ---\n" if prev and not prev.endswith("\n--- output ---\n") else ""
+            log_entry.output = prev + sep + _final_out
         log_entry.duration = result["duration"]
         log_entry.transferred = result.get("transferred")
         log_entry.completed_at = datetime.utcnow()

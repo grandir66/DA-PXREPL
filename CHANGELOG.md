@@ -5,6 +5,45 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.1] - 2026-05-04
+
+### Correzioni — gestione log dei job di replica
+
+Bug rilevato: durante una run lunga (vzdump 10 min, qmrestore, syncoid…)
+il viewer log mostrava sempre **"Nessun log"** anche se il job stava
+lavorando regolarmente. Causa: `JobLog.output` veniva scritto **solo a
+fine esecuzione**, e per i job `pve_native` la `log_cb` di progresso
+non veniva mai passata dal router al servizio.
+
+Fix:
+
+- **Header iniziale in `JobLog.output`** all'avvio di ogni run sync
+  (timestamp + metodo + source/dest), così il viewer mostra subito
+  qualcosa anche prima che il comando produca output.
+- **Streaming via DB per `pve_native`**: il router ora costruisce un
+  `log_cb` che ad ogni progress message del servizio
+  (`Pre-flight…`, `vzdump in corso…`, `scp…`, `qmrestore…`,
+  `Override config…`, `Replica completata in Ns`) appende una riga
+  con timestamp a `JobLog.output` e committa. Il viewer (polling
+  1.5s) vede l'avanzamento in tempo reale.
+  - Sessione DB dedicata per il callback (no race con la transazione
+    principale del task in background).
+- **Append-only output finale**: il `result.output` finale del
+  servizio viene ora **appeso** al log (con un separatore
+  `--- output ---`) invece che sovrascriverlo, così i progress
+  message scritti durante la run non vengono persi.
+- `current_status='running'` viene settato esplicitamente all'avvio
+  (oltre a `last_status`), mantenendo coerenza con `BackupJob` /
+  `RecoveryJob`.
+
+### Note
+
+- Per Syncoid/BTRFS lo streaming live non è ancora attivo (i comandi
+  via `ssh_service.execute` sono bloccanti, non sono streamati per
+  riga). L'header iniziale però rende il viewer non più "vuoto".
+  Streaming reale richiederà una variante di `ssh_service.execute`
+  con callback per linea — backlog.
+
 ## [3.17.0] - 2026-05-04
 
 ### Aggiunte
