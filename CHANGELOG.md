@@ -5,6 +5,21 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.2] - 2026-05-04
+
+### Correzioni
+
+- **Wizard JobModal — dialog "Uscire?" con due bottoni "Annulla"**
+  ambigui. Su Esc o click fuori il dialog di conferma mostrava
+  `Annulla / Annulla` (entrambi con la stessa label perché avevo
+  passato "Annulla" come `confirmText` mentre `cancelText` era
+  "Annulla" di default). Ora il dialog ha:
+  - **Continua a modificare** (cancel — torna al wizard)
+  - **Esci e scarta** (confirm danger — chiude e perde le modifiche)
+
+  Titolo cambiato in `Uscire dalla creazione?` / `Uscire dalla
+  modifica?` per coerenza.
+
 ## [3.17.1] - 2026-05-04
 
 ### Correzioni — gestione log dei job di replica

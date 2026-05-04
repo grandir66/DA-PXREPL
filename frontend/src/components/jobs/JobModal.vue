@@ -1012,12 +1012,14 @@ async function onClose() {
   // lavoro. In modalita' edit chiediamo sempre conferma.
   const dirty = isEdit.value || currentStep.value > 0 || !!form.value.vm_id
   if (dirty) {
-    const { confirmDangerous } = await import('../../stores/confirm')
-    const ok = await confirmDangerous(
-      isEdit.value ? 'Annullare le modifiche?' : 'Annullare la creazione?',
-      'I dati inseriti andranno persi.',
-      'Annulla'
-    )
+    const { useConfirm } = await import('../../stores/confirm')
+    const ok = await useConfirm().ask({
+      title: isEdit.value ? 'Uscire dalla modifica?' : 'Uscire dalla creazione?',
+      message: 'I dati inseriti andranno persi.',
+      confirmText: 'Esci e scarta',
+      cancelText: 'Continua a modificare',
+      danger: true,
+    })
     if (!ok) return
   }
   emit('update:visible', false)
