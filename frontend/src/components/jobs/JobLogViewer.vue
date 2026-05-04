@@ -41,7 +41,20 @@
       </header>
 
       <div class="jlv-output" ref="outputRef">
-        <pre v-if="output.length"><span
+        <div v-if="fatalError" class="jlv-fatal">
+          <Icon name="alert-triangle" :size="32" />
+          <h3>Endpoint log non disponibile</h3>
+          <p>
+            Il backend installato non espone <code>/api/sync-jobs/{id}/progress</code>
+            (oppure il servizio non è stato riavviato dopo l'update).
+          </p>
+          <p class="jlv-fatal-hint">
+            Risoluzione: sul container <code>systemctl restart dapx-unified</code>,
+            oppure verifica che la versione installata sia ≥ 3.13.0.
+          </p>
+          <p class="jlv-fatal-detail" v-if="fetchError">{{ fetchError }}</p>
+        </div>
+        <pre v-else-if="output.length"><span
           v-for="(line, i) in output"
           :key="i"
           class="jlv-line"
@@ -53,7 +66,7 @@
           message="Il job non ha ancora prodotto output."
           icon="file-text"
         />
-        <LoadingState v-if="loading && !output.length" message="Caricamento log…" />
+        <LoadingState v-if="loading && !output.length && !fatalError" message="Caricamento log…" />
       </div>
 
       <footer class="jlv-foot">
@@ -65,7 +78,8 @@
           <span v-else-if="progress?.log?.message">{{ progress.log.message }}</span>
         </div>
         <div class="jlv-stats">
-          <span v-if="progress?.is_running" class="jlv-pulse">
+          <span v-if="fatalError" class="jlv-error">polling fermo</span>
+          <span v-else-if="progress?.is_running" class="jlv-pulse">
             <span class="dot" /> in esecuzione
           </span>
           <span v-else>aggiornato {{ secondsAgo }}s fa</span>
@@ -129,9 +143,12 @@ const autoScroll = ref(true)
 const outputRef = ref<HTMLElement | null>(null)
 const lastFetchedAt = ref<number>(0)
 const secondsAgo = ref(0)
+const fetchError = ref<string | null>(null)
+const fatalError = ref<boolean>(false)
 
 let poller: number | null = null
 let secTicker: number | null = null
+let toastShown = false
 
 const output = computed(() => progress.value?.log?.output_tail || [])
 const hasOutput = computed(() => output.value.length > 0)
@@ -160,6 +177,8 @@ async function fetchProgress() {
   try {
     const r = await apiClient.get<ProgressPayload>(`/sync-jobs/${props.jobId}/progress?tail=400`)
     progress.value = r.data
+    fetchError.value = null
+    fatalError.value = false
     lastFetchedAt.value = Date.now()
     if (autoScroll.value) {
       nextTick(() => {
@@ -167,7 +186,20 @@ async function fetchProgress() {
       })
     }
   } catch (e: any) {
-    toast.error('Impossibile leggere il log', errorMessage(e))
+    const status = e?.response?.status
+    const msg = errorMessage(e)
+    fetchError.value = msg
+    // 404 / 405 = endpoint non disponibile (versione backend troppo
+    // vecchia o servizio da riavviare). Fermiamo il polling e
+    // mostriamo un placeholder permanente — niente toast a ripetizione.
+    if (status === 404 || status === 405) {
+      fatalError.value = true
+      stopPolling()
+    }
+    if (!toastShown) {
+      toast.error('Impossibile leggere il log', msg)
+      toastShown = true
+    }
   } finally {
     loading.value = false
   }
@@ -175,6 +207,13 @@ async function fetchProgress() {
 
 function startPolling() {
   stopPolling()
+  toastShown = false
+  fetchError.value = null
+  fatalError.value = false
+  // Inizializza lastFetchedAt al mount per evitare di mostrare
+  // "1.7 miliardi di secondi fa" nel piedino prima della prima
+  // risposta.
+  lastFetchedAt.value = Date.now()
   fetchProgress()
   poller = window.setInterval(fetchProgress, props.pollMs)
   secTicker = window.setInterval(() => {
@@ -361,6 +400,54 @@ function formatTime(iso: string) {
   align-items: center;
   gap: 6px;
   color: var(--color-warning-fg);
+}
+
+.jlv-fatal {
+  padding: var(--space-5);
+  text-align: center;
+  color: var(--color-text-secondary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  height: 100%;
+  justify-content: center;
+}
+.jlv-fatal :deep(svg) {
+  color: var(--color-warning-fg);
+}
+.jlv-fatal h3 {
+  margin: var(--space-2) 0 0;
+  color: var(--color-text-primary);
+  font-size: 1rem;
+}
+.jlv-fatal p {
+  margin: 0;
+  max-width: 540px;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.jlv-fatal code {
+  font-family: var(--font-mono);
+  background: var(--color-bg-element);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-primary);
+  font-size: 0.78rem;
+}
+.jlv-fatal-hint {
+  font-size: 0.78rem !important;
+  color: var(--color-text-secondary);
+}
+.jlv-fatal-detail {
+  margin-top: var(--space-2) !important;
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 0.74rem !important;
+  color: var(--color-danger-fg);
+  background: var(--color-danger-dim);
+  border-radius: var(--radius-sm);
+  max-width: 600px;
 }
 .jlv-pulse .dot {
   width: 6px;

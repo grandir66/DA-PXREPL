@@ -5,6 +5,25 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.16.2] - 2026-05-04
+
+### Correzioni
+
+- **JobLogViewer**: gestione robusta dell'errore quando l'endpoint
+  `GET /api/sync-jobs/{id}/progress` ritorna 404 (es. backend non ancora
+  riavviato dopo l'update, o versione installata < 3.13.0). Prima il
+  componente generava un toast `"Impossibile leggere il log — API
+  endpoint not found"` ad **ogni tick di polling** (1.5s) accumulando
+  decine di toast a cascata; ora:
+  - su 404/405 il polling si **ferma** subito
+  - il toast d'errore si mostra **una sola volta**
+  - nel viewer compare un placeholder informativo con la causa
+    probabile e l'indicazione di riavviare il servizio
+- **JobLogViewer "aggiornato Ns fa"** mostrava un valore epoch
+  (~1.7 miliardi) prima della prima risposta perché `lastFetchedAt`
+  partiva a `0`. Ora viene inizializzato a `Date.now()` allo start del
+  polling, così il piedino mostra `0s` finché non arriva la risposta.
+
 ## [3.16.1] - 2026-05-03
 
 ### Correzioni
