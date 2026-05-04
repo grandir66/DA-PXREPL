@@ -12,7 +12,7 @@ import backupJobsService, { type BackupJob } from '../services/backupJobs'
 import recoveryJobsService, { type RecoveryJob } from '../services/recoveryJobs'
 import type { ScheduleConfig } from '../services/schedule'
 
-export type JobKind = 'syncoid' | 'backup_pbs' | 'recovery_pbs'
+export type JobKind = 'syncoid' | 'pve_native' | 'backup_pbs' | 'recovery_pbs'
 
 export interface UnifiedJob {
   kind: JobKind
@@ -64,8 +64,11 @@ function n(v: any) {
 }
 
 function unifySync(j: any): UnifiedJob {
+  // I job in /api/sync-jobs possono avere sync_method=syncoid|btrfs_send|pve_native;
+  // distinguiamo "pve_native" come kind separato per badge/etichette UI.
+  const kind: JobKind = j.sync_method === 'pve_native' ? 'pve_native' : 'syncoid'
   return {
-    kind: 'syncoid',
+    kind,
     id: j.id,
     name: j.name || j.job_name || `sync-${j.id}`,
     vm_id: j.vm_id,

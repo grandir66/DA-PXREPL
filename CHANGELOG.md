@@ -5,6 +5,73 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.0] - 2026-05-04
+
+### Aggiunte
+
+- **Nuova modalità di replica VM `pve_native`** — funziona su
+  **qualunque storage** (LVM-thin, qcow2-su-dir, NFS/CIFS qcow2, ZFS,
+  BTRFS, RBD/Ceph) **senza richiedere ZFS, BTRFS o un PBS server**.
+  Sfrutta il meccanismo Proxmox di snapshot consistente disponibile
+  nelle versioni recenti.
+
+  Pipeline orchestrata via SSH (executor = nodo source):
+  1. **Pre-flight** sul source: `pveversion`, `qm/pct config`,
+     `pvesm status`, spazio sufficiente in `dump_dir`.
+  2. **Pre-flight** sul dest: storage attivo, VMID dest libero o
+     `replace_existing` abilitato.
+  3. **`vzdump --mode snapshot --compress <X> --dumpdir <DIR>
+     [--bwlimit <kb>]`** sul source.
+  4. **`scp`** dell'archivio al dest.
+  5. (se `replace_existing`) **`qm stop` + `qm destroy --purge`** sul dest.
+  6. **`qmrestore`** (o `pct restore`) **`--storage <X> --unique`** sul dest.
+  7. **Override config** (nome / bridge / VLAN / CPU host / suffix) via
+     `qm set` riusando le primitive del `proxmox_service` (regex-safe).
+  8. **Cleanup** archivio sul dest (sempre) e sul source (se `cleanup_after`).
+
+  ⚠️ **Non è incrementale**: ogni run trasferisce l'archivio completo.
+  Per replica con incremento di banda usare `recovery_pbs` (PBS dirty
+  bitmap).
+
+- **Nuovo enum `SyncMethod.PVE_NATIVE = "pve_native"`** + 5 colonne
+  nuove su `SyncJob` (con migration idempotente):
+  - `dump_dir` (default runtime `/var/lib/vz/dump`)
+  - `bandwidth_limit_kb` (vzdump `--bwlimit`)
+  - `pve_compress` (`zstd|lzo|gzip|none`, default `zstd`)
+  - `cleanup_after` (default `True`)
+  - `replace_existing` (default `False`)
+
+- **`backend/services/pve_native_replicate_service.py`** (nuovo,
+  ~500 righe): orchestratore della pipeline con validazioni
+  regex-safe su tutti gli input passati a SSH (no command injection),
+  pre-flight robusto, cleanup parziale in caso di failure scp.
+
+- **Frontend wizard JobModal**: nuovo `kind: 'pve_native'` accanto a
+  Syncoid/Backup-PBS/Replica-PBS. Step "Avanzate" mostra blocco
+  dedicato con `dump_dir`, `bandwidth_limit_kb`, `pve_compress`,
+  `cleanup_after`, `replace_existing` + warning chiaro
+  "replica completa ad ogni run". Tab dedicato in `Replication.vue`.
+
+- **Endpoint `POST /api/sync-jobs/vm-replica`**: accetta
+  `sync_method=pve_native` con early-return — crea **un solo `SyncJob`
+  per VM** (vzdump dumpa l'intera VM in un colpo) invece di un job
+  per disco come per syncoid/btrfs.
+
+### Note di compatibilità
+
+- I job esistenti `syncoid`/`btrfs_send`/PBS non sono toccati.
+- Su nodi con backend non riavviato dopo l'update, l'opzione
+  `pve_native` nel wizard è visibile ma `POST` ritornerà 422 finché
+  il servizio non viene riavviato (caricamento route nuovi).
+
+### Backlog dichiarato
+
+- `qm remote-migrate` (PVE 8.2+) come quinta modalità: replica live
+  cross-cluster con ottimizzazione disco gestita da Proxmox. Richiede
+  registrazione `RemoteCluster` (API token) — fuori scope qui.
+- Streaming `vzdump --stdout | ssh dest qmrestore -` (no scratch space):
+  ottimizzazione opt-in futura.
+
 ## [3.16.5] - 2026-05-04
 
 ### Correzioni critiche su registrazione VM dopo replica

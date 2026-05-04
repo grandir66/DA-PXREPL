@@ -45,9 +45,14 @@
               <label>Modalità</label>
               <select v-model="form.kind" class="form-input" :disabled="isEdit">
                 <option value="syncoid">Replica ZFS (Syncoid)</option>
+                <option value="pve_native">Replica nativa Proxmox (qualunque storage)</option>
                 <option value="backup_pbs">Backup verso PBS</option>
                 <option value="recovery_pbs">Replica via PBS (backup + restore)</option>
               </select>
+              <small v-if="form.kind === 'pve_native'" class="jm-note jm-note-warn">
+                ⚠ Modalità <strong>full ad ogni run</strong> (no incrementale di banda).
+                Per replica incrementale tra cluster usa <em>Replica via PBS</em>.
+              </small>
             </div>
 
             <div class="field">
@@ -152,7 +157,7 @@
               </select>
             </div>
 
-            <div class="field" v-if="form.kind !== 'syncoid'">
+            <div class="field" v-if="form.kind === 'backup_pbs' || form.kind === 'recovery_pbs'">
               <label>Server PBS</label>
               <select v-model.number="form.pbs_node_id" class="form-input">
                 <option :value="null">— seleziona —</option>
@@ -183,7 +188,7 @@
               <small>I dataset finali saranno <code>{{ form.dest_pool || '<pool>' }}/{{ form.dest_subfolder || '' }}/vm-XXX-disk-N</code>.</small>
             </div>
 
-            <div class="field field-full" v-if="form.kind !== 'syncoid'">
+            <div class="field field-full" v-if="form.kind === 'backup_pbs' || form.kind === 'recovery_pbs'">
               <label>Datastore PBS</label>
               <input
                 v-model="form.pbs_datastore"
@@ -191,6 +196,14 @@
                 class="form-input"
                 placeholder="lascia vuoto per usare il datastore di default del nodo PBS"
               />
+            </div>
+
+            <div class="field field-full" v-if="form.kind === 'pve_native'">
+              <small class="jm-note">
+                Per la modalità nativa Proxmox lo storage di destinazione si imposta nello step
+                successivo "Registrazione VM". Funziona con qualunque tipo di storage che
+                supporta snapshot (qcow2-su-dir, LVM-thin, ZFS, btrfs, RBD/Ceph, NFS).
+              </small>
             </div>
 
             <!-- recovery_pbs: anche storage di restore lato dest PVE -->
@@ -267,6 +280,53 @@
                   class="form-input"
                 />
                 <small>0 = solo l'ultima.</small>
+              </div>
+            </template>
+
+            <template v-if="form.kind === 'pve_native'">
+              <div class="field">
+                <label>Compressione vzdump</label>
+                <select v-model="form.pve_compress" class="form-input">
+                  <option value="zstd">zstd (consigliato)</option>
+                  <option value="lzo">lzo (veloce)</option>
+                  <option value="gzip">gzip</option>
+                  <option value="none">nessuna</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Cartella dump (sul source)</label>
+                <input v-model="form.dump_dir" class="form-input" placeholder="/var/lib/vz/dump" />
+                <small>Deve essere scrivibile e con spazio sufficiente.</small>
+              </div>
+              <div class="field">
+                <label>Bandwidth limit (kbit/s, opzionale)</label>
+                <input
+                  v-model.number="form.bandwidth_limit_kb"
+                  type="number"
+                  min="0"
+                  class="form-input"
+                  placeholder="(nessun limite)"
+                />
+              </div>
+              <div class="field field-checkbox">
+                <label class="checkbox-row">
+                  <input type="checkbox" v-model="form.replace_existing" />
+                  <span>Sovrascrivi VM esistente sul nodo destinazione</span>
+                </label>
+                <small>Necessario per repliche programmate (run #2 in poi). Stop+destroy+ricrea.</small>
+              </div>
+              <div class="field field-checkbox">
+                <label class="checkbox-row">
+                  <input type="checkbox" v-model="form.cleanup_after" />
+                  <span>Rimuovi archivio sul source dopo restore</span>
+                </label>
+              </div>
+              <div class="field field-full">
+                <small class="jm-note jm-note-warn">
+                  ⚠ <strong>Replica completa ad ogni run</strong> (vzdump + scp + qmrestore):
+                  trasferisce tutto da capo, non c'è risparmio di banda né delta.
+                  Per replica incrementale tra cluster usa "Replica via PBS".
+                </small>
               </div>
             </template>
 
@@ -403,6 +463,13 @@ interface FormState {
   // notifiche
   notify_mode: 'daily' | 'always' | 'failure' | 'never'
   notify_subject: string | null
+
+  // pve_native advanced
+  dump_dir: string
+  bandwidth_limit_kb: number | null
+  pve_compress: 'zstd' | 'lzo' | 'gzip' | 'none'
+  cleanup_after: boolean
+  replace_existing: boolean
 }
 
 interface PresetVm {
@@ -489,6 +556,12 @@ function emptyForm(kind: JobKind): FormState {
     keep_last: 7,
     notify_mode: 'daily',
     notify_subject: null,
+    // pve_native
+    dump_dir: '/var/lib/vz/dump',
+    bandwidth_limit_kb: null,
+    pve_compress: 'zstd',
+    cleanup_after: true,
+    replace_existing: false,
   }
 }
 
@@ -532,6 +605,20 @@ function hydrateFromJob(j: UnifiedJob) {
     f.registration.dest_vm_name_suffix = r.dest_vm_name_suffix ?? null
     f.registration.start_vm = !!r.restore_start_vm
     f.registration.overwrite_existing = r.overwrite_existing !== false
+  } else if (j.kind === 'pve_native') {
+    f.dump_dir = r.dump_dir || '/var/lib/vz/dump'
+    f.bandwidth_limit_kb = r.bandwidth_limit_kb ?? null
+    f.pve_compress = (r.pve_compress as any) || 'zstd'
+    f.cleanup_after = r.cleanup_after !== false
+    f.replace_existing = !!r.replace_existing
+    f.registration.dest_storage = r.dest_storage ?? null
+    f.registration.dest_vm_id = r.dest_vm_id ?? null
+    f.registration.dest_vm_name = r.dest_vm_name ?? null
+    f.registration.dest_vm_name_suffix = r.dest_vm_name_suffix ?? null
+    f.registration.bridge = r.dest_bridge ?? null
+    f.registration.vlan = r.dest_vlan ?? null
+    f.registration.register_vm = r.register_vm ?? true
+    f.registration.force_cpu_host = r.force_cpu_host ?? true
   }
 
   f.schedule = j.schedule ?? null
@@ -616,6 +703,8 @@ const canAdvance = computed(() => {
   if (currentStep.value === 1) {
     if (form.value.kind === 'syncoid')
       return !!(form.value.dest_node_id && form.value.dest_pool)
+    if (form.value.kind === 'pve_native')
+      return !!(form.value.dest_node_id && form.value.registration.dest_storage)
     if (form.value.kind === 'backup_pbs') return !!form.value.pbs_node_id
     if (form.value.kind === 'recovery_pbs')
       return !!(form.value.dest_node_id && form.value.pbs_node_id)
@@ -739,6 +828,37 @@ function buildSyncoidPayload() {
   }
 }
 
+function buildPveNativePayload() {
+  return {
+    vm_id: form.value.vm_id,
+    vm_type: form.value.vm_type,
+    vm_name: form.value.vm_name,
+    source_node_id: form.value.source_node_id,
+    dest_node_id: form.value.dest_node_id,
+    // ZFS-specific: ignorato per pve_native, mandiamo None
+    dest_pool: null,
+    dest_subfolder: '',
+    dest_storage: form.value.registration.dest_storage,
+    dest_vm_id: form.value.registration.dest_vm_id,
+    dest_vm_name: form.value.registration.dest_vm_name,
+    dest_vm_name_suffix: form.value.registration.dest_vm_name_suffix,
+    dest_bridge: form.value.registration.bridge,
+    dest_vlan: form.value.registration.vlan,
+    force_cpu_host: form.value.registration.force_cpu_host !== false,
+    schedule: form.value.schedule,
+    schedule_config: form.value.schedule_config,
+    register_vm: form.value.registration.register_vm,
+    keep_snapshots: 0,
+    sync_method: 'pve_native',
+    // pve_native specific
+    dump_dir: form.value.dump_dir || null,
+    bandwidth_limit_kb: form.value.bandwidth_limit_kb,
+    pve_compress: form.value.pve_compress,
+    cleanup_after: form.value.cleanup_after,
+    replace_existing: form.value.replace_existing,
+  }
+}
+
 function buildBackupPayload() {
   return {
     name: form.value.name || `backup-${form.value.vm_id}`,
@@ -795,6 +915,8 @@ async function submit() {
       let r: any
       if (form.value.kind === 'syncoid') {
         r = await syncJobsService.createVMReplica(buildSyncoidPayload())
+      } else if (form.value.kind === 'pve_native') {
+        r = await syncJobsService.createVMReplica(buildPveNativePayload() as any)
       } else if (form.value.kind === 'backup_pbs') {
         r = await apiClient.post('/backup-jobs', buildBackupPayload())
       } else {
@@ -822,6 +944,27 @@ async function submit() {
           dest_vlan: form.value.registration.vlan,
           dest_storage: form.value.registration.dest_storage,
           force_cpu_host: form.value.registration.force_cpu_host,
+          notify_mode: form.value.notify_mode,
+          notify_subject: form.value.notify_subject,
+        } as any)
+      } else if (form.value.kind === 'pve_native') {
+        r = await syncJobsService.updateJob(String(id), {
+          name: form.value.name,
+          schedule: form.value.schedule,
+          schedule_config: form.value.schedule_config,
+          register_vm: form.value.registration.register_vm,
+          dest_vm_id: form.value.registration.dest_vm_id,
+          dest_vm_name: form.value.registration.dest_vm_name,
+          dest_vm_name_suffix: form.value.registration.dest_vm_name_suffix,
+          dest_bridge: form.value.registration.bridge,
+          dest_vlan: form.value.registration.vlan,
+          dest_storage: form.value.registration.dest_storage,
+          force_cpu_host: form.value.registration.force_cpu_host,
+          dump_dir: form.value.dump_dir || null,
+          bandwidth_limit_kb: form.value.bandwidth_limit_kb,
+          pve_compress: form.value.pve_compress,
+          cleanup_after: form.value.cleanup_after,
+          replace_existing: form.value.replace_existing,
           notify_mode: form.value.notify_mode,
           notify_subject: form.value.notify_subject,
         } as any)
@@ -894,6 +1037,23 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
 <style scoped>
+.jm-note {
+  display: block;
+  margin-top: 6px;
+  padding: 8px 10px;
+  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-element);
+  border-radius: var(--radius-sm);
+  border-left: 2px solid var(--color-border);
+  line-height: 1.4;
+}
+.jm-note-warn {
+  border-left-color: var(--color-warning-fg);
+  background: var(--color-warning-dim);
+  color: var(--color-text-primary);
+}
+
 .jm-overlay {
   position: fixed;
   inset: 0;

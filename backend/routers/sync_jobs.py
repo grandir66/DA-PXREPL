@@ -123,7 +123,12 @@ async def execute_sync_job_task(job_id: int, triggered_by_user_id: int = None):
         
         # Determina il tipo di job
         sync_method = job.sync_method or SyncMethod.SYNCOID.value
-        job_type = "sync_btrfs" if sync_method == SyncMethod.BTRFS_SEND.value else "sync"
+        if sync_method == SyncMethod.BTRFS_SEND.value:
+            job_type = "sync_btrfs"
+        elif sync_method == SyncMethod.PVE_NATIVE.value:
+            job_type = "sync_pve_native"
+        else:
+            job_type = "sync"
         
         # Crea log entry
         log_entry = JobLog(
@@ -143,7 +148,45 @@ async def execute_sync_job_task(job_id: int, triggered_by_user_id: int = None):
         db_session.commit()
         
         # Esegui sync in base al metodo
-        if sync_method == SyncMethod.BTRFS_SEND.value:
+        if sync_method == SyncMethod.PVE_NATIVE.value:
+            # ============== PVE NATIVE (vzdump+scp+qmrestore) ==============
+            # Replica VM senza dipendenza da ZFS/BTRFS/PBS. Funziona su
+            # qualunque storage che supporta snapshot (qcow2-su-dir,
+            # LVM-thin, RBD/Ceph, ZFS, btrfs). NON e' incrementale: ogni
+            # run trasferisce l'archivio completo.
+            from services.pve_native_replicate_service import pve_native_replicate_service
+
+            result = await pve_native_replicate_service.run(
+                source_host=source_node.hostname,
+                source_port=source_node.ssh_port,
+                source_user=source_node.ssh_user,
+                source_key=source_node.ssh_key_path,
+                dest_host=dest_node.hostname,
+                dest_port=dest_node.ssh_port,
+                dest_user=dest_node.ssh_user,
+                dest_key=dest_node.ssh_key_path,
+                vm_id=job.vm_id or 0,
+                vm_type=job.vm_type or "qemu",
+                dest_vm_id=job.dest_vm_id,
+                dest_storage=job.dest_storage,
+                dump_dir=job.dump_dir or "/var/lib/vz/dump",
+                compress=job.pve_compress or "zstd",
+                bandwidth_limit_kb=job.bandwidth_limit_kb,
+                cleanup_after=bool(job.cleanup_after) if job.cleanup_after is not None else True,
+                replace_existing=bool(job.replace_existing),
+                dest_vm_name=job.dest_vm_name,
+                dest_vm_name_suffix=job.dest_vm_name_suffix,
+                dest_bridge=job.dest_bridge,
+                dest_vlan=job.dest_vlan,
+                force_cpu_host=bool(job.force_cpu_host) if job.force_cpu_host is not None else True,
+            )
+            # transferred mappato per coerenza con altri metodi
+            if result.get("warnings"):
+                log_entry.message = (log_entry.message or "") + (
+                    f" | Avvisi: {'; '.join(result['warnings'])[:200]}"
+                )
+
+        elif sync_method == SyncMethod.BTRFS_SEND.value:
             # ============== BTRFS SYNC ==============
             # Determina directory snapshot
             snapshot_dir = job.btrfs_snapshot_dir or source_node.btrfs_snapshot_dir or f"{source_node.btrfs_mount}/.snapshots"
@@ -448,6 +491,13 @@ class SyncJobCreate(BaseModel):
     dest_vlan: Optional[int] = None    # VLAN tag dest (1-4094)
     disk_name: Optional[str] = None  # Nome disco (per BTRFS)
     force_cpu_host: bool = True  # Forza CPU type a 'host' su destinazione per compatibilità
+
+    # Parametri sync_method=pve_native
+    dump_dir: Optional[str] = None
+    bandwidth_limit_kb: Optional[int] = None
+    pve_compress: Optional[str] = None
+    cleanup_after: Optional[bool] = None
+    replace_existing: Optional[bool] = None
     
     # Notifiche
     notify_mode: str = "daily"  # daily, always, failure, never
@@ -500,6 +550,12 @@ class SyncJobUpdate(BaseModel):
     force_cpu_host: Optional[bool] = None  # Forza CPU type a 'host' su destinazione
     source_storage: Optional[str] = None  # Storage Proxmox sorgente
     dest_storage: Optional[str] = None  # Storage Proxmox destinazione
+    # pve_native
+    dump_dir: Optional[str] = None
+    bandwidth_limit_kb: Optional[int] = None
+    pve_compress: Optional[str] = None
+    cleanup_after: Optional[bool] = None
+    replace_existing: Optional[bool] = None
     
     # Notifiche
     notify_mode: Optional[str] = None  # daily, always, failure, never
@@ -536,6 +592,13 @@ class SyncJobResponse(BaseModel):
     btrfs_dest_snapshot_dir: Optional[str] = None
     btrfs_max_snapshots: Optional[int] = 5
     btrfs_full_sync: Optional[bool] = False
+
+    # pve_native options
+    dump_dir: Optional[str] = None
+    bandwidth_limit_kb: Optional[int] = None
+    pve_compress: Optional[str] = None
+    cleanup_after: Optional[bool] = None
+    replace_existing: Optional[bool] = None
     
     schedule: Optional[str]
     schedule_config: Optional[Dict[str, Any]] = None
@@ -821,20 +884,21 @@ async def create_sync_job(
 
 
 class VMReplicaCreate(BaseModel):
-    """Schema per creare replica completa di una VM (ZFS o BTRFS)"""
+    """Schema per creare replica completa di una VM (ZFS / BTRFS / PVE_NATIVE)"""
     vm_id: int
     vm_type: str = "qemu"
     vm_name: Optional[str] = None
     source_node_id: int
     dest_node_id: int
-    dest_pool: str  # Pool ZFS/BTRFS destinazione
-    dest_subfolder: str = "replica"  # Sottocartella (es: replica)
-    dest_storage: Optional[str] = None  # Nome storage Proxmox destinazione (se vuoto, usa dest_subfolder)
-    dest_vm_id: Optional[int] = None  # ID VM destinazione se diverso
-    dest_vm_name: Optional[str] = None  # Override completo nome VM
-    dest_vm_name_suffix: Optional[str] = None  # Suffisso per nome VM su destinazione (es: -replica)
-    dest_bridge: Optional[str] = None   # Bridge dest (sostituisce bridge=...)
-    dest_vlan: Optional[int] = None     # VLAN tag dest (1-4094)
+    # Per ZFS/BTRFS: pool/subfolder; per pve_native ignorati
+    dest_pool: Optional[str] = None
+    dest_subfolder: str = "replica"
+    dest_storage: Optional[str] = None  # Nome storage Proxmox destinazione
+    dest_vm_id: Optional[int] = None
+    dest_vm_name: Optional[str] = None
+    dest_vm_name_suffix: Optional[str] = None
+    dest_bridge: Optional[str] = None
+    dest_vlan: Optional[int] = None
     force_cpu_host: bool = True
     schedule: Optional[str] = None
     schedule_config: Optional[Dict[str, Any]] = None
@@ -843,6 +907,12 @@ class VMReplicaCreate(BaseModel):
     register_vm: bool = True
     keep_snapshots: int = 0  # 0 = solo ultima, N = mantieni ultime N snapshot
     disks: List[dict] = []  # Lista dischi da replicare (se vuota, replica tutti)
+    # pve_native specific
+    dump_dir: Optional[str] = None
+    bandwidth_limit_kb: Optional[int] = None
+    pve_compress: Optional[str] = None
+    cleanup_after: Optional[bool] = None
+    replace_existing: Optional[bool] = None
     
     # BTRFS options
     sync_method: str = "syncoid"  # syncoid | btrfs_send
@@ -928,6 +998,73 @@ async def create_vm_replica_jobs(
     # Allinea lo schedule UNA volta sola: tutti i job della VM condividono
     # la stessa pianificazione.
     _vm_cron, _vm_cfg = _resolve_schedule_pair(vm_data.schedule, vm_data.schedule_config)
+
+    # Path PVE_NATIVE: un solo SyncJob per VM (vzdump dumpa l'intera VM
+    # in un colpo, no per-disco). I campi ZFS-specifici sono placeholder.
+    if vm_data.sync_method == SyncMethod.PVE_NATIVE.value:
+        if vm_data.pve_compress and vm_data.pve_compress not in ("none", "lzo", "gzip", "zstd"):
+            raise HTTPException(status_code=400, detail=f"pve_compress non valido: {vm_data.pve_compress!r}")
+        if vm_data.dump_dir and not re.fullmatch(r"^/[A-Za-z0-9_./\-]+$", vm_data.dump_dir):
+            raise HTTPException(status_code=400, detail=f"dump_dir non valido: {vm_data.dump_dir!r}")
+        if vm_data.bandwidth_limit_kb is not None and not (0 <= vm_data.bandwidth_limit_kb <= 10_000_000):
+            raise HTTPException(status_code=400, detail=f"bandwidth_limit_kb fuori range")
+
+        job_name = f"VM-{vm_data.vm_id} (pve_native) → {dest_node.name}"
+        marker = f"vm:{vm_data.vm_id}"  # placeholder per i campi ZFS-specifici
+        db_job = SyncJob(
+            name=job_name,
+            sync_method=SyncMethod.PVE_NATIVE.value,
+            source_node_id=vm_data.source_node_id,
+            source_dataset=marker,
+            dest_node_id=vm_data.dest_node_id,
+            dest_dataset=marker,
+            recursive=False,
+            compress="zstd",
+            schedule=_vm_cron,
+            schedule_config=_vm_cfg,
+            register_vm=vm_data.register_vm,
+            vm_id=vm_data.vm_id,
+            dest_vm_id=dest_vmid if dest_vmid != vm_data.vm_id else None,
+            vm_type=vm_data.vm_type,
+            vm_name=vm_data.vm_name,
+            dest_vm_name=vm_data.dest_vm_name,
+            dest_vm_name_suffix=vm_data.dest_vm_name_suffix,
+            dest_bridge=vm_data.dest_bridge,
+            dest_vlan=vm_data.dest_vlan,
+            force_cpu_host=vm_data.force_cpu_host,
+            keep_snapshots=0,
+            vm_group_id=vm_group_id,
+            disk_name=None,
+            source_storage=None,
+            dest_storage=vm_data.dest_storage,
+            dest_subfolder=None,
+            # pve_native parametri
+            dump_dir=vm_data.dump_dir,
+            bandwidth_limit_kb=vm_data.bandwidth_limit_kb,
+            pve_compress=vm_data.pve_compress or "zstd",
+            cleanup_after=vm_data.cleanup_after if vm_data.cleanup_after is not None else True,
+            replace_existing=bool(vm_data.replace_existing),
+            created_by=user.id,
+            is_active=True,
+        )
+        db.add(db_job)
+        log_audit(
+            db, user.id, "vm_replica_pve_native_created", "sync_job",
+            details=f"VM {vm_data.vm_id} -> {dest_node.name} (pve_native)",
+            ip_address=request.client.host if request.client else None,
+        )
+        db.commit()
+        db.refresh(db_job)
+        if _vm_cron:
+            scheduler_service.update_job_schedule(db_job.id, _vm_cron)
+        return {
+            "vm_group_id": vm_group_id,
+            "vm_id": vm_data.vm_id,
+            "vm_name": vm_data.vm_name,
+            "total_jobs": 1,
+            "method": "pve_native",
+            "jobs": [{"id": db_job.id, "name": job_name}],
+        }
 
     for disk in disks:
         if not disk.get("dataset"):

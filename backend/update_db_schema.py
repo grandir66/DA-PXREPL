@@ -75,6 +75,14 @@ def update_schema():
             _ensure_column(conn, "sync_jobs", "dest_bridge", "VARCHAR(50)")
             _ensure_column(conn, "sync_jobs", "dest_vlan", "INTEGER")
 
+            # Parametri sync_method=pve_native (3.17.0): vzdump+scp+qmrestore
+            # senza dipendenza da ZFS/BTRFS/PBS.
+            _ensure_column(conn, "sync_jobs", "dump_dir", "VARCHAR(255)")
+            _ensure_column(conn, "sync_jobs", "bandwidth_limit_kb", "INTEGER")
+            _ensure_column(conn, "sync_jobs", "pve_compress", "VARCHAR(10)")
+            _ensure_column(conn, "sync_jobs", "cleanup_after", "BOOLEAN")
+            _ensure_column(conn, "sync_jobs", "replace_existing", "BOOLEAN")
+
             trans.commit()
         except Exception as e:
             trans.rollback()

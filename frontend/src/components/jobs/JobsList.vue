@@ -93,7 +93,7 @@
                 :title="g.jobs.length > 1 ? `Esegui tutti i ${g.jobs.length} job di questa VM` : 'Esegui ora'"
               >▶</button>
               <button
-                v-if="g.jobs[0].kind === 'syncoid'"
+                v-if="g.jobs[0].kind === 'syncoid' || g.jobs[0].kind === 'pve_native'"
                 class="btn btn-secondary btn-sm"
                 @click="$emit('show-log', g.jobs[0])"
                 title="Mostra log live"
@@ -133,7 +133,7 @@
               </td>
               <td class="jl-actions">
                 <button class="btn btn-secondary btn-sm" @click="$emit('run', j)" title="Esegui">▶</button>
-                <button v-if="j.kind === 'syncoid'" class="btn btn-secondary btn-sm" @click="$emit('show-log', j)" title="Log live">…</button>
+                <button v-if="j.kind === 'syncoid' || j.kind === 'pve_native'" class="btn btn-secondary btn-sm" @click="$emit('show-log', j)" title="Log live">…</button>
                 <button class="btn btn-secondary btn-sm" @click="$emit('edit', j)" title="Modifica">✎</button>
                 <button class="btn btn-danger btn-sm" @click="$emit('delete', j)" title="Elimina">×</button>
               </td>
@@ -219,7 +219,7 @@ const groups = computed<JobGroup[]>(() => {
   for (const j of filtered) {
     const key =
       j.vm_id != null
-        ? `vm:${j.vm_id}:${j.kind === 'syncoid' && j.raw?.vm_group_id ? j.raw.vm_group_id : 'all'}`
+        ? `vm:${j.vm_id}:${(j.kind === 'syncoid' || j.kind === 'pve_native') && j.raw?.vm_group_id ? j.raw.vm_group_id : 'all'}`
         : `solo:${j.kind}:${j.id}`
     let g = idx.get(key)
     if (!g) {
@@ -320,20 +320,23 @@ function formatRun(iso?: string | null) {
 }
 
 function routeSrc(j: UnifiedJob) {
-  if (j.kind === 'syncoid') return j.source_node_name || '?'
+  if (j.kind === 'syncoid' || j.kind === 'pve_native') return j.source_node_name || '?'
   if (j.kind === 'backup_pbs') return j.source_node_name || '?'
   if (j.kind === 'recovery_pbs') return `${j.source_node_name || '?'} → ${j.pbs_node_name || 'PBS'}`
   return '?'
 }
 function routeDst(j: UnifiedJob) {
-  if (j.kind === 'syncoid') return j.dest_node_name || '?'
+  if (j.kind === 'syncoid' || j.kind === 'pve_native') return j.dest_node_name || '?'
   if (j.kind === 'backup_pbs') return `${j.pbs_node_name || 'PBS'}/${j.pbs_datastore || ''}`
   if (j.kind === 'recovery_pbs') return j.dest_node_name || '?'
   return '?'
 }
 
 function kindShort(k: JobKind) {
-  return k === 'syncoid' ? 'ZFS' : k === 'backup_pbs' ? 'PBS-B' : 'PBS-R'
+  if (k === 'syncoid') return 'ZFS'
+  if (k === 'pve_native') return 'PVE'
+  if (k === 'backup_pbs') return 'PBS-B'
+  return 'PBS-R'
 }
 </script>
 
@@ -477,6 +480,10 @@ function kindShort(k: JobKind) {
 .jl-job-kind.kind-syncoid {
   color: var(--color-zfs);
   border: 1px solid var(--color-zfs);
+}
+.jl-job-kind.kind-pve_native {
+  color: var(--color-info-fg);
+  border: 1px solid var(--color-info-fg);
 }
 .jl-job-kind.kind-backup_pbs,
 .jl-job-kind.kind-recovery_pbs {

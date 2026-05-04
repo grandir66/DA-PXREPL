@@ -117,6 +117,7 @@ class SyncMethod(str, enum.Enum):
     SYNCOID = "syncoid"  # ZFS con syncoid
     BTRFS_SEND = "btrfs_send"  # BTRFS con btrfs send/receive
     PBS_RESTORE = "pbs_restore"  # Replica tramite backup PBS
+    PVE_NATIVE = "pve_native"  # vzdump --mode snapshot + scp + qmrestore (nessun requisito ZFS/BTRFS/PBS)
 
 
 class RecoveryJobStatus(str, enum.Enum):
@@ -486,6 +487,14 @@ class SyncJob(Base):
     dest_vm_name = Column(String(100), nullable=True)  # Override completo del nome VM
     dest_bridge = Column(String(50), nullable=True)    # es: "vmbr0" (sostituisce bridge=... in netN)
     dest_vlan = Column(Integer, nullable=True)         # es: 100 (aggiunge/sostituisce tag=NN in netN)
+
+    # Parametri specifici per sync_method = "pve_native"
+    # (vzdump --mode snapshot + scp + qmrestore, qualunque storage).
+    dump_dir = Column(String(255), nullable=True)         # default runtime: /var/lib/vz/dump
+    bandwidth_limit_kb = Column(Integer, nullable=True)   # vzdump --bwlimit (kbit/s)
+    pve_compress = Column(String(10), default="zstd", nullable=True)  # lzo|gzip|zstd|none
+    cleanup_after = Column(Boolean, default=True)         # rimuove archivio source dopo restore OK
+    replace_existing = Column(Boolean, default=False)     # destroy+ricrea se VM dest esiste
     
     # Notifiche
     notify_mode = Column(String(20), default="daily")  # daily, always, failure, never

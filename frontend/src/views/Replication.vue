@@ -22,6 +22,13 @@
                 <small>send/receive ZFS tra due nodi PVE</small>
               </div>
             </li>
+            <li @click="openCreate('pve_native')">
+              <span class="kind-dot zfs"></span>
+              <div>
+                <strong>Replica nativa Proxmox</strong>
+                <small>vzdump+scp+qmrestore — qualunque storage (full ad ogni run)</small>
+              </div>
+            </li>
             <li @click="openCreate('backup_pbs')">
               <span class="kind-dot pbs"></span>
               <div>
@@ -118,7 +125,7 @@ import recoveryJobsService from '../services/recoveryJobs'
 
 const store = useReplicationStore()
 
-const activeTab = ref<'all' | 'syncoid' | 'backup_pbs' | 'recovery_pbs' | 'pve'>('all')
+const activeTab = ref<'all' | 'syncoid' | 'pve_native' | 'backup_pbs' | 'recovery_pbs' | 'pve'>('all')
 const newMenuOpen = ref(false)
 
 const modalVisible = ref(false)
@@ -132,6 +139,7 @@ const logJobName = ref<string>('')
 const tabs = computed(() => [
   { id: 'all', label: 'Tutti', count: store.jobs.length },
   { id: 'syncoid', label: 'Repliche ZFS', count: store.jobs.filter(j => j.kind === 'syncoid').length },
+  { id: 'pve_native', label: 'Replica PVE-native', count: store.jobs.filter(j => j.kind === 'pve_native').length },
   { id: 'backup_pbs', label: 'Backup PBS', count: store.jobs.filter(j => j.kind === 'backup_pbs').length },
   { id: 'recovery_pbs', label: 'Replica PBS', count: store.jobs.filter(j => j.kind === 'recovery_pbs').length },
   { id: 'pve', label: 'PVE nativa', count: null },
@@ -183,10 +191,10 @@ function onEdit(j: UnifiedJob) {
 }
 
 function onShowLog(j: UnifiedJob) {
-  // Per ora l'endpoint /progress e' implementato per Syncoid; per i job
-  // PBS ricadiamo sul vecchio "Logs" generico — la UI semplicemente non
-  // apre il viewer per non mostrare un payload incoerente.
-  if (j.kind !== 'syncoid') return
+  // L'endpoint /progress vive su /api/sync-jobs/{id}/progress, comune a
+  // syncoid e pve_native (entrambi usano SyncJob). Per i job PBS
+  // (backup/recovery) il viewer non è ancora attivo.
+  if (j.kind !== 'syncoid' && j.kind !== 'pve_native') return
   logJobId.value = j.id
   logJobName.value = j.name
   logVisible.value = true
@@ -207,7 +215,8 @@ async function onRun(j: UnifiedJob, group?: { jobs: UnifiedJob[] }) {
         // qualche job e' stato saltato: lo segnaliamo
         ;(window as any).alert?.(`Avviati ${started} job, ${skipped} saltati.`)
       }
-    } else if (j.kind === 'syncoid') {
+    } else if (j.kind === 'syncoid' || j.kind === 'pve_native') {
+      // pve_native vive nello stesso endpoint /api/sync-jobs
       await syncJobsService.runJob(String(j.id))
     } else if (j.kind === 'backup_pbs') {
       await backupJobsService.runJob(String(j.id))
@@ -224,7 +233,7 @@ async function onRun(j: UnifiedJob, group?: { jobs: UnifiedJob[] }) {
 async function onDelete(j: UnifiedJob) {
   if (!await confirmDangerous(`Eliminare il job "${j.name}"?`)) return
   try {
-    if (j.kind === 'syncoid') await syncJobsService.deleteJob(String(j.id))
+    if (j.kind === 'syncoid' || j.kind === 'pve_native') await syncJobsService.deleteJob(String(j.id))
     else if (j.kind === 'backup_pbs') await backupJobsService.deleteJob(String(j.id))
     else if (j.kind === 'recovery_pbs') await recoveryJobsService.deleteJob(String(j.id))
     await reload()
