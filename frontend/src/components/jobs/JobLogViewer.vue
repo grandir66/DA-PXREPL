@@ -171,6 +171,47 @@ const statusTone = computed<'success' | 'danger' | 'warning' | 'info' | 'neutral
   return 'neutral'
 })
 
+async function fetchViaLegacyLogs(): Promise<ProgressPayload | null> {
+  // Fallback per backend pre-3.13.0 (no /progress): ricostruisce il
+  // payload usando l'endpoint storico /logs che ritorna un array di
+  // JobLog, e fa lo stesso per /sync-jobs/{id} per le metadata.
+  if (!props.jobId) return null
+  const [logsR, jobR] = await Promise.all([
+    apiClient.get<any[]>(`/sync-jobs/${props.jobId}/logs?limit=1`),
+    apiClient.get<any>(`/sync-jobs/${props.jobId}`).catch(() => ({ data: {} })),
+  ])
+  const logs = logsR.data || []
+  const last = logs[0] || null
+  const job = jobR.data || {}
+  const output = (last?.output || '').replace(/\r/g, '\n')
+  const lines = output.split('\n').filter((l: string) => l.trim()).slice(-400)
+  return {
+    id: Number(props.jobId) || 0,
+    name: job.name || '',
+    is_running: (job.last_status || '').toLowerCase() === 'running',
+    current_status: job.current_status || job.last_status || null,
+    last_status: job.last_status || null,
+    last_run: job.last_run || null,
+    last_duration: job.last_duration ?? null,
+    last_transferred: job.last_transferred ?? null,
+    run_count: job.run_count ?? 0,
+    error_count: job.error_count ?? 0,
+    log: last
+      ? {
+          id: last.id,
+          status: last.status,
+          started_at: last.started_at,
+          completed_at: last.completed_at,
+          message: last.message,
+          duration: last.duration,
+          transferred: last.transferred,
+          error: last.error,
+          output_tail: lines,
+        }
+      : null,
+  }
+}
+
 async function fetchProgress() {
   if (!props.jobId) return
   loading.value = !progress.value
@@ -187,17 +228,51 @@ async function fetchProgress() {
     }
   } catch (e: any) {
     const status = e?.response?.status
-    const msg = errorMessage(e)
-    fetchError.value = msg
-    // 404 / 405 = endpoint non disponibile (versione backend troppo
-    // vecchia o servizio da riavviare). Fermiamo il polling e
-    // mostriamo un placeholder permanente — niente toast a ripetizione.
+    // Su 404 di /progress proviamo il fallback al vecchio endpoint
+    // /sync-jobs/{id}/logs (esistente da sempre). Cosi' il viewer
+    // funziona anche se il backend non e' stato riavviato dopo l'update.
     if (status === 404 || status === 405) {
+      try {
+        const fallback = await fetchViaLegacyLogs()
+        if (fallback) {
+          progress.value = fallback
+          fetchError.value = null
+          fatalError.value = false
+          lastFetchedAt.value = Date.now()
+          if (autoScroll.value) {
+            nextTick(() => {
+              if (outputRef.value) outputRef.value.scrollTop = outputRef.value.scrollHeight
+            })
+          }
+          if (!toastShown) {
+            toast.warning(
+              'Modalità log compatibile',
+              "Il backend non espone /progress; uso l'endpoint legacy /logs (no aggiornamento live)."
+            )
+            toastShown = true
+          }
+          // Polling lento — il legacy non aggiorna in tempo reale.
+          if (poller) {
+            window.clearInterval(poller)
+            poller = window.setInterval(fetchProgress, 5000)
+          }
+          return
+        }
+      } catch (e2: any) {
+        // anche il fallback fallisce → fatale
+      }
+      fetchError.value = errorMessage(e)
       fatalError.value = true
       stopPolling()
+      if (!toastShown) {
+        toast.error('Impossibile leggere il log', errorMessage(e))
+        toastShown = true
+      }
+      return
     }
+    fetchError.value = errorMessage(e)
     if (!toastShown) {
-      toast.error('Impossibile leggere il log', msg)
+      toast.error('Impossibile leggere il log', errorMessage(e))
       toastShown = true
     }
   } finally {

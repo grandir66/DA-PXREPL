@@ -5,6 +5,19 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.16.4] - 2026-05-04
+
+### Correzioni
+
+- **JobLogViewer: fallback automatico all'endpoint legacy `/logs`** se
+  `/progress` ritorna 404. Su container con backend non riavviato dopo
+  l'update (o versione installata < 3.13.0), il viewer non resta più
+  bloccato sul placeholder "endpoint non disponibile" — ricostruisce il
+  payload combinando `GET /sync-jobs/{id}/logs?limit=1` (per output e
+  ultima esecuzione) e `GET /sync-jobs/{id}` (per le metadata). Il
+  polling rallenta automaticamente a 5s perché il legacy non offre
+  aggiornamento live. Toast informativo "Modalità log compatibile".
+
 ## [3.16.3] - 2026-05-04
 
 ### Correzioni
