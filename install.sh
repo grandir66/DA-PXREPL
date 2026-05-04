@@ -538,12 +538,37 @@ copy_application_files() {
     # Copia backend
     if [[ -d "$SCRIPT_DIR/backend" ]]; then
         log_info "Copia backend..."
-        cp -r "$SCRIPT_DIR/backend/"* "$INSTALL_DIR/"
-        
-        # Rimuovi directory test in produzione (opzionale, mantienili per debug)
-        # rm -rf "$INSTALL_DIR/tests" 2>/dev/null || true
-        
-        log_success "Backend copiato"
+
+        # Migrazione layout legacy ⇒ backend/ (introdotta in v3.17.4).
+        # Le installazioni create prima della v3.17.4 avevano il
+        # backend spalmato direttamente in $INSTALL_DIR (niente
+        # cartella backend/). Su upgrade quei file devono essere
+        # spostati in un backup, altrimenti convivono con la nuova
+        # cartella backend/ e Python sceglie i file legacy a causa
+        # del WorkingDirectory radice (vedi v3.17.4 fix).
+        if [[ "$UPGRADE_MODE" == true ]] && [[ -f "$INSTALL_DIR/main.py" ]] && [[ -d "$INSTALL_DIR/routers" ]]; then
+            local legacy_bak="$INSTALL_DIR/_legacy_backup_$(date +%Y%m%d%H%M%S)"
+            log_warning "Layout legacy rilevato (main.py/routers/services in $INSTALL_DIR)"
+            log_info "Sposto i file legacy in $legacy_bak per migrare al nuovo layout backend/"
+            mkdir -p "$legacy_bak"
+            for legacy_item in main.py database.py update_db_schema.py routers services; do
+                if [[ -e "$INSTALL_DIR/$legacy_item" ]]; then
+                    mv "$INSTALL_DIR/$legacy_item" "$legacy_bak/" 2>/dev/null || true
+                fi
+            done
+            log_success "Layout legacy spostato (puoi rimuovere $legacy_bak dopo aver verificato)"
+        fi
+
+        # Layout deterministico: backend/ è una sottodirectory di
+        # $INSTALL_DIR. Il systemd unit punta WorkingDirectory a
+        # $INSTALL_DIR/backend (vedi sotto).
+        mkdir -p "$INSTALL_DIR/backend"
+        cp -r "$SCRIPT_DIR/backend/"* "$INSTALL_DIR/backend/"
+
+        # Pulisci eventuali __pycache__ stale.
+        find "$INSTALL_DIR/backend" -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+
+        log_success "Backend copiato in $INSTALL_DIR/backend/"
     else
         log_error "Directory backend non trovata in $SCRIPT_DIR"
         log_error "Assicurati di eseguire lo script dalla directory del pacchetto estratto"
@@ -573,7 +598,7 @@ copy_application_files() {
     
     # Imposta permessi
     chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
-    chmod +x "$INSTALL_DIR/main.py" 2>/dev/null || true
+    chmod +x "$INSTALL_DIR/backend/main.py" 2>/dev/null || true
 }
 
 build_frontend() {
@@ -683,7 +708,7 @@ Wants=network-online.target
 Type=simple
 User=$SERVICE_USER
 Group=$SERVICE_USER
-WorkingDirectory=$INSTALL_DIR
+WorkingDirectory=$INSTALL_DIR/backend
 
 # Environment
 EnvironmentFile=-$CONFIG_DIR/dapx-unified.env
@@ -912,7 +937,7 @@ verify_installation() {
     fi
     
     # Verifica file
-    [[ -f "$INSTALL_DIR/main.py" ]] && log_success "Backend: OK" || log_warning "Backend: MISSING"
+    [[ -f "$INSTALL_DIR/backend/main.py" ]] && log_success "Backend: OK" || log_warning "Backend: MISSING"
     [[ -f "$INSTALL_DIR/frontend/dist/index.html" ]] && log_success "Frontend: OK" || log_warning "Frontend: MISSING"
     [[ -f "$CONFIG_DIR/dapx-unified.env" ]] && log_success "Config: OK" || log_warning "Config: MISSING"
 }
@@ -1342,7 +1367,7 @@ show_status() {
     echo -e "${BOLD}Informazioni:${NC}"
     echo ""
     
-    [[ -f "$INSTALL_DIR/main.py" ]] && echo -e "  Installazione: ${GREEN}$INSTALL_DIR${NC}" || echo -e "  Installazione: ${RED}Non trovata${NC}"
+    [[ -f "$INSTALL_DIR/backend/main.py" ]] && echo -e "  Installazione: ${GREEN}$INSTALL_DIR${NC}" || echo -e "  Installazione: ${RED}Non trovata${NC}"
     [[ -f "$DATA_DIR/sanoid-manager.db" ]] && echo -e "  Database:      ${GREEN}Presente${NC}" || echo -e "  Database:      ${YELLOW}Non inizializzato${NC}"
     
     echo ""

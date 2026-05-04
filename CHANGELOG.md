@@ -5,6 +5,45 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.4] - 2026-05-04
+
+### Modifiche — Layout deterministico per install/update
+
+Refactoring strutturale di `install.sh` e `update.sh` per eliminare alla radice
+il bug di "shadowing legacy" che ha portato all'incidente del 4/5/2026 (route
+nuove non visibili dopo update apparentemente riusciti, schema DB disallineato,
+9 sync_jobs invisibili in UI).
+
+- **Layout deterministico**: il backend va in `/opt/dapx-unified/backend/`,
+  non più spalmato in `/opt/dapx-unified/`. `WorkingDirectory` del systemd
+  unit punta a `/opt/dapx-unified/backend`.
+- **install.sh**: cambia `cp -r backend/* $INSTALL_DIR/` in
+  `cp -r backend/ $INSTALL_DIR/backend/`. Su upgrade da installazioni
+  legacy, sposta automaticamente `main.py`/`database.py`/`update_db_schema.py`/
+  `routers/`/`services/` dalla root in `_legacy_backup_TIMESTAMP/`.
+- **update.sh**:
+  - rileva il layout legacy **prima** del `git reset --hard` e lo sposta
+    in backup (i file legacy non sono tracked dal git, quindi un reset
+    non li toccherebbe);
+  - se trova `WorkingDirectory=$INSTALL_DIR` nel unit, lo aggiorna a
+    `WorkingDirectory=$INSTALL_DIR/backend` con `sed`;
+  - esegue esplicitamente `update_db_schema.py` per allineare lo schema
+    DB anche se main.py non riesce a partire (es. shadowing pre-fix).
+  - pulisce `__pycache__` dopo il reset per evitare moduli stale.
+
+### Correzioni
+
+- **`update_db_schema.py`**: incompatibilità con SQLAlchemy 2.x.
+  `engine.connect()` ora ha autobegin, `conn.begin()` esplicito causava
+  `InvalidRequestError`. Sostituito con `conn.commit()`/`conn.rollback()`
+  diretti sulla connection autobeginnata.
+
+### Documentazione
+
+- **CLAUDE.md**: nuova sezione "Layout deterministico, install.sh,
+  update.sh" con regole, errori da non ripetere, checklist post-update
+  deterministica e procedura di fix manuale per installazioni rotte.
+
 ## [3.17.3] - 2026-05-04
 
 ### Aggiunte

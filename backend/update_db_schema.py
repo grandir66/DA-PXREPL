@@ -52,7 +52,9 @@ def update_schema():
         except Exception:
             pass
 
-        trans = conn.begin()
+        # SQLAlchemy 2.x: engine.connect() ha autobegin, niente
+        # conn.begin() esplicito. Si committa/rollback direttamente
+        # via conn.
         try:
             # --- nodes: host info cache ---
             _ensure_column(conn, "nodes", "host_info", "JSON")
@@ -83,9 +85,9 @@ def update_schema():
             _ensure_column(conn, "sync_jobs", "cleanup_after", "BOOLEAN")
             _ensure_column(conn, "sync_jobs", "replace_existing", "BOOLEAN")
 
-            trans.commit()
+            conn.commit()
         except Exception as e:
-            trans.rollback()
+            conn.rollback()
             logger.error(f"Migration rolled back: {e}")
             raise
         finally:

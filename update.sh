@@ -244,11 +244,38 @@ echo -e "\n${BOLD}Download Aggiornamenti${NC}\n"
 
 cd "$INSTALL_DIR"
 
+# ============== MIGRAZIONE LAYOUT LEGACY (v3.17.4+) ==============
+# Le installazioni create prima della v3.17.4 avevano i file backend
+# spalmati direttamente in $INSTALL_DIR (main.py, database.py,
+# routers/, services/ alla root). Dalla v3.17.4 il layout
+# deterministico è $INSTALL_DIR/backend/. Se rileviamo il layout
+# legacy lo spostiamo in un backup PRIMA del git pull, perché:
+#   1) git reset --hard non tocca file non-tracked (i legacy non lo
+#      sono, sono stati copiati da install.sh) → resterebbero a
+#      shadow del backend/ del repo;
+#   2) Python con cwd=$INSTALL_DIR risolverebbe `import main`,
+#      `import routers.x` dai file legacy invece che da backend/,
+#      facendo girare codice vecchio anche dopo update riuscito.
+if [ -f "$INSTALL_DIR/main.py" ] && [ -d "$INSTALL_DIR/routers" ] && [ -d "$INSTALL_DIR/backend" ]; then
+    LEGACY_BAK="$INSTALL_DIR/_legacy_backup_$(date +%Y%m%d%H%M%S)"
+    log_warn "Layout legacy rilevato (main.py + routers/ accanto a backend/)"
+    log_info "Sposto i file legacy in $LEGACY_BAK"
+    mkdir -p "$LEGACY_BAK"
+    for legacy_item in main.py database.py update_db_schema.py routers services; do
+        if [ -e "$INSTALL_DIR/$legacy_item" ]; then
+            mv "$INSTALL_DIR/$legacy_item" "$LEGACY_BAK/" 2>/dev/null || true
+        fi
+    done
+    log_success "Layout legacy migrato (backup in $LEGACY_BAK)"
+fi
+
 if [ -d ".git" ]; then
     log_info "Repository Git rilevato, pull in corso..."
     git fetch origin
     git checkout $BRANCH
     git reset --hard origin/$BRANCH
+    # Pulisci eventuali __pycache__ residui dopo il reset.
+    find "$INSTALL_DIR/backend" -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
     log_success "Codice aggiornato da Git"
 else
     log_warn "Non è un repository Git, re-clone in corso..."
@@ -388,6 +415,34 @@ if [ -d "frontend" ] && [ -f "frontend/package.json" ]; then
     fi
 else
     log_warn "frontend/package.json non trovato, salto rebuild"
+fi
+
+# ============== FIX UNIT + SCHEMA MIGRATION (v3.17.4+) ==============
+
+# Fix WorkingDirectory del systemd unit se ancora puntato a
+# $INSTALL_DIR (layout legacy). Dalla v3.17.4 deve puntare a
+# $INSTALL_DIR/backend.
+UNIT_FILE="/etc/systemd/system/dapx-unified.service"
+if [ -f "$UNIT_FILE" ]; then
+    if grep -q "^WorkingDirectory=$INSTALL_DIR$" "$UNIT_FILE"; then
+        log_warn "Systemd unit usa WorkingDirectory legacy ($INSTALL_DIR)"
+        log_info "Aggiorno a $INSTALL_DIR/backend"
+        sed -i "s|^WorkingDirectory=$INSTALL_DIR$|WorkingDirectory=$INSTALL_DIR/backend|" "$UNIT_FILE"
+        log_success "Systemd unit aggiornato"
+    fi
+fi
+
+# Esegui esplicitamente la migrazione idempotente dello schema DB.
+# main.py la fa già nel lifespan ma è meglio farla qui in modo
+# verificabile, per evitare casi in cui il backend parta con schema
+# disallineato e gli endpoint falliscano silenziosamente.
+if [ -f "$INSTALL_DIR/backend/update_db_schema.py" ] && [ -d "$INSTALL_DIR/venv" ]; then
+    log_info "Allineamento schema database..."
+    if (cd "$INSTALL_DIR/backend" && "$INSTALL_DIR/venv/bin/python3" update_db_schema.py); then
+        log_success "Schema database allineato"
+    else
+        log_warn "Migrazione schema fallita (non bloccante, main.py riproverà al lifespan)"
+    fi
 fi
 
 # ============== RESTART ==============
