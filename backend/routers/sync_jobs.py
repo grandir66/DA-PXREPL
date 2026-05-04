@@ -1035,22 +1035,56 @@ async def run_vm_group_jobs(
     user: User = Depends(require_operator),
     db: Session = Depends(get_db)
 ):
-    """Esegue tutti i job di un gruppo VM"""
+    """Esegue manualmente tutti i job di un gruppo VM.
+
+    Forza l'esecuzione (anche se il job non e' schedulato) per ogni
+    disk-job del gruppo, salvo lock di esecuzione gia' attivo per quel
+    job specifico.
+    """
     jobs = db.query(SyncJob).filter(SyncJob.vm_group_id == vm_group_id).all()
-    
+
     if not jobs:
         raise HTTPException(status_code=404, detail="Gruppo non trovato")
-    
+
     started = 0
+    skipped = 0
+    skipped_reasons: list[str] = []
     for job in jobs:
-        if check_job_access(user, job, db) and job.is_active:
-            background_tasks.add_task(execute_sync_job_task, job.id, user.id)
-            started += 1
-    
+        if not check_job_access(user, job, db):
+            continue
+        if not job.is_active:
+            skipped += 1
+            skipped_reasons.append(f"job {job.id} disattivato")
+            continue
+        job_key = f"sync_{job.id}"
+        if not scheduler_service.mark_running(job_key):
+            skipped += 1
+            skipped_reasons.append(f"job {job.id} gia' in esecuzione")
+            continue
+
+        def _make_task(jid: int, key: str):
+            def _wrapped():
+                try:
+                    return execute_sync_job_task(jid, user.id)
+                finally:
+                    scheduler_service.mark_done(key)
+            return _wrapped
+
+        background_tasks.add_task(_make_task(job.id, job_key))
+        started += 1
+
+    if started == 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Nessun job avviato. {' / '.join(skipped_reasons) or 'nessuno disponibile'}",
+        )
+
     return {
         "success": True,
         "vm_group_id": vm_group_id,
-        "jobs_started": started
+        "jobs_started": started,
+        "jobs_skipped": skipped,
+        "skipped_reasons": skipped_reasons,
     }
 
 

@@ -5,6 +5,27 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.16.3] - 2026-05-04
+
+### Correzioni
+
+- **Pulsante "Esegui" sulla riga VM ora forza la replica di tutti i
+  dischi**. Su una VM con piu' dischi (piu' disk-job raggruppati per
+  `vm_group_id`), il bottone ▶ era **disabilitato** sulla riga
+  aggregata: cliccando non partiva nulla. Risultato: l'utente percepiva
+  che "il pulsante non fa niente" e poteva eseguire solo via cron.
+  - JobsList: bottone ▶ del gruppo ora attivo, con tooltip che indica
+    quanti job verranno avviati.
+  - Replication.vue: se il click avviene su un gruppo con piu' job
+    Syncoid, chiama il nuovo endpoint dedicato che li avvia in
+    parallelo.
+  - Backend `POST /api/sync-jobs/vm-group/{id}/run`: forza l'esecuzione
+    di TUTTI i disk-job del gruppo (anche se non schedulati), saltando
+    solo i job disattivati o gia' in esecuzione (con report
+    `jobs_started` / `jobs_skipped` / `skipped_reasons`). Acquisisce
+    correttamente il lock `mark_running` per ciascun job per evitare
+    double-fire.
+
 ## [3.16.2] - 2026-05-04
 
 ### Correzioni

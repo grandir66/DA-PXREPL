@@ -42,6 +42,10 @@ export default {
         return apiClient.post(`/sync-jobs/${id}/run`);
     },
 
+    runVmGroup(groupId: string) {
+        return apiClient.post(`/sync-jobs/vm-group/${groupId}/run`);
+    },
+
     toggleJob(id: string, enabled: boolean) {
         return apiClient.put(`/sync-jobs/${id}/enable`, { enabled });
     },

@@ -89,9 +89,8 @@
             <td class="jl-actions" @click.stop>
               <button
                 class="btn btn-secondary btn-sm"
-                @click="$emit('run', g.jobs[0])"
-                :disabled="g.jobs.length > 1"
-                title="Esegui ora"
+                @click="$emit('run', g.jobs[0], g)"
+                :title="g.jobs.length > 1 ? `Esegui tutti i ${g.jobs.length} job di questa VM` : 'Esegui ora'"
               >▶</button>
               <button
                 v-if="g.jobs[0].kind === 'syncoid'"
@@ -171,7 +170,11 @@ const props = withDefaults(
 
 defineEmits<{
   (e: 'edit', j: UnifiedJob): void
-  (e: 'run', j: UnifiedJob): void
+  /** Run del singolo job; il secondo argomento (gruppo opzionale) e'
+   *  presente quando il click avviene sulla riga aggregata di una VM
+   *  con piu' disk-job: in tal caso il consumer dovrebbe far partire
+   *  TUTTI i job del gruppo via /vm-group/{id}/run. */
+  (e: 'run', j: UnifiedJob, group?: { jobs: UnifiedJob[] }): void
   (e: 'delete', j: UnifiedJob): void
   (e: 'refresh'): void
   (e: 'show-log', j: UnifiedJob): void

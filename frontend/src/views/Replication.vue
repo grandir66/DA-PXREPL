@@ -192,14 +192,32 @@ function onShowLog(j: UnifiedJob) {
   logVisible.value = true
 }
 
-async function onRun(j: UnifiedJob) {
+async function onRun(j: UnifiedJob, group?: { jobs: UnifiedJob[] }) {
   try {
-    if (j.kind === 'syncoid') await syncJobsService.runJob(String(j.id))
-    else if (j.kind === 'backup_pbs') await backupJobsService.runJob(String(j.id))
-    else if (j.kind === 'recovery_pbs') await recoveryJobsService.runJob(String(j.id))
+    // Syncoid VM con piu' disk-job → endpoint vm-group (forza tutti).
+    if (
+      j.kind === 'syncoid' &&
+      group && group.jobs.length > 1 &&
+      j.raw?.vm_group_id
+    ) {
+      const r = await syncJobsService.runVmGroup(String(j.raw.vm_group_id))
+      const started = (r as any)?.data?.jobs_started ?? group.jobs.length
+      const skipped = (r as any)?.data?.jobs_skipped ?? 0
+      if (skipped > 0) {
+        // qualche job e' stato saltato: lo segnaliamo
+        ;(window as any).alert?.(`Avviati ${started} job, ${skipped} saltati.`)
+      }
+    } else if (j.kind === 'syncoid') {
+      await syncJobsService.runJob(String(j.id))
+    } else if (j.kind === 'backup_pbs') {
+      await backupJobsService.runJob(String(j.id))
+    } else if (j.kind === 'recovery_pbs') {
+      await recoveryJobsService.runJob(String(j.id))
+    }
     setTimeout(reload, 800)
   } catch (e) {
-    alert('Errore avvio job: ' + ((e as any)?.response?.data?.detail || (e as any)?.message))
+    const msg = (e as any)?.response?.data?.detail || (e as any)?.message
+    ;(window as any).alert?.('Errore avvio job: ' + msg)
   }
 }
 
