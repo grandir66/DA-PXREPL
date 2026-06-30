@@ -210,7 +210,7 @@ def _job_visible_to(user: User, job: BackupJob) -> bool:
     return True
 
 
-@router.get("/", response_model=List[BackupJobResponse])
+@router.get("", response_model=List[BackupJobResponse])
 async def list_backup_jobs(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -235,7 +235,7 @@ async def get_backup_job(
     return job_to_response(job, db)
 
 
-@router.post("/", response_model=BackupJobResponse)
+@router.post("", response_model=BackupJobResponse)
 async def create_backup_job(
     job_data: BackupJobCreate,
     request: Request,

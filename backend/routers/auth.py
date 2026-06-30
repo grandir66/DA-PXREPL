@@ -139,8 +139,12 @@ async def get_current_user(
             detail="Token malformato",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
-    user = db.query(User).filter(User.id == int(user_id)).first()
+
+    user = None
+    try:
+        user = db.query(User).filter(User.id == int(user_id)).first()
+    except (TypeError, ValueError):
+        user = db.query(User).filter(User.username == str(user_id).lower()).first()
 
     if not user:
         raise HTTPException(

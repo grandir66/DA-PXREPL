@@ -38,6 +38,8 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 ### Correzioni
 - Fix aggiornamento Sanoid/Syncoid: con `force=True` bypass apt (pacchetto distro obsoleto), clone tag GitHub release e verifica post-install (`backend/services/sanoid_service.py`, `sanoid_version_service.py`, `routers/nodes.py`).
 - `apt-get update` non blocca più l'installazione se un repo terze parti è rotto (es. Docker Ubuntu su nodo Debian/Proxmox).
+- Fix pagina Migrazioni (e backup jobs): route lista/creazione senza trailing slash, allineate a `sync-jobs` (`backend/routers/migration_jobs.py`, `backup_jobs.py`).
+- `get_current_user` accetta `sub` numerico o username (token legacy) senza HTTP 500 (`backend/routers/auth.py`).
 - UI aggiornamento: feedback errori HTTP, bulk include nodi mancanti (`frontend/src/views/SanoidSyncoid.vue`).
 - Fix parser `pvecm status` per formato PVE moderno (`Name:` invece di `Cluster Name:`) in `cluster_service.py`.
 - Nuovo endpoint `GET /api/ha/cluster-entry` per scegliere il nodo PVE entry point del cluster (esclude standalone come PX-NAS).

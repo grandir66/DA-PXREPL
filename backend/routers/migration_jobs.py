@@ -366,7 +366,7 @@ async def execute_migration_job_task(job_id: int, triggered_by: Optional[int] = 
 
 # ============== Endpoints ==============
 
-@router.get("/", response_model=List[MigrationJobResponseWithNodes])
+@router.get("", response_model=List[MigrationJobResponseWithNodes])
 async def list_migration_jobs(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -392,7 +392,7 @@ async def list_migration_jobs(
     return result
 
 
-@router.post("/", response_model=MigrationJobResponse)
+@router.post("", response_model=MigrationJobResponse)
 async def create_migration_job(
     job: MigrationJobCreate,
     request: Request,
