@@ -104,12 +104,37 @@ class SanoidService:
 
         return True, output
 
+    @staticmethod
+    def _bash_helpers() -> str:
+        """Funzioni bash: apt non deve bloccare se un repo terze parti è rotto."""
+        return """
+apt_safe_update() {
+  if apt-get update -qq 2>/dev/null; then
+    APT_UPDATED=1
+    return 0
+  fi
+  echo "WARN: apt-get update fallito (es. repo Docker/Ubuntu su Debian), proseguo da sorgente..."
+  APT_UPDATED=0
+  return 0
+}
+
+apt_safe_install() {
+  apt-get install -y -qq "$@" 2>/dev/null || {
+    echo "WARN: apt-get install fallito per: $*"
+    return 1
+  }
+}
+"""
+
     def _fresh_install_script(self) -> str:
         """Prima installazione: prova apt, poi sorgente."""
-        return """
+        return (
+            """
 #!/bin/bash
 set -e
-
+"""
+            + self._bash_helpers()
+            + """
 echo "=== Installazione Sanoid ==="
 
 if ! ping -c 1 github.com &>/dev/null; then
@@ -118,12 +143,12 @@ if ! ping -c 1 github.com &>/dev/null; then
 fi
 
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
+APT_UPDATED=0
+apt_safe_update
 
-if apt-cache show sanoid &>/dev/null; then
+if [ "$APT_UPDATED" = "1" ] && apt-cache show sanoid &>/dev/null 2>&1; then
     echo "Sanoid disponibile nel repository, installo..."
-    apt-get install -y -qq sanoid
-    if command -v sanoid &>/dev/null; then
+    if apt_safe_install sanoid && command -v sanoid &>/dev/null; then
         echo "Installato da repository"
         sanoid --version
         mkdir -p /etc/sanoid
@@ -132,17 +157,22 @@ if apt-cache show sanoid &>/dev/null; then
     fi
 fi
 
-""" + self._source_install_body(tag_ref="", remove_apt_pkg=False)
+"""
+            + self._source_install_body(tag_ref="", remove_apt_pkg=False)
+        )
 
     def _upgrade_script(self, target_version: Optional[str]) -> str:
         """Aggiornamento forzato da GitHub (tag release), bypass apt."""
         tag = (target_version or "").strip().lstrip("vV")
         tag_ref = f"v{tag}" if tag else ""
         tag_line = f'TARGET_TAG="{tag_ref}"' if tag_ref else 'TARGET_TAG=""'
-        return f"""
+        return (
+            """
 #!/bin/bash
 set -e
-
+"""
+            + self._bash_helpers()
+            + f"""
 echo "=== Aggiornamento Sanoid/Syncoid ==="
 {tag_line}
 
@@ -152,14 +182,16 @@ if ! ping -c 1 github.com &>/dev/null; then
 fi
 
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
+apt_safe_update
 
 if dpkg -l sanoid 2>/dev/null | grep -q '^ii'; then
     echo "Rimozione pacchetto sanoid da apt (versione distro obsoleta)..."
-    apt-get remove -y sanoid 2>/dev/null || apt-get purge -y sanoid 2>/dev/null || true
+    dpkg -r sanoid 2>/dev/null || apt-get remove -y sanoid 2>/dev/null || apt-get purge -y sanoid 2>/dev/null || true
 fi
 
-""" + self._source_install_body(tag_ref=tag_ref, remove_apt_pkg=True)
+"""
+            + self._source_install_body(tag_ref=tag_ref, remove_apt_pkg=True)
+        )
 
     def _source_install_body(self, tag_ref: str, remove_apt_pkg: bool) -> str:
         checkout = ""
@@ -180,7 +212,7 @@ timeout 120 git clone --depth 1 https://github.com/jimsalterjrs/sanoid.git
 """
 
         return f"""
-apt-get install -y -qq debhelper libcapture-tiny-perl libconfig-inifiles-perl pv lzop mbuffer git build-essential 2>/dev/null || true
+apt_safe_install debhelper libcapture-tiny-perl libconfig-inifiles-perl pv lzop mbuffer git build-essential || true
 
 cd /tmp
 rm -rf sanoid sanoid_*.deb 2>/dev/null || true
@@ -193,7 +225,7 @@ if [ -d "packages/debian" ]; then
     if dpkg-buildpackage -uc -us -b 2>/dev/null; then
         DEB=$(ls -1 ../*.deb 2>/dev/null | grep sanoid | head -1)
         if [ -n "$DEB" ]; then
-            apt-get install -y "$DEB" && {{
+            if dpkg -i "$DEB" 2>/dev/null || apt_safe_install -f; then
                 echo "Installato con dpkg-buildpackage"
                 sanoid --version 2>/dev/null || true
                 syncoid --version 2>/dev/null || true
@@ -201,7 +233,7 @@ if [ -d "packages/debian" ]; then
                 touch /etc/sanoid/sanoid.conf
                 rm -rf /tmp/sanoid /tmp/sanoid_*.deb 2>/dev/null || true
                 exit 0
-            }}
+            fi
         fi
     fi
 fi
