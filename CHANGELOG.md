@@ -43,6 +43,7 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 - Verifica versioni Sanoid/Syncoid sui nodi PVE vs ultima release GitHub (`backend/services/sanoid_version_service.py`, `ssh_service.check_syncoid_installed`).
 - API `GET /api/nodes/sanoid-syncoid/status`, `POST /api/nodes/sanoid-syncoid/update-outdated`; fix update singolo con `force=True` (`backend/routers/nodes.py`).
 - Pannello Sanoid/Syncoid in pagina Nodi con confronto upstream, badge stato e aggiornamento bulk (`frontend/src/views/Nodes.vue`, `services/nodes.ts`).
+- Pagina dedicata **Sanoid / Syncoid** nel menu (Repliche & Backup) con verifica automatica all'apertura (`frontend/src/views/SanoidSyncoid.vue`, `router/index.ts`, `MainLayout.vue`).
 - Fix `clusters.py` test connessione: usa `cluster_service` al posto di metodo inesistente su `proxmox_service`.
 - Frontend HA/Cluster usa entry point intelligente (`ha_store.ts`, `services/ha.ts`, `Cluster.vue`).
 

@@ -44,6 +44,10 @@
             <Icon name="archive" :size="16" />
             <span>Repliche</span>
           </router-link>
+          <router-link :to="{ name: 'sanoid-syncoid' }" class="nav-item" active-class="active">
+            <Icon name="package" :size="16" />
+            <span>Sanoid / Syncoid</span>
+          </router-link>
           <router-link :to="{ name: 'migration-jobs' }" class="nav-item" active-class="active">
             <Icon name="arrow-right-left" :size="16" />
             <span>Migrazioni</span>

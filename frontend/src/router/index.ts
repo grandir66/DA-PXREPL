@@ -44,6 +44,12 @@ const router = createRouter({
                     meta: { requiresFullMode: true },
                     component: () => import('../views/Replication.vue')
                 },
+                {
+                    path: 'sanoid-syncoid',
+                    name: 'sanoid-syncoid',
+                    meta: { requiresFullMode: true },
+                    component: () => import('../views/SanoidSyncoid.vue')
+                },
                 // Legacy routes → modulo unificato Repliche
                 { path: 'sync-jobs', redirect: { name: 'replication' } },
                 { path: 'backup-jobs', redirect: { name: 'replication' } },
