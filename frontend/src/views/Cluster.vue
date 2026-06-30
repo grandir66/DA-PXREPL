@@ -659,6 +659,7 @@ import Icon from '../components/ui/Icon.vue';
 import PageHeader from '../components/ui/PageHeader.vue';
 import { useRouter } from 'vue-router';
 import { useHAStore } from '../stores/ha_store';
+import haService from '../services/ha';
 import loadBalancerService from '../services/loadBalancer';
 import axios from 'axios';
 
@@ -1012,20 +1013,24 @@ watch(activeTab, (val) => {
     if(val === 'monitor') loadMonitorData();
 });
 
-// Helper to get node ID
+// Helper to get node ID — preferisce membro cluster pvecm
 const getFirstPVENodeId = async () => {
-    // We can get this from store.clusterNodes if populated, else fetch
-    // But store.clusterNodes comes from complete-data which needs a node ID first!
-    // Circular dependency? ha_store handles it by fetching /nodes/ first internally.
-    // So we can assume if store.clusterNodes has data, we can use one.
-    // If not, we might need to fetch /api/nodes ourselves.
-    // Let's rely on store or fetch manual
+    try {
+        const res = await haService.getClusterEntry();
+        if (res.data.entry_node_id) return res.data.entry_node_id;
+    } catch (e) {
+        toast.error('Errore rilevamento cluster', errorMessage(e));
+    }
     const token = localStorage.getItem('access_token');
     try {
-        const nodesRes = await fetch('/api/nodes/', { headers: { 'Authorization': `Bearer ${token}` } });
+        const nodesRes = await fetch('/api/nodes/', { headers: { Authorization: `Bearer ${token}` } });
         const nodes = await nodesRes.json();
+        const pve = nodes.find((n: { node_type?: string }) => n.node_type === 'pve' || !n.node_type);
+        if (pve) return pve.id;
         if (nodes.length > 0) return nodes[0].id;
-    } catch(e) { console.error(e); }
+    } catch {
+        /* ignore */
+    }
     return null;
 };
 

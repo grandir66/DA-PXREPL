@@ -210,7 +210,7 @@ async def test_cluster_connection(
     
     try:
         # Import here to avoid circular imports
-        from services.proxmox_service import proxmox_service
+        from services.cluster_service import cluster_service
         
         # Parse first host
         hosts = [h.strip() for h in cluster.hosts.split(",") if h.strip()]
@@ -219,20 +219,20 @@ async def test_cluster_connection(
         
         first_host = hosts[0]
         
-        # Try to get cluster status
-        # This is a simplified test - could be enhanced
-        status = await proxmox_service.get_cluster_status(
+        status = await cluster_service.get_cluster_status(
             hostname=first_host,
-            port=22,  # Default
+            port=22,
             username="root",
-            key_path="/root/.ssh/id_rsa"
+            key_path="/root/.ssh/id_rsa",
+            use_cache=False,
         )
         
         # Update cluster with status
         cluster.is_initialized = True
-        cluster.cluster_name = status.get("cluster_name", "Unknown")
+        cluster.cluster_name = status.get("cluster_name") or "Unknown"
         cluster.quorum_ok = status.get("quorum", False)
-        cluster.node_count = len(status.get("nodes", []))
+        raw_nodes = status.get("nodes", 0)
+        cluster.node_count = len(raw_nodes) if isinstance(raw_nodes, list) else int(raw_nodes or 0)
         cluster.last_check = datetime.utcnow()
         cluster.last_error = None
         db.commit()

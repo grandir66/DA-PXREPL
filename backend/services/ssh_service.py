@@ -275,6 +275,47 @@ class SSHService:
                 return True, version
             return True, "Installed"
         return False, None
+
+    async def check_syncoid_installed(
+        self,
+        hostname: str,
+        port: int = 22,
+        username: str = "root",
+        key_path: str = None,
+    ) -> Tuple[bool, Optional[str]]:
+        """Verifica se Syncoid è installato e legge la versione."""
+        key_path = key_path or self.DEFAULT_KEY_PATH
+        cmd = (
+            "export PATH=$PATH:/usr/sbin:/usr/local/sbin:/sbin; "
+            "if which syncoid >/dev/null; then syncoid --version 2>&1; else echo 'not found'; fi"
+        )
+        result = await self.execute(
+            hostname=hostname,
+            command=cmd,
+            port=port,
+            username=username,
+            key_path=key_path,
+        )
+        if result.success and "not found" not in result.stdout:
+            output = result.stdout.strip()
+            if not output:
+                return True, "Installed"
+            import re
+
+            for line in output.split("\n"):
+                if line.strip().startswith("(") or "Perl version" in line:
+                    continue
+                match = re.search(r"syncoid version\s+v?([0-9.]+)", line, re.IGNORECASE)
+                if match:
+                    return True, match.group(1)
+                match = re.search(r"sanoid version\s+v?([0-9.]+)", line, re.IGNORECASE)
+                if match:
+                    return True, match.group(1)
+            for line in output.split("\n"):
+                if line.strip() and not line.strip().startswith("("):
+                    return True, line.strip()
+            return True, "Installed"
+        return False, None
     
     async def get_zfs_datasets(
         self,

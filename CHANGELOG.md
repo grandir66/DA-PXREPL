@@ -33,7 +33,18 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 - Host backup: mutazioni con `require_operator` + `check_node_access` su job e nodi (`backend/routers/host_backup.py`, `routers/deps.py`).
 - HA e recovery: scoping nodi per operatori con `allowed_nodes` su tutti gli endpoint node-scoped e job (`backend/routers/ha.py`, `recovery_jobs.py`).
 - Migrazioni: modal creazione job funzionante; icona toggle corretta (`frontend/src/views/jobs/MigrationJobs.vue`).
-- Repliche: pulsante attiva/disattiva job in `JobsList` (sync toggle API, backup/recovery via update) (`Replication.vue`, `JobsList.vue`).
+- Repliche: pulsante attiva/disattiva job in `JobsList` (`Replication.vue`, `JobsList.vue`).
+
+### Correzioni (cluster — rilevamento pvecm)
+- Fix parser `pvecm status` per formato PVE moderno (`Name:` invece di `Cluster Name:`) in `cluster_service.py`.
+- Nuovo endpoint `GET /api/ha/cluster-entry` per scegliere il nodo PVE entry point del cluster (esclude standalone come PX-NAS).
+
+### Aggiunte
+- Verifica versioni Sanoid/Syncoid sui nodi PVE vs ultima release GitHub (`backend/services/sanoid_version_service.py`, `ssh_service.check_syncoid_installed`).
+- API `GET /api/nodes/sanoid-syncoid/status`, `POST /api/nodes/sanoid-syncoid/update-outdated`; fix update singolo con `force=True` (`backend/routers/nodes.py`).
+- Pannello Sanoid/Syncoid in pagina Nodi con confronto upstream, badge stato e aggiornamento bulk (`frontend/src/views/Nodes.vue`, `services/nodes.ts`).
+- Fix `clusters.py` test connessione: usa `cluster_service` al posto di metodo inesistente su `proxmox_service`.
+- Frontend HA/Cluster usa entry point intelligente (`ha_store.ts`, `services/ha.ts`, `Cluster.vue`).
 
 ### Correzioni (replica — sessione precedente)
 - Fix run manuale sync job: `BackgroundTasks` non eseguiva `execute_sync_job_task` (coroutine non awaited); il lock scheduler veniva rilasciato subito e in UI non partiva alcun log (`backend/routers/sync_jobs.py`).

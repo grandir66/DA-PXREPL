@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
+import haService, { type ClusterEntryInfo } from '../services/ha';
 
 export const useHAStore = defineStore('ha_store', () => {
     // State
@@ -17,6 +18,33 @@ export const useHAStore = defineStore('ha_store', () => {
     const loading = ref(false);
     const lastUpdated = ref<Date | null>(null);
     const error = ref<string | null>(null);
+    const clusterEntry = ref<ClusterEntryInfo | null>(null);
+
+    const resolveEntryNodeId = async (): Promise<number | null> => {
+        const token = localStorage.getItem('access_token');
+        if (!token) return null;
+        try {
+            const res = await haService.getClusterEntry();
+            clusterEntry.value = res.data;
+            if (res.data.entry_node_id) return res.data.entry_node_id;
+        } catch (e) {
+            // fallback sotto
+        }
+        try {
+            const nodesRes = await fetch('/api/nodes/', {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (nodesRes.ok) {
+                const nodes = await nodesRes.json();
+                const pve = nodes.find((n: { node_type?: string }) => n.node_type === 'pve' || !n.node_type);
+                if (pve) return pve.id;
+                if (nodes.length > 0) return nodes[0].id;
+            }
+        } catch {
+            /* ignore */
+        }
+        return null;
+    };
 
     // Actions
     const setAnalysisResult = (result: any) => {
@@ -30,24 +58,11 @@ export const useHAStore = defineStore('ha_store', () => {
             return;
         }
 
-        // Recupera token
         const token = localStorage.getItem('access_token');
         if (!token) return;
 
-        // Recupera primo nodo (assumendo helper esterno o logica qui)
-        let nodeId: number | null = null;
-        try {
-            const nodesRes = await fetch('/api/nodes/', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (nodesRes.ok) {
-                const nodes = await nodesRes.json();
-                if (nodes.length > 0) nodeId = nodes[0].id;
-            }
-        } catch (e) {
-            console.error(e);
-        }
-
+        // Recupera entry point cluster (preferisce nodi membri pvecm)
+        const nodeId = await resolveEntryNodeId();
         if (!nodeId) return;
 
         if (!background) loading.value = true;
@@ -108,6 +123,7 @@ export const useHAStore = defineStore('ha_store', () => {
         loading,
         lastUpdated,
         error,
+        clusterEntry,
         fetchHAData,
         setAnalysisResult,
         startBackgroundRefresh,

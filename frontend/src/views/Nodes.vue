@@ -16,6 +16,70 @@
  </template>
  </PageHeader>
 
+ <!-- Sanoid / Syncoid versioni -->
+ <div class="card sanoid-tools-card" v-if="toolStatus || toolsLoading">
+  <div class="card-header sanoid-tools-header">
+   <div>
+    <h3>Sanoid / Syncoid</h3>
+    <p class="help-text" v-if="toolStatus?.upstream?.version">
+     Ultima release GitHub:
+     <a :href="toolStatus.upstream.release_url" target="_blank" rel="noopener">v{{ toolStatus.upstream.version }}</a>
+     <span class="text-secondary"> · {{ formatUpstreamTime(toolStatus.upstream.fetched_at) }}</span>
+    </p>
+    <p class="help-text text-warning" v-else-if="toolStatus?.upstream?.error">{{ toolStatus.upstream.error }}</p>
+   </div>
+   <div class="btn-group">
+    <button class="btn btn-secondary btn-sm" @click="loadToolStatus(true)" :disabled="toolsLoading">
+     {{ toolsLoading ? 'Verifica…' : '↻ Verifica versioni' }}
+    </button>
+    <button
+     class="btn btn-primary btn-sm"
+     v-if="toolStatus && toolStatus.summary.outdated > 0"
+     @click="updateAllOutdated"
+     :disabled="bulkUpdating"
+    >
+     {{ bulkUpdating ? 'Aggiornamento…' : `Aggiorna obsoleti (${toolStatus.summary.outdated})` }}
+    </button>
+   </div>
+  </div>
+  <div class="table-container" v-if="toolStatus">
+   <table class="data-table compact">
+    <thead>
+     <tr>
+      <th>Nodo</th>
+      <th>Sanoid</th>
+      <th>Syncoid</th>
+      <th>Stato</th>
+      <th>Azioni</th>
+     </tr>
+    </thead>
+    <tbody>
+     <tr v-for="row in toolStatus.nodes" :key="row.node_id">
+      <td><strong>{{ row.node_name }}</strong></td>
+      <td>{{ formatToolVersion(row.sanoid_installed, row.sanoid_version) }}</td>
+      <td>{{ formatToolVersion(row.syncoid_installed, row.syncoid_version) }}</td>
+      <td><span class="badge" :class="toolStatusClass(row.status)">{{ toolStatusLabel(row.status) }}</span></td>
+      <td>
+       <button
+        v-if="row.status === 'outdated' || row.status === 'missing'"
+        class="btn btn-warning btn-xs"
+        @click="updateNodeTools(row.node_id)"
+        :disabled="updatingNodeId === row.node_id"
+       >
+        {{ updatingNodeId === row.node_id ? '…' : (row.status === 'missing' ? 'Installa' : 'Aggiorna') }}
+       </button>
+       <span v-else-if="row.status === 'offline'" class="text-secondary">offline</span>
+       <span v-else class="text-secondary">—</span>
+      </td>
+     </tr>
+    </tbody>
+   </table>
+  </div>
+ </div>
+ <div class="card sanoid-tools-card collapsed" v-else>
+  <button class="btn btn-secondary btn-sm" @click="loadToolStatus(false)">Verifica versioni Sanoid/Syncoid</button>
+ </div>
+
  <div class="card">
  <div class="table-container">
  <table class="data-table">
@@ -472,7 +536,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
-import nodesService, { type Node } from '../services/nodes';
+import nodesService, { type Node, type SanoidSyncoidStatusResponse } from '../services/nodes';
 import PageHeader from '../components/ui/PageHeader.vue';
 import Icon from '../components/ui/Icon.vue';
 import { confirmDelete } from '../stores/confirm';
@@ -492,6 +556,12 @@ const showDiagnosticModal = ref(false);
 const diagnosticLoading = ref(false);
 const diagnosticOutput = ref('');
 const diagnosticExitCode = ref(0);
+
+// Sanoid / Syncoid tool status
+const toolStatus = ref<SanoidSyncoidStatusResponse | null>(null);
+const toolsLoading = ref(false);
+const bulkUpdating = ref(false);
+const updatingNodeId = ref<number | null>(null);
 
 const form = reactive({
  name: '',
@@ -700,6 +770,85 @@ const runDiagnosticStart = async () => {
 };
 
 const _toast = useToast();
+
+const loadToolStatus = async (refresh = false) => {
+ toolsLoading.value = true;
+ try {
+  const res = await nodesService.getSanoidSyncoidStatus(refresh);
+  toolStatus.value = res.data;
+ } catch (e) {
+  _toast.error('Errore verifica Sanoid/Syncoid', errorMessage(e));
+ } finally {
+  toolsLoading.value = false;
+ }
+};
+
+const formatToolVersion = (installed: boolean, version: string | null) => {
+ if (!installed) return '—';
+ return version || 'installato';
+};
+
+const formatUpstreamTime = (iso: string) => {
+ if (!iso) return '';
+ try {
+  return new Date(iso).toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' });
+ } catch {
+  return '';
+ }
+};
+
+const toolStatusClass = (status: string) => {
+ switch (status) {
+  case 'ok': return 'badge-success';
+  case 'outdated': return 'badge-warning';
+  case 'missing': return 'badge-danger';
+  case 'offline': return 'badge-secondary';
+  case 'error': return 'badge-danger';
+  default: return 'badge-secondary';
+ }
+};
+
+const toolStatusLabel = (status: string) => {
+ const labels: Record<string, string> = {
+  ok: 'Aggiornato',
+  outdated: 'Obsoleto',
+  missing: 'Mancante',
+  offline: 'Offline',
+  error: 'Errore',
+  skipped: 'N/A',
+ };
+ return labels[status] || status;
+};
+
+const updateNodeTools = async (nodeId: number) => {
+ updatingNodeId.value = nodeId;
+ try {
+  await nodesService.updateSanoid(nodeId);
+  _toast.success('Sanoid/Syncoid aggiornato');
+  await loadToolStatus(true);
+  await loadNodes();
+ } catch (e) {
+  _toast.error('Errore aggiornamento', errorMessage(e));
+ } finally {
+  updatingNodeId.value = null;
+ }
+};
+
+const updateAllOutdated = async () => {
+ if (!toolStatus.value?.summary.outdated) return;
+ bulkUpdating.value = true;
+ try {
+  const res = await nodesService.updateOutdatedSanoidSyncoid();
+  const n = res.data.updated;
+  _toast.success(n > 0 ? `Aggiornati ${n} nodi` : 'Nessun nodo aggiornato');
+  await loadToolStatus(true);
+  await loadNodes();
+ } catch (e) {
+  _toast.error('Errore aggiornamento bulk', errorMessage(e));
+ } finally {
+  bulkUpdating.value = false;
+ }
+};
 
 const deleteNode = async (node: Node) => {
  if (!await confirmDelete(node.name, 'il nodo')) return;
@@ -1104,5 +1253,42 @@ const getGuestVlanOnBridge = (guest: any, bridgeName: string): string | null => 
 .mt-2 { margin-top: 8px; }
 .ml-2 { margin-left: 8px; }
 .text-xs { font-size: 0.75rem; }
+
+.sanoid-tools-card {
+ margin-bottom: 1rem;
+}
+
+.sanoid-tools-card.collapsed {
+ padding: 1rem;
+}
+
+.sanoid-tools-header {
+ display: flex;
+ justify-content: space-between;
+ align-items: flex-start;
+ gap: 1rem;
+ flex-wrap: wrap;
+}
+
+.sanoid-tools-header h3 {
+ margin: 0 0 0.25rem;
+ font-size: 1rem;
+}
+
+.sanoid-tools-header .help-text {
+ margin: 0;
+ font-size: 0.85rem;
+}
+
+.data-table.compact td,
+.data-table.compact th {
+ padding: 0.4rem 0.6rem;
+ font-size: 0.85rem;
+}
+
+.btn-xs {
+ padding: 0.15rem 0.5rem;
+ font-size: 0.75rem;
+}
 
 </style>

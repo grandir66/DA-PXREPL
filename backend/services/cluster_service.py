@@ -92,36 +92,67 @@ class ClusterService:
         return status
     
     def _parse_pvecm_status(self, text: str) -> Dict[str, Any]:
-        """Parse pvecm status output"""
-        parsed = {}
-        
+        """Parse pvecm status output (formato PVE 7/8+: Name:, Quorate:, Nodes:)."""
+        parsed: Dict[str, Any] = {}
+        in_membership = False
+        membership: List[Dict[str, Any]] = []
+
         for line in text.split('\n'):
             line = line.strip()
-            
-            if line.startswith('Cluster information'):
+            if not line or line.startswith('---'):
                 continue
-            elif 'Cluster Name:' in line:
-                parsed['cluster_name'] = line.split(':')[1].strip()
+
+            if line.startswith('Membership information'):
+                in_membership = True
+                continue
+            if in_membership:
+                if 'Nodeid' in line and 'Votes' in line:
+                    continue
+                parts = line.split()
+                if len(parts) >= 3:
+                    membership.append({
+                        "node_id": parts[0],
+                        "votes": parts[1],
+                        "name": parts[2],
+                        "is_local": "(local)" in line,
+                    })
+                continue
+
+            if 'Cluster Name:' in line:
+                parsed['cluster_name'] = line.split(':', 1)[1].strip()
+            elif line.startswith('Name:') and 'cluster_name' not in parsed:
+                # Sezione "Cluster information" — PVE moderno usa "Name:" non "Cluster Name:"
+                parsed['cluster_name'] = line.split(':', 1)[1].strip()
             elif 'Quorate:' in line:
                 parsed['quorum'] = 'yes' in line.lower()
+            elif line.startswith('Nodes:') and 'Node ID' not in line:
+                try:
+                    parsed['nodes'] = int(line.split(':', 1)[1].strip())
+                except ValueError:
+                    pass
             elif 'Expected votes:' in line:
                 try:
-                    parsed['expected_votes'] = int(line.split(':')[1].strip())
+                    parsed['expected_votes'] = int(line.split(':', 1)[1].strip())
                 except ValueError:
                     pass
             elif 'Total votes:' in line:
                 try:
-                    parsed['total_votes'] = int(line.split(':')[1].strip())
+                    parsed['total_votes'] = int(line.split(':', 1)[1].strip())
                 except ValueError:
                     pass
             elif 'Quorum:' in line and 'Quorate' not in line:
                 try:
-                    parsed['quorum_votes'] = int(line.split(':')[1].strip().split()[0])
+                    parsed['quorum_votes'] = int(line.split(':', 1)[1].strip().split()[0])
                 except (ValueError, IndexError):
                     pass
             elif 'Ring ID:' in line:
-                parsed['ring_id'] = line.split(':')[1].strip() if ':' in line else ""
-        
+                parsed['ring_id'] = line.split(':', 1)[1].strip() if ':' in line else ""
+
+        if membership and 'nodes' not in parsed:
+            parsed['nodes'] = len(membership)
+        if membership:
+            parsed['membership'] = membership
+
         return parsed
     
     async def get_cluster_nodes(
@@ -697,6 +728,91 @@ echo "Cleanup completed for {node_name}"
             except:
                 pass
         return metrics
+
+    async def resolve_cluster_entry_node(
+        self,
+        nodes: List[Any],
+        *,
+        use_cache: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Sceglie un nodo PVE registrato per interrogare pvecm.
+        Preferisce nodi online che risultano membri di un cluster Proxmox.
+        """
+        pve_nodes = [
+            n for n in nodes
+            if getattr(n, "node_type", "pve") in ("pve", None, "")
+            and getattr(n, "is_active", True)
+        ]
+        pve_nodes.sort(
+            key=lambda n: (not getattr(n, "is_online", False), getattr(n, "id", 0))
+        )
+
+        best = None
+        best_status: Optional[Dict[str, Any]] = None
+
+        for node in pve_nodes:
+            try:
+                status = await self.get_cluster_status(
+                    hostname=node.hostname,
+                    port=node.ssh_port or 22,
+                    username=node.ssh_user or "root",
+                    key_path=node.ssh_key_path or "/root/.ssh/id_rsa",
+                    use_cache=use_cache,
+                )
+            except Exception as exc:
+                logger.debug("pvecm probe failed on %s: %s", node.name, exc)
+                continue
+            if status.get("cluster_name"):
+                best = node
+                best_status = status
+                break
+            if best is None:
+                best = node
+                best_status = status
+
+        if not best:
+            return {"entry_node_id": None, "cluster_detected": False}
+
+        cluster_nodes: List[Dict[str, Any]] = []
+        if best_status and best_status.get("cluster_name"):
+            cluster_nodes = await self.get_cluster_nodes(
+                hostname=best.hostname,
+                port=best.ssh_port or 22,
+                username=best.ssh_user or "root",
+                key_path=best.ssh_key_path or "/root/.ssh/id_rsa",
+                use_cache=use_cache,
+            )
+
+        member_names = {cn.get("name") for cn in cluster_nodes if cn.get("name")}
+        registered_members = [
+            {"id": n.id, "name": n.name, "hostname": n.hostname}
+            for n in pve_nodes
+            if n.name in member_names
+        ]
+        standalone = [
+            {"id": n.id, "name": n.name, "hostname": n.hostname}
+            for n in pve_nodes
+            if n.name not in member_names
+        ]
+
+        node_count = 0
+        if best_status:
+            raw_nodes = best_status.get("nodes", 0)
+            node_count = len(raw_nodes) if isinstance(raw_nodes, list) else int(raw_nodes or 0)
+
+        return {
+            "entry_node_id": best.id,
+            "entry_node_name": best.name,
+            "cluster_detected": bool(best_status and best_status.get("cluster_name")),
+            "cluster_name": (best_status or {}).get("cluster_name"),
+            "cluster_node_count": node_count or len(cluster_nodes),
+            "quorum": (best_status or {}).get("quorum", False),
+            "cluster_members": cluster_nodes,
+            "registered_cluster_members": registered_members,
+            "registered_standalone_nodes": standalone,
+        }
+
 
 # Singleton instance
 cluster_service = ClusterService()

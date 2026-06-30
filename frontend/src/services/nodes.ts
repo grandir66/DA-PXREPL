@@ -78,4 +78,50 @@ export default {
       `/nodes/${id}/diagnostic`
     )
   },
+
+  getSanoidSyncoidStatus(refresh = false) {
+    return apiClient.get<SanoidSyncoidStatusResponse>('/nodes/sanoid-syncoid/status', {
+      params: { refresh },
+    })
+  },
+
+  updateOutdatedSanoidSyncoid() {
+    return apiClient.post<{ updated: number; results: Array<{ node_id: number; node_name: string; success: boolean; output: string }> }>(
+      '/nodes/sanoid-syncoid/update-outdated'
+    )
+  },
 }
+
+export interface SanoidSyncoidNodeStatus {
+  node_id: number
+  node_name: string
+  hostname: string
+  sanoid_installed: boolean
+  sanoid_version: string | null
+  syncoid_installed: boolean
+  syncoid_version: string | null
+  update_available: boolean
+  status: 'ok' | 'outdated' | 'missing' | 'offline' | 'error' | 'skipped'
+  error?: string | null
+}
+
+export interface SanoidSyncoidStatusResponse {
+  upstream: {
+    version: string | null
+    tag: string | null
+    source_url: string
+    release_url: string
+    fetched_at: string
+    error?: string
+  }
+  nodes: SanoidSyncoidNodeStatus[]
+  summary: {
+    total_pve: number
+    ok: number
+    outdated: number
+    missing: number
+    offline: number
+    errors: number
+  }
+}
+

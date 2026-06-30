@@ -17,9 +17,28 @@ router = APIRouter()
 
 
 def _require_ha_node(db: Session, user: User, node_id: int) -> Node:
-    node = _require_ha_node(db, user, node_id)
+    node = db.query(Node).filter(Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Nodo non trovato")
     assert_node_access(user, node)
     return node
+
+
+@router.get("/cluster-entry")
+async def get_cluster_entry(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Risolve il nodo PVE da usare come entry point per pvecm/HA.
+    Evita nodi standalone (es. PX-NAS) quando esiste un cluster Proxmox reale.
+    """
+    from routers.nodes import filter_nodes_for_user
+
+    query = db.query(Node).filter(Node.is_active == True)
+    query = filter_nodes_for_user(db, user, query)
+    nodes = query.all()
+    return await cluster_service.resolve_cluster_entry_node(nodes, use_cache=False)
 
 
 # ============== Schemas ==============

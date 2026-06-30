@@ -226,6 +226,74 @@ async def list_nodes(
     return [enhance_node_response(n, db) for n in nodes]
 
 
+@router.get("/sanoid-syncoid/status")
+async def get_sanoid_syncoid_status(
+    refresh: bool = False,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Confronta versioni Sanoid/Syncoid installate sui nodi PVE
+    con l'ultima release disponibile su GitHub (jimsalterjrs/sanoid).
+    """
+    from services.sanoid_version_service import get_all_nodes_tool_status
+
+    query = db.query(Node).filter(Node.is_active == True)
+    query = filter_nodes_for_user(db, user, query)
+    nodes = query.all()
+    return await get_all_nodes_tool_status(nodes, refresh_upstream=refresh)
+
+
+@router.post("/sanoid-syncoid/update-outdated")
+async def update_outdated_sanoid_syncoid(
+    request: Request,
+    user: User = Depends(require_operator),
+    db: Session = Depends(get_db),
+):
+    """Aggiorna Sanoid/Syncoid su tutti i nodi PVE con versione obsoleta."""
+    from services.sanoid_version_service import (
+        get_all_nodes_tool_status,
+        update_node_sanoid_syncoid,
+    )
+
+    query = db.query(Node).filter(Node.is_active == True)
+    query = filter_nodes_for_user(db, user, query)
+    nodes = query.all()
+    status = await get_all_nodes_tool_status(nodes, refresh_upstream=True)
+
+    results = []
+    for entry in status.get("nodes", []):
+        if entry.get("status") != "outdated":
+            continue
+        node = db.query(Node).filter(Node.id == entry["node_id"]).first()
+        if not node or not check_node_access(user, node):
+            continue
+        ok, output = await update_node_sanoid_syncoid(node)
+        if ok:
+            node.sanoid_installed = True
+            _, ver = await ssh_service.check_sanoid_installed(
+                hostname=node.hostname,
+                port=node.ssh_port,
+                username=node.ssh_user,
+                key_path=node.ssh_key_path,
+            )
+            node.sanoid_version = ver
+            log_audit(
+                db, user.id, "sanoid_updated", "node",
+                resource_id=node.id,
+                details=f"Sanoid/Syncoid updated on {node.name}",
+                ip_address=request.client.host if request.client else None,
+            )
+        results.append({
+            "node_id": node.id,
+            "node_name": node.name,
+            "success": ok,
+            "output": output[:500] if output else "",
+        })
+    db.commit()
+    return {"updated": len([r for r in results if r["success"]]), "results": results}
+
+
 @router.post("/", response_model=NodeResponse)
 async def create_node(
     node: NodeCreate,
@@ -590,7 +658,8 @@ async def install_sanoid_on_node(
         hostname=node.hostname,
         port=node.ssh_port,
         username=node.ssh_user,
-        key_path=node.ssh_key_path
+        key_path=node.ssh_key_path,
+        force=False,
     )
     
     if success:
@@ -616,8 +685,40 @@ async def update_sanoid_on_node(
     user: User = Depends(require_operator),
     db: Session = Depends(get_db),
 ):
-    """Aggiorna/reinstalla Sanoid su un nodo (alias di install-sanoid)."""
-    return await install_sanoid_on_node(node_id, request, user, db)
+    """Aggiorna/reinstalla Sanoid+Syncoid su un nodo."""
+    node = db.query(Node).filter(Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Nodo non trovato")
+
+    if not check_node_access(user, node):
+        raise HTTPException(status_code=403, detail="Accesso negato a questo nodo")
+
+    success, output = await sanoid_service.install_sanoid(
+        hostname=node.hostname,
+        port=node.ssh_port,
+        username=node.ssh_user,
+        key_path=node.ssh_key_path,
+        force=True,
+    )
+
+    if success:
+        node.sanoid_installed = True
+        _, ver = await ssh_service.check_sanoid_installed(
+            hostname=node.hostname,
+            port=node.ssh_port,
+            username=node.ssh_user,
+            key_path=node.ssh_key_path,
+        )
+        node.sanoid_version = ver
+        log_audit(
+            db, user.id, "sanoid_updated", "node",
+            resource_id=node_id,
+            details=f"Sanoid/Syncoid updated on: {node.name}",
+            ip_address=request.client.host if request.client else None,
+        )
+        db.commit()
+
+    return {"success": success, "output": output}
 
 
 @router.get("/{node_id}/datasets", response_model=List[DatasetResponse])
