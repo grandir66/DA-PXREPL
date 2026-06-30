@@ -58,39 +58,68 @@ class SanoidService:
         port: int = 22,
         username: str = "root",
         key_path: str = None,
-        force: bool = False
+        force: bool = False,
+        target_version: Optional[str] = None,
     ) -> Tuple[bool, str]:
-        """Installa Sanoid su un nodo Proxmox/Debian"""
+        """Installa o aggiorna Sanoid+Syncoid su un nodo Proxmox/Debian."""
         key_path = key_path or self.DEFAULT_KEY_PATH
-        
-        # Prima verifica se già installato (veloce) usando il metodo robusto di ssh_service
-        # Se force=True, saltiamo il check per forzare l'aggiornamento/reinstallazione
+
         if not force:
             is_installed, version = await ssh_service.check_sanoid_installed(
-                 hostname=hostname, port=port, username=username, key_path=key_path
+                hostname=hostname, port=port, username=username, key_path=key_path
             )
-            
             if is_installed:
                 return True, f"Sanoid già installato: {version}"
-        
-        install_script = """
+
+        if force:
+            install_script = self._upgrade_script(target_version)
+        else:
+            install_script = self._fresh_install_script()
+
+        result = await ssh_service.execute(
+            hostname=hostname,
+            command=install_script,
+            port=port,
+            username=username,
+            key_path=key_path,
+            timeout=300,
+        )
+
+        output = (result.stdout or "") + (result.stderr or "")
+        if not result.success:
+            return False, output
+
+        if force and target_version:
+            ok, ver = await ssh_service.check_sanoid_installed(
+                hostname=hostname, port=port, username=username, key_path=key_path
+            )
+            if ok and ver:
+                from services.sanoid_version_service import compare_versions
+
+                if compare_versions(ver, target_version) < 0:
+                    return (
+                        False,
+                        f"Aggiornamento incompleto: versione rilevata {ver}, attesa >= {target_version}.\n{output}",
+                    )
+
+        return True, output
+
+    def _fresh_install_script(self) -> str:
+        """Prima installazione: prova apt, poi sorgente."""
+        return """
 #!/bin/bash
 set -e
 
 echo "=== Installazione Sanoid ==="
 
-# Verifica connessione internet
 if ! ping -c 1 github.com &>/dev/null; then
     echo "ERRORE: Nessuna connessione a internet"
     exit 1
 fi
 
-# Metodo 1: Prova con apt (Debian/Ubuntu)
-echo "Tentativo installazione da repository..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 
-# Su alcune versioni Debian/Proxmox sanoid è disponibile nel repo
 if apt-cache show sanoid &>/dev/null; then
     echo "Sanoid disponibile nel repository, installo..."
     apt-get install -y -qq sanoid
@@ -103,73 +132,106 @@ if apt-cache show sanoid &>/dev/null; then
     fi
 fi
 
-# Metodo 2: Installazione manuale
-echo "Installazione manuale..."
+""" + self._source_install_body(tag_ref="", remove_apt_pkg=False)
 
-# Installa dipendenze
+    def _upgrade_script(self, target_version: Optional[str]) -> str:
+        """Aggiornamento forzato da GitHub (tag release), bypass apt."""
+        tag = (target_version or "").strip().lstrip("vV")
+        tag_ref = f"v{tag}" if tag else ""
+        tag_line = f'TARGET_TAG="{tag_ref}"' if tag_ref else 'TARGET_TAG=""'
+        return f"""
+#!/bin/bash
+set -e
+
+echo "=== Aggiornamento Sanoid/Syncoid ==="
+{tag_line}
+
+if ! ping -c 1 github.com &>/dev/null; then
+    echo "ERRORE: Nessuna connessione a internet"
+    exit 1
+fi
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq
+
+if dpkg -l sanoid 2>/dev/null | grep -q '^ii'; then
+    echo "Rimozione pacchetto sanoid da apt (versione distro obsoleta)..."
+    apt-get remove -y sanoid 2>/dev/null || apt-get purge -y sanoid 2>/dev/null || true
+fi
+
+""" + self._source_install_body(tag_ref=tag_ref, remove_apt_pkg=True)
+
+    def _source_install_body(self, tag_ref: str, remove_apt_pkg: bool) -> str:
+        checkout = ""
+        if tag_ref:
+            checkout = f"""
+echo "Clone tag {tag_ref}..."
+if ! timeout 120 git clone --depth 1 --branch "{tag_ref}" https://github.com/jimsalterjrs/sanoid.git; then
+    echo "Tag {tag_ref} non trovato, fallback su main..."
+    timeout 120 git clone --depth 1 https://github.com/jimsalterjrs/sanoid.git
+    cd sanoid
+    git fetch --depth 1 origin tag "{tag_ref}" 2>/dev/null && git checkout "{tag_ref}" || true
+fi
+"""
+        else:
+            checkout = """
+echo "Clone ultima versione da main..."
+timeout 120 git clone --depth 1 https://github.com/jimsalterjrs/sanoid.git
+"""
+
+        return f"""
 apt-get install -y -qq debhelper libcapture-tiny-perl libconfig-inifiles-perl pv lzop mbuffer git build-essential 2>/dev/null || true
 
-# Clona repository
 cd /tmp
 rm -rf sanoid sanoid_*.deb 2>/dev/null || true
-timeout 120 git clone --depth 1 https://github.com/jimsalterjrs/sanoid.git || {
-    echo "ERRORE: Clone git fallito (timeout o rete)"
-    exit 1
-}
-cd sanoid
+{checkout}
+cd sanoid 2>/dev/null || {{ echo "ERRORE: directory sanoid mancante"; exit 1; }}
 
-# Prova build con dpkg
 echo "Tentativo build pacchetto..."
 if [ -d "packages/debian" ]; then
     ln -sf packages/debian . 2>/dev/null || true
     if dpkg-buildpackage -uc -us -b 2>/dev/null; then
-        apt-get install -y ../sanoid_*.deb 2>/dev/null && {
-            echo "Installato con dpkg-buildpackage"
-            sanoid --version
-            mkdir -p /etc/sanoid
-            touch /etc/sanoid/sanoid.conf
-            rm -rf /tmp/sanoid /tmp/sanoid_*.deb 2>/dev/null || true
-            exit 0
-        }
+        DEB=$(ls -1 ../*.deb 2>/dev/null | grep sanoid | head -1)
+        if [ -n "$DEB" ]; then
+            apt-get install -y "$DEB" && {{
+                echo "Installato con dpkg-buildpackage"
+                sanoid --version 2>/dev/null || true
+                syncoid --version 2>/dev/null || true
+                mkdir -p /etc/sanoid
+                touch /etc/sanoid/sanoid.conf
+                rm -rf /tmp/sanoid /tmp/sanoid_*.deb 2>/dev/null || true
+                exit 0
+            }}
+        fi
     fi
 fi
 
-# Metodo 3: Installazione diretta (fallback)
-echo "Installazione diretta..."
+echo "Installazione diretta in /usr/local/sbin..."
 mkdir -p /usr/local/sbin /etc/sanoid
-cp sanoid syncoid findoid sleepymutex /usr/local/sbin/ 2>/dev/null || cp sanoid syncoid /usr/local/sbin/
+cp -f sanoid syncoid findoid sleepymutex /usr/local/sbin/ 2>/dev/null || cp -f sanoid syncoid /usr/local/sbin/
 chmod +x /usr/local/sbin/sanoid /usr/local/sbin/syncoid
-[ -f sanoid.defaults.conf ] && cp sanoid.defaults.conf /etc/sanoid/
+[ -f sanoid.defaults.conf ] && cp -f sanoid.defaults.conf /etc/sanoid/
 touch /etc/sanoid/sanoid.conf
 ln -sf /usr/local/sbin/sanoid /usr/sbin/sanoid 2>/dev/null || true
 ln -sf /usr/local/sbin/syncoid /usr/sbin/syncoid 2>/dev/null || true
+ln -sf /usr/local/sbin/sanoid /usr/bin/sanoid 2>/dev/null || true
+ln -sf /usr/local/sbin/syncoid /usr/bin/syncoid 2>/dev/null || true
 
-# Cleanup
 cd /
 rm -rf /tmp/sanoid /tmp/sanoid_*.deb 2>/dev/null || true
 
-# Verifica finale
-if command -v sanoid &>/dev/null; then
-    echo "=== Sanoid installato con successo ==="
-    sanoid --version 2>/dev/null || echo "Versione: manual install"
+export PATH=/usr/local/sbin:/usr/sbin:/usr/bin:$PATH
+if command -v sanoid &>/dev/null && command -v syncoid &>/dev/null; then
+    echo "=== Sanoid/Syncoid aggiornati ==="
+    sanoid --version 2>/dev/null || true
+    syncoid --version 2>/dev/null || true
     exit 0
-else
-    echo "ERRORE: Installazione fallita"
-    exit 1
 fi
+
+echo "ERRORE: Installazione/aggiornamento fallito"
+exit 1
 """
-        
-        result = await ssh_service.execute(
-            hostname=hostname,
-            command=install_script,
-            port=port,
-            username=username,
-            key_path=key_path,
-            timeout=300  # 5 minuti dovrebbero bastare
-        )
-        
-        return result.success, result.stdout + result.stderr
-    
+
     async def get_config(
         self,
         hostname: str,

@@ -62,7 +62,13 @@ export default {
   },
 
   updateSanoid(id: number | string) {
-    return apiClient.post(`/nodes/${id}/update-sanoid`)
+    return apiClient.post<{
+      success: boolean
+      output: string
+      sanoid_version?: string | null
+      syncoid_version?: string | null
+      target_version?: string | null
+    }>(`/nodes/${id}/update-sanoid`)
   },
 
   getStorages(nodeId: number | string) {

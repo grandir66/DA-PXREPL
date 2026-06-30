@@ -263,7 +263,7 @@ async def update_outdated_sanoid_syncoid(
 
     results = []
     for entry in status.get("nodes", []):
-        if entry.get("status") != "outdated":
+        if entry.get("status") not in ("outdated", "missing"):
             continue
         node = db.query(Node).filter(Node.id == entry["node_id"]).first()
         if not node or not check_node_access(user, node):
@@ -693,32 +693,57 @@ async def update_sanoid_on_node(
     if not check_node_access(user, node):
         raise HTTPException(status_code=403, detail="Accesso negato a questo nodo")
 
+    from services.sanoid_version_service import fetch_upstream_version
+
+    upstream = await fetch_upstream_version(force=True)
+    target_version = upstream.get("version")
+
     success, output = await sanoid_service.install_sanoid(
         hostname=node.hostname,
         port=node.ssh_port,
         username=node.ssh_user,
         key_path=node.ssh_key_path,
         force=True,
+        target_version=target_version,
     )
 
+    sanoid_ver = None
+    syncoid_ver = None
     if success:
         node.sanoid_installed = True
-        _, ver = await ssh_service.check_sanoid_installed(
+        _, sanoid_ver = await ssh_service.check_sanoid_installed(
             hostname=node.hostname,
             port=node.ssh_port,
             username=node.ssh_user,
             key_path=node.ssh_key_path,
         )
-        node.sanoid_version = ver
+        _, syncoid_ver = await ssh_service.check_syncoid_installed(
+            hostname=node.hostname,
+            port=node.ssh_port,
+            username=node.ssh_user,
+            key_path=node.ssh_key_path,
+        )
+        node.sanoid_version = sanoid_ver
         log_audit(
             db, user.id, "sanoid_updated", "node",
             resource_id=node_id,
-            details=f"Sanoid/Syncoid updated on: {node.name}",
+            details=f"Sanoid/Syncoid updated on: {node.name} -> {sanoid_ver}",
             ip_address=request.client.host if request.client else None,
         )
         db.commit()
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail=output[:2000] if output else "Aggiornamento Sanoid/Syncoid fallito",
+        )
 
-    return {"success": success, "output": output}
+    return {
+        "success": success,
+        "output": output,
+        "sanoid_version": sanoid_ver,
+        "syncoid_version": syncoid_ver,
+        "target_version": target_version,
+    }
 
 
 @router.get("/{node_id}/datasets", response_model=List[DatasetResponse])

@@ -11,12 +11,12 @@
           {{ toolsLoading ? 'Verifica…' : 'Verifica versioni' }}
         </button>
         <button
-          v-if="authStore.isOperator && toolStatus && toolStatus.summary.outdated > 0"
+          v-if="authStore.isOperator && toolStatus && (toolStatus.summary.outdated + toolStatus.summary.missing) > 0"
           class="btn btn-primary btn-sm"
           @click="updateAllOutdated"
           :disabled="bulkUpdating"
         >
-          {{ bulkUpdating ? 'Aggiornamento…' : `Aggiorna obsoleti (${toolStatus.summary.outdated})` }}
+          {{ bulkUpdating ? 'Aggiornamento…' : `Aggiorna tutti (${toolStatus.summary.outdated + toolStatus.summary.missing})` }}
         </button>
       </template>
     </PageHeader>
@@ -166,9 +166,11 @@ const toolStatusLabel = (status: string) => {
 
 const updateNodeTools = async (nodeId: number) => {
   updatingNodeId.value = nodeId
+  toast.info('Aggiornamento in corso…', 'Può richiedere alcuni minuti')
   try {
-    await nodesService.updateSanoid(nodeId)
-    toast.success('Sanoid/Syncoid aggiornato')
+    const res = await nodesService.updateSanoid(nodeId)
+    const v = res.data.sanoid_version || res.data.target_version
+    toast.success(v ? `Aggiornato a ${v}` : 'Sanoid/Syncoid aggiornato')
     await loadToolStatus(true)
   } catch (e) {
     toast.error('Errore aggiornamento', errorMessage(e))
@@ -178,12 +180,23 @@ const updateNodeTools = async (nodeId: number) => {
 }
 
 const updateAllOutdated = async () => {
-  if (!toolStatus.value?.summary.outdated) return
+  const n = (toolStatus.value?.summary.outdated || 0) + (toolStatus.value?.summary.missing || 0)
+  if (!n) return
   bulkUpdating.value = true
+  toast.info('Aggiornamento bulk avviato…', 'Può richiedere diversi minuti')
   try {
     const res = await nodesService.updateOutdatedSanoidSyncoid()
-    const n = res.data.updated
-    toast.success(n > 0 ? `Aggiornati ${n} nodi` : 'Nessun nodo aggiornato')
+    const ok = res.data.updated
+    const failed = res.data.results.filter(r => !r.success)
+    if (ok > 0) {
+      toast.success(`Aggiornati ${ok} nodi`)
+    }
+    if (failed.length) {
+      toast.error(`${failed.length} nodi non aggiornati`, failed.map(f => f.node_name).join(', '))
+    }
+    if (!ok && !failed.length) {
+      toast.warning('Nessun nodo da aggiornare')
+    }
     await loadToolStatus(true)
   } catch (e) {
     toast.error('Errore aggiornamento bulk', errorMessage(e))

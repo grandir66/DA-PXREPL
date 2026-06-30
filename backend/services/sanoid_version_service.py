@@ -224,11 +224,14 @@ async def get_all_nodes_tool_status(
 
 
 async def update_node_sanoid_syncoid(node: Node) -> Tuple[bool, str]:
-    """Aggiorna/reinstalla Sanoid+Syncoid su un nodo (force)."""
+    """Aggiorna/reinstalla Sanoid+Syncoid su un nodo (force, tag GitHub)."""
+    upstream = await fetch_upstream_version(force=True)
+    target_version = upstream.get("version")
     return await sanoid_service.install_sanoid(
         hostname=node.hostname,
         port=node.ssh_port or 22,
         username=node.ssh_user or "root",
         key_path=node.ssh_key_path,
         force=True,
+        target_version=target_version,
     )
