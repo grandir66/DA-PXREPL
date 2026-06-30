@@ -234,12 +234,15 @@
 </template>
 
 <script setup lang="ts">
+import { useToast, errorMessage } from '../../stores/toast';
 import { ref, onMounted, reactive } from 'vue';
 import Icon from '../../components/ui/Icon.vue';
 import { confirmDangerous, confirmDelete } from '../../stores/confirm';
 import PageHeader from '../../components/ui/PageHeader.vue';
 import configBackupService from '../../services/configBackup';
 import type { BackupInfo, BackupSystemInfo, RestoreResult } from '../../services/configBackup';
+
+const toast = useToast()
 
 const loading = ref(false);
 const exporting = ref(false);
@@ -298,7 +301,7 @@ const createBackup = async () => {
  });
  
  if (res.data.success) {
- alert(`Backup creato: ${res.data.filename}\nDimensione: ${formatSize(res.data.size)}`);
+ toast.success("Backup creato", `${res.data.filename} — ${formatSize(res.data.size)}`);
  // Refresh lista
  loadBackups();
  // Scarica automaticamente
@@ -306,7 +309,7 @@ const createBackup = async () => {
  }
  } catch (error) {
  console.error('Errore creazione backup:', error);
- alert('Errore durante la creazione del backup');
+ toast.error('Errore creazione backup');
  } finally {
  exporting.value = false;
  }
@@ -329,7 +332,7 @@ const downloadBackup = async (filename: string) => {
  document.body.removeChild(link);
  } catch (error) {
  console.error('Errore download backup:', error);
- alert('Errore durante il download del backup');
+ toast.error('Errore download backup');
  }
 };
 
@@ -392,7 +395,7 @@ const deleteBackup = async (filename: string) => {
  loadBackups();
  } catch (error) {
  console.error('Errore eliminazione backup:', error);
- alert('Errore durante l\'eliminazione');
+ toast.error('Errore eliminazione backup');
  }
 };
 

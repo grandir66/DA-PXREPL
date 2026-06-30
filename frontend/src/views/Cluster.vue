@@ -652,6 +652,7 @@
 </template>
 
 <script setup lang="ts">
+import { useToast, errorMessage } from '../stores/toast';
 import { ref, reactive, onMounted, computed, watch } from 'vue';
 import { confirmDangerous, confirmDelete } from '../stores/confirm';
 import Icon from '../components/ui/Icon.vue';
@@ -660,6 +661,8 @@ import { useRouter } from 'vue-router';
 import { useHAStore } from '../stores/ha_store';
 import loadBalancerService from '../services/loadBalancer';
 import axios from 'axios';
+
+const toast = useToast()
 
 const store = useHAStore();
 const router = useRouter();
@@ -971,7 +974,7 @@ const saveCluster = async () => {
     } catch (e: any) {
         console.error("Failed to save cluster", e);
         const msg = e.response?.data?.detail || e.message;
-        alert("Failed to save cluster: " + msg);
+        toast.error("Salvataggio cluster fallito", msg);
     }
 };
 
@@ -1059,9 +1062,9 @@ const addNodeToCluster = async () => {
            body: JSON.stringify({ new_node_ip: newNodeIP.value })
        });
        const d = await res.json();
-       if(d.success) { alert('Node added!'); refreshAll(); }
-       else alert('Error: ' + d.message);
-   } catch(e) { alert('Error: ' + e); }
+       if(d.success) { toast.success('Nodo aggiunto'); refreshAll(); }
+       else toast.error('Errore', d.message);
+   } catch(e) { toast.error('Errore', errorMessage(e)); }
 };
 
 // --- HA ACTIONS ---
@@ -1081,7 +1084,7 @@ const removeFromHA = async (res: any) => {
             method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` }
         });
         refreshAll();
-    } catch(e) { alert('Error: ' + e); }
+    } catch(e) { toast.error('Errore', errorMessage(e)); }
 };
 
 const deleteHAGroup = async (groupName: string) => {
@@ -1094,7 +1097,7 @@ const deleteHAGroup = async (groupName: string) => {
              method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` }
          });
          refreshAll();
-     } catch(e) { alert('Error: ' + e); }
+     } catch(e) { toast.error('Errore', errorMessage(e)); }
 };
 
 const toggleGuestForHA = (vmid: number) => {
@@ -1188,9 +1191,9 @@ const removeNodeFromCluster = async (name: string) => {
              method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` }
         });
         const d = await res.json();
-        if(d.success) { alert('Removed.'); refreshAll(); }
-        else alert('Error: ' + d.message);
-    } catch(e) { alert('Error: ' + e); }
+        if(d.success) { toast.success('Rimosso'); refreshAll(); }
+        else toast.error('Errore', d.message);
+    } catch(e) { toast.error('Errore', errorMessage(e)); }
 };
 
 const cleanNodeReferences = async (name: string) => {
@@ -1204,8 +1207,8 @@ const cleanNodeReferences = async (name: string) => {
         const res = await fetch(`/api/ha/node/${nodeId}/cluster/nodes/${name}/clean`, {
              method: 'POST', headers: { 'Authorization': `Bearer ${token}` }
         });
-        alert('Cleaned.');
-    } catch(e) { alert('Error: ' + e); }
+        toast.success('Pulizia completata');
+    } catch(e) { toast.error('Errore', errorMessage(e)); }
 };
 
 watch(activeTab, (val) => {

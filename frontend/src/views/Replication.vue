@@ -114,6 +114,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { confirmDangerous, confirmDelete } from '../stores/confirm';
+import { useToast, errorMessage } from '../stores/toast'
 import { useReplicationStore, type UnifiedJob, type JobKind } from '../stores/replication'
 import JobsList from '../components/jobs/JobsList.vue'
 import JobModal from '../components/jobs/JobModal.vue'
@@ -124,6 +125,7 @@ import backupJobsService from '../services/backupJobs'
 import recoveryJobsService from '../services/recoveryJobs'
 
 const store = useReplicationStore()
+const toast = useToast()
 
 const activeTab = ref<'all' | 'syncoid' | 'pve_native' | 'backup_pbs' | 'recovery_pbs' | 'pve'>('all')
 const newMenuOpen = ref(false)
@@ -192,9 +194,10 @@ function onEdit(j: UnifiedJob) {
 }
 
 function onShowLog(j: UnifiedJob) {
-  // L'endpoint /progress vive su /api/sync-jobs/{id}/progress, comune a
-  // syncoid e pve_native (entrambi usano SyncJob). Per i job PBS
-  // (backup/recovery) il viewer non è ancora attivo.
+  if (j.kind === 'backup_pbs' || j.kind === 'recovery_pbs') {
+    toast.info('Log PBS', 'Apri la tab Job History in System Logs per i dettagli completi.')
+    return
+  }
   if (j.kind !== 'syncoid' && j.kind !== 'pve_native') return
   logJobId.value = j.id
   logJobName.value = j.name
@@ -231,7 +234,7 @@ async function onDelete(j: UnifiedJob) {
     else if (j.kind === 'recovery_pbs') await recoveryJobsService.deleteJob(String(j.id))
     await reload()
   } catch (e) {
-    alert('Errore eliminazione: ' + ((e as any)?.response?.data?.detail || (e as any)?.message))
+    toast.error('Errore eliminazione', errorMessage(e))
   }
 }
 

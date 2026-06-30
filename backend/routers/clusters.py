@@ -9,7 +9,8 @@ from typing import Optional, List
 from datetime import datetime
 import logging
 
-from database import get_db, ProxmoxCluster
+from database import get_db, ProxmoxCluster, User
+from routers.auth import get_current_user, require_admin, require_operator
 
 logger = logging.getLogger(__name__)
 
@@ -65,23 +66,43 @@ class ClusterResponse(BaseModel):
 # ============== ENDPOINTS ==============
 
 @router.get("", response_model=List[ClusterResponse])
-async def list_clusters(db: Session = Depends(get_db)):
+async def list_clusters(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Lista tutti i cluster configurati"""
     clusters = db.query(ProxmoxCluster).filter(ProxmoxCluster.is_active == True).all()
     return clusters
 
 
-@router.get("/{cluster_id}", response_model=ClusterResponse)
-async def get_cluster(cluster_id: int, db: Session = Depends(get_db)):
-    """Ottieni dettagli di un cluster"""
-    cluster = db.query(ProxmoxCluster).filter(ProxmoxCluster.id == cluster_id).first()
+@router.get("/default/current", response_model=ClusterResponse)
+async def get_default_cluster(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Ottieni il cluster di default"""
+    cluster = db.query(ProxmoxCluster).filter(
+        ProxmoxCluster.is_default == True,
+        ProxmoxCluster.is_active == True
+    ).first()
+
     if not cluster:
-        raise HTTPException(status_code=404, detail="Cluster not found")
+        cluster = db.query(ProxmoxCluster).filter(
+            ProxmoxCluster.is_active == True
+        ).first()
+
+    if not cluster:
+        raise HTTPException(status_code=404, detail="No active cluster found")
+
     return cluster
 
 
 @router.post("", response_model=ClusterResponse)
-async def create_cluster(data: ClusterCreate, db: Session = Depends(get_db)):
+async def create_cluster(
+    data: ClusterCreate,
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
     """Crea un nuovo cluster"""
     # Check if name already exists
     existing = db.query(ProxmoxCluster).filter(ProxmoxCluster.name == data.name).first()
@@ -111,8 +132,26 @@ async def create_cluster(data: ClusterCreate, db: Session = Depends(get_db)):
     return cluster
 
 
+@router.get("/{cluster_id}", response_model=ClusterResponse)
+async def get_cluster(
+    cluster_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Ottieni dettagli di un cluster"""
+    cluster = db.query(ProxmoxCluster).filter(ProxmoxCluster.id == cluster_id).first()
+    if not cluster:
+        raise HTTPException(status_code=404, detail="Cluster not found")
+    return cluster
+
+
 @router.put("/{cluster_id}", response_model=ClusterResponse)
-async def update_cluster(cluster_id: int, data: ClusterUpdate, db: Session = Depends(get_db)):
+async def update_cluster(
+    cluster_id: int,
+    data: ClusterUpdate,
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
     """Aggiorna un cluster esistente"""
     cluster = db.query(ProxmoxCluster).filter(ProxmoxCluster.id == cluster_id).first()
     if not cluster:
@@ -139,7 +178,11 @@ async def update_cluster(cluster_id: int, data: ClusterUpdate, db: Session = Dep
 
 
 @router.delete("/{cluster_id}")
-async def delete_cluster(cluster_id: int, db: Session = Depends(get_db)):
+async def delete_cluster(
+    cluster_id: int,
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
     """Elimina un cluster (soft delete)"""
     cluster = db.query(ProxmoxCluster).filter(ProxmoxCluster.id == cluster_id).first()
     if not cluster:
@@ -155,7 +198,11 @@ async def delete_cluster(cluster_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{cluster_id}/test")
-async def test_cluster_connection(cluster_id: int, db: Session = Depends(get_db)):
+async def test_cluster_connection(
+    cluster_id: int,
+    user: User = Depends(require_operator),
+    db: Session = Depends(get_db),
+):
     """Testa la connessione al cluster"""
     cluster = db.query(ProxmoxCluster).filter(ProxmoxCluster.id == cluster_id).first()
     if not cluster:
@@ -203,23 +250,3 @@ async def test_cluster_connection(cluster_id: int, db: Session = Depends(get_db)
         db.commit()
         
         raise HTTPException(status_code=500, detail=f"Connection failed: {str(e)}")
-
-
-@router.get("/default/current", response_model=ClusterResponse)
-async def get_default_cluster(db: Session = Depends(get_db)):
-    """Ottieni il cluster di default"""
-    cluster = db.query(ProxmoxCluster).filter(
-        ProxmoxCluster.is_default == True,
-        ProxmoxCluster.is_active == True
-    ).first()
-    
-    if not cluster:
-        # Fallback to first active cluster
-        cluster = db.query(ProxmoxCluster).filter(
-            ProxmoxCluster.is_active == True
-        ).first()
-    
-    if not cluster:
-        raise HTTPException(status_code=404, detail="No cluster configured")
-    
-    return cluster

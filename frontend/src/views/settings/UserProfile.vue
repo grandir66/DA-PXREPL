@@ -27,8 +27,11 @@
 </template>
 
 <script setup lang="ts">
+import { useToast, errorMessage } from '../../stores/toast';
 import { reactive, ref } from 'vue';
 import authService from '../../services/auth';
+
+const toast = useToast()
 
 const loading = ref(false);
 const form = reactive({
@@ -39,7 +42,7 @@ const form = reactive({
 
 const updatePassword = async () => {
     if (form.new_password !== form.confirm_password) {
-        alert("Le nuove password non coincidono");
+        toast.warning("Le nuove password non coincidono");
         return;
     }
     
@@ -49,12 +52,12 @@ const updatePassword = async () => {
             current_password: form.current_password,
             new_password: form.new_password
         });
-        alert("Password aggiornata con successo");
+        toast.success("Password aggiornata");
         form.current_password = '';
         form.new_password = '';
         form.confirm_password = '';
     } catch (e: any) {
-        alert('Errore: ' + (e.response?.data?.detail || e.message));
+        toast.error('Errore', errorMessage(e));
     } finally {
         loading.value = false;
     }

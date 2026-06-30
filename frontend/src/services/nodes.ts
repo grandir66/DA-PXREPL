@@ -66,12 +66,12 @@ export default {
         return apiClient.post(`/nodes/${id}/install-sanoid`);
     },
 
-    refreshNode(id: number | string) {
-        return apiClient.post(`/nodes/${id}/refresh`);
-    },
-
     updateSanoid(id: number | string) {
         return apiClient.post(`/nodes/${id}/update-sanoid`);
+    },
+
+    refreshNode(_id: number | string) {
+        return apiClient.post('/nodes/refresh-cache');
     },
 
 

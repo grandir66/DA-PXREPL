@@ -7,7 +7,8 @@ from pydantic import BaseModel
 from typing import List, Optional
 from sqlalchemy.orm import Session
 
-from database import get_db, Node
+from database import get_db, Node, User
+from routers.auth import get_current_user, require_admin, require_operator
 from services.ssh_key_service import ssh_key_service, SSHKeyInfo
 
 router = APIRouter(prefix="/ssh-keys", tags=["ssh-keys"])
@@ -16,7 +17,7 @@ router = APIRouter(prefix="/ssh-keys", tags=["ssh-keys"])
 class GenerateKeyRequest(BaseModel):
     key_type: str = "rsa"
     bits: int = 4096
-    comment: str = "sanoid-manager"
+    comment: str = "dapx-unified"
     overwrite: bool = False
 
 
@@ -53,7 +54,7 @@ class TestResultResponse(BaseModel):
 
 
 @router.get("/info", response_model=KeyInfoResponse)
-async def get_key_info():
+async def get_key_info(user: User = Depends(require_operator)):
     """Ottiene informazioni sulla chiave SSH locale"""
     info = ssh_key_service.get_key_info()
     return KeyInfoResponse(
@@ -66,7 +67,7 @@ async def get_key_info():
 
 
 @router.post("/generate")
-async def generate_key(request: GenerateKeyRequest):
+async def generate_key(request: GenerateKeyRequest, user: User = Depends(require_admin)):
     """Genera una nuova coppia di chiavi SSH"""
     success, message = ssh_key_service.generate_key(
         key_type=request.key_type,
@@ -94,7 +95,11 @@ async def generate_key(request: GenerateKeyRequest):
 
 
 @router.post("/distribute", response_model=List[DistributionResultResponse])
-async def distribute_key(request: DistributeKeyRequest, db: Session = Depends(get_db)):
+async def distribute_key(
+    request: DistributeKeyRequest,
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
     """Distribuisce la chiave pubblica ai nodi selezionati o a tutti"""
     
     # Ottieni nodi dal database
@@ -136,7 +141,11 @@ async def distribute_key(request: DistributeKeyRequest, db: Session = Depends(ge
 
 
 @router.post("/test", response_model=List[TestResultResponse])
-async def test_connections(request: TestConnectionRequest, db: Session = Depends(get_db)):
+async def test_connections(
+    request: TestConnectionRequest,
+    user: User = Depends(require_operator),
+    db: Session = Depends(get_db),
+):
     """Testa la connettività SSH con chiave a tutti i nodi o a nodi selezionati"""
     
     # Ottieni nodi dal database
@@ -176,7 +185,7 @@ async def test_connections(request: TestConnectionRequest, db: Session = Depends
 
 
 @router.get("/authorized-keys")
-async def get_authorized_keys():
+async def get_authorized_keys(user: User = Depends(require_admin)):
     """Ottiene le chiavi autorizzate sul server locale"""
     keys = ssh_key_service.get_authorized_keys()
     return {"keys": keys, "count": len(keys)}
@@ -186,7 +195,8 @@ async def get_authorized_keys():
 async def distribute_key_to_single_node(
     node_id: int,
     password: Optional[str] = None,
-    db: Session = Depends(get_db)
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
 ):
     """Distribuisce la chiave a un singolo nodo"""
     node = db.query(Node).filter(Node.id == node_id).first()
@@ -210,7 +220,11 @@ async def distribute_key_to_single_node(
 
 
 @router.post("/test-single/{node_id}")
-async def test_single_connection(node_id: int, db: Session = Depends(get_db)):
+async def test_single_connection(
+    node_id: int,
+    user: User = Depends(require_operator),
+    db: Session = Depends(get_db),
+):
     """Testa la connessione SSH a un singolo nodo"""
     node = db.query(Node).filter(Node.id == node_id).first()
     
@@ -233,7 +247,11 @@ async def test_single_connection(node_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/setup-mesh")
-async def setup_mesh_ssh(request: DistributeKeyRequest, db: Session = Depends(get_db)):
+async def setup_mesh_ssh(
+    request: DistributeKeyRequest,
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
     """
     Configura SSH mesh: copia la stessa coppia di chiavi su tutti i nodi.
     Questo permette a ogni nodo di connettersi a ogni altro nodo usando la stessa chiave.
@@ -286,7 +304,11 @@ async def setup_mesh_ssh(request: DistributeKeyRequest, db: Session = Depends(ge
 
 
 @router.post("/force-sync")
-async def force_sync_keys(request: DistributeKeyRequest, db: Session = Depends(get_db)):
+async def force_sync_keys(
+    request: DistributeKeyRequest,
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
     """
     Forza la sincronizzazione delle chiavi SSH a tutti i nodi.
     Utile dopo un reinstallazione o quando le chiavi non sono allineate.

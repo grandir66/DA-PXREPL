@@ -9,6 +9,11 @@ export const useAuthStore = defineStore('auth', {
         realms: [] as any[],
     }),
 
+    getters: {
+        isAdmin: (state) => state.user?.role === 'admin',
+        isOperator: (state) => ['admin', 'operator'].includes(state.user?.role || ''),
+    },
+
     actions: {
         async login(credentials: any) {
             try {

@@ -1,4 +1,5 @@
 <template>
+ <AdminGate>
  <div class="updates-page">
  <PageHeader
  title="Aggiornamenti Sistema"
@@ -124,10 +125,12 @@
  </div>
  </div>
  </div>
+ </AdminGate>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
+import AdminGate from '../../components/ui/AdminGate.vue';
 import Icon from '../../components/ui/Icon.vue';
 import PageHeader from '../../components/ui/PageHeader.vue';
 import updatesService from '../../services/updates';

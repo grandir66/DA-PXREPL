@@ -144,12 +144,14 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { confirmDangerous, confirmDelete } from '../stores/confirm';
+import { confirmDangerous } from '../stores/confirm';
+import { useToast, errorMessage } from '../stores/toast';
 import logsService, { type LogEntry } from '../services/logs';
 import PageHeader from '../components/ui/PageHeader.vue';
 import Icon from '../components/ui/Icon.vue';
 
 const activeTab = ref('jobs');
+const toast = useToast();
 
 // JOBS DATA
 const logs = ref<LogEntry[]>([]);
@@ -161,7 +163,7 @@ const filterLevel = ref('');
 // SYSTEM DATA
 const systemLogs = ref<any[]>([]);
 const logFiles = ref<any[]>([]);
-const selectedFile = ref('dapx.log');
+const selectedFile = ref('dapx-unified.log');
 const sysLoading = ref(false);
 const sysLines = ref(200);
 const sysSearch = ref('');
@@ -199,12 +201,13 @@ const loadLogs = async (p = 1) => {
 };
 
 const clearLogs = async () => {
-    if (!await confirmDangerous('Eliminare tutti i log?')) return;
+    if (!await confirmDangerous('Eliminare i log job più vecchi di 30 giorni?')) return;
     try {
-        await logsService.clearLogs();
+        const res = await logsService.clearLogs(30);
+        toast.success('Log puliti', res.data?.message || 'Operazione completata');
         loadLogs();
     } catch (e) {
-        alert('Errore pulizia log');
+        toast.error('Errore pulizia log', errorMessage(e));
     }
 };
 
@@ -228,7 +231,9 @@ const loadSystemFiles = async () => {
         if (res.data && res.data.files) {
             logFiles.value = res.data.files;
             // Select dapx.log by default if present
-            if (logFiles.value.find((f: any) => f.name === 'dapx.log')) {
+            if (logFiles.value.find((f: any) => f.name === 'dapx-unified.log')) {
+                selectedFile.value = 'dapx-unified.log';
+            } else if (logFiles.value.find((f: any) => f.name === 'dapx.log')) {
                 selectedFile.value = 'dapx.log';
             }
         }

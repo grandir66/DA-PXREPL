@@ -6,6 +6,17 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 ## [Unreleased]
 
 ### Correzioni
+- Audit massivo bug UI/API: auth su cluster e SSH keys; fix pulizia log (`DELETE /logs/cleanup`); fix delete host backup; route logs riordinate; log di sistema allineati a `dapx-unified` (`backend/routers/clusters.py`, `ssh_keys.py`, `logs.py`, `nodes.py`, `settings.py`, `frontend/src/services/logs.ts`, `HostBackupView.vue`, `Logs.vue`, `MainLayout.vue`).
+- Rimozione viste legacy duplicate: redirect `/sync-jobs`, `/backup-jobs`, `/recovery-jobs` → `/replication`; eliminati componenti orfani (`frontend/src/router/index.ts`, viste `jobs/*` e `replication/*` obsolete).
+- Script debug spostati in `scripts/debug/` (fuori dal path backend produzione).
+- Endpoint `POST /nodes/{id}/update-sanoid`; fix `toggleJob` sync; toast al posto di alert su Logs/Nodes/Replication (`backend/routers/nodes.py`, `frontend/src/services/syncJobs.ts`, viste correlate).
+
+### Correzioni (fase 2 — UX e hardening)
+- Migrazione completa `alert()` → toast in tutte le viste (`scripts/migrate_alerts_to_toast.py`, 12 file Vue).
+- Guard admin: componente `AdminGate`, meta router `requiresAdmin`, voci menu Updates/Load Balancer visibili solo ad admin (`frontend/src/components/ui/AdminGate.vue`, `router/index.ts`, `MainLayout.vue`, `Updates.vue`, `LoadBalancer.vue`).
+- Auth store: getter `isAdmin` / `isOperator`; route `/sync-jobs/stats/summary` spostata prima di `/{job_id}` (`backend/routers/sync_jobs.py`, `frontend/src/stores/auth.ts`).
+
+### Correzioni (replica — sessione precedente)
 - Fix run manuale sync job: `BackgroundTasks` non eseguiva `execute_sync_job_task` (coroutine non awaited); il lock scheduler veniva rilasciato subito e in UI non partiva alcun log (`backend/routers/sync_jobs.py`).
 - Fix stato UI job sync: `SyncJobResponse` ora espone `current_status`; lista replica e log viewer trattano `last_status=running` / log `started` come *in esecuzione* (`backend/routers/sync_jobs.py`, `frontend/src/components/jobs/JobsList.vue`, `JobLogViewer.vue`, `Replication.vue`).
 - Fix falso *fallito* su sync: se syncoid/zfs receive e' ancora attivo sui nodi (timeout SSH, receive gia' in corso), lo stato resta *running* con monitor in background invece di `failed` (`backend/services/syncoid_service.py`, `backend/routers/sync_jobs.py`).

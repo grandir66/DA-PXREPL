@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from pydantic import BaseModel
 import json # Missing import
+import logging
 
 from database import get_db, Node, VMRegistry, User, NodeType
 from services.proxmox_service import proxmox_service
@@ -17,6 +18,7 @@ from services.sanoid_config_service import sanoid_config_service
 from routers.auth import get_current_user, require_operator, log_audit
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 # ============== Schemas ==============
@@ -681,7 +683,7 @@ async def get_vm_sanoid_config(
                 config["monthly"] = int(sect.get("monthly", 0))
                 config["yearly"] = int(sect.get("yearly", 0))
         except Exception as e:
-            print(f"Error parsing sanoid config: {e}")
+            logger.warning(f"Error parsing sanoid config: {e}")
             
     return config
 
@@ -1042,7 +1044,7 @@ async def get_vm_backups(
                      all_backups.append(snap)
                              
             except Exception as e:
-                print(f"Error querying PBS node {pbs_node.name}: {e}")
+                logger.warning(f"Error querying PBS node {pbs_node.name}: {e}")
 
     return all_backups
 

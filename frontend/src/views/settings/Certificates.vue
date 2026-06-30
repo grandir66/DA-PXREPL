@@ -96,10 +96,13 @@
 </template>
 
 <script setup lang="ts">
+import { useToast, errorMessage } from '../../stores/toast';
 import { ref, reactive, onMounted } from 'vue';
 import Icon from '../../components/ui/Icon.vue';
 import { confirmDangerous, confirmDelete } from '../../stores/confirm';
 import settingsService from '../../services/settings';
+
+const toast = useToast()
 
 const status = ref<any>(null);
 const working = ref(false);
@@ -148,10 +151,10 @@ const saveServerConfig = async () => {
  working.value = true;
  try {
  await settingsService.updateServerConfig(serverConfig);
- alert("Configurazione salvata. Riavvio richiesto per applicare le modifiche.");
+ toast.success("Configurazione salvata", "Riavvio richiesto per applicare le modifiche");
  loadServerConfig(); // Update restart required status
  } catch (e: any) {
- alert("Errore salvataggio: " + (e.response?.data?.detail || e.message));
+ toast.error("Errore salvataggio", errorMessage(e));
  } finally {
  working.value = false;
  }
@@ -167,11 +170,11 @@ const generateCert = async () => {
  ip_addresses: genForm.ip_addresses.split(',').map(ip => ip.trim()).filter(ip => ip)
  };
  await settingsService.generateCert(payload);
- alert("Certificato generato con successo!");
+ toast.success("Certificato generato");
  loadStatus();
  loadServerConfig(); // Should update ssl ready status
  } catch (e: any) {
- alert("Errore generazione: " + (e.response?.data?.detail || e.message));
+ toast.error("Errore generazione", errorMessage(e));
  } finally {
  working.value = false;
  }
@@ -180,20 +183,20 @@ const generateCert = async () => {
 // ... existing code for upload and delete ...
 const uploadCert = async () => {
  if (!uploadForm.certificate || !uploadForm.private_key) {
- alert("Inserire certificato e chiave privata");
+ toast.warning("Inserire certificato e chiave privata");
  return;
  }
  
  working.value = true;
  try {
  await settingsService.uploadCert(uploadForm);
- alert("Certificato caricato con successo!");
+ toast.success("Certificato caricato");
  uploadForm.certificate = '';
  uploadForm.private_key = '';
  loadStatus();
  loadServerConfig();
  } catch (e: any) {
- alert("Errore caricamento: " + (e.response?.data?.detail || e.message));
+ toast.error("Errore caricamento", errorMessage(e));
  } finally {
  working.value = false;
  }
@@ -204,11 +207,11 @@ const deleteCert = async () => {
  
  try {
  await settingsService.deleteCert();
- alert("Certificato eliminato");
+ toast.success("Certificato eliminato");
  loadStatus();
  loadServerConfig();
  } catch (e) {
- alert("Errore eliminazione");
+ toast.error("Errore eliminazione");
  }
 };
 </script>

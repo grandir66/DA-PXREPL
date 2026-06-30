@@ -2270,6 +2270,37 @@ async def delete_vm_group_jobs(
     return {"success": True, "jobs_deleted": deleted}
 
 
+@router.get("/stats/summary")
+async def get_sync_stats(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Ottiene statistiche sui job di sincronizzazione"""
+    from datetime import timedelta
+
+    total_jobs = db.query(SyncJob).count()
+    active_jobs = db.query(SyncJob).filter(SyncJob.is_active == True).count()
+
+    yesterday = datetime.utcnow() - timedelta(days=1)
+
+    recent_logs = db.query(JobLog).filter(
+        JobLog.job_type == "sync",
+        JobLog.started_at >= yesterday
+    ).all()
+
+    success_count = len([l for l in recent_logs if l.status == "success"])
+    failed_count = len([l for l in recent_logs if l.status == "failed"])
+
+    return {
+        "total_jobs": total_jobs,
+        "active_jobs": active_jobs,
+        "runs_24h": len(recent_logs),
+        "success_24h": success_count,
+        "failed_24h": failed_count,
+        "success_rate": round(success_count / len(recent_logs) * 100, 1) if recent_logs else 0
+    }
+
+
 @router.get("/{job_id}", response_model=SyncJobResponseWithNodes)
 async def get_sync_job(
     job_id: int,
@@ -2803,47 +2834,6 @@ async def register_vm_manually(
         return response
     else:
         raise HTTPException(status_code=500, detail=f"Registrazione fallita: {msg}")
-
-
-@router.get("/stats/summary")
-async def get_sync_stats(
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Ottiene statistiche sui job di sincronizzazione"""
-    from sqlalchemy import func
-    
-    # Job totali
-    total_jobs = db.query(SyncJob).count()
-    active_jobs = db.query(SyncJob).filter(SyncJob.is_active == True).count()
-    
-    # Esecuzioni ultime 24h
-    from datetime import timedelta
-    yesterday = datetime.utcnow() - timedelta(days=1)
-    
-    recent_logs = db.query(JobLog).filter(
-        JobLog.job_type == "sync",
-        JobLog.started_at >= yesterday
-    ).all()
-    
-    success_count = len([l for l in recent_logs if l.status == "success"])
-    failed_count = len([l for l in recent_logs if l.status == "failed"])
-    
-    # Dati trasferiti
-    total_transferred = sum(
-        int(l.transferred.replace("G", "000").replace("M", "").replace("K", "")[:10]) 
-        for l in recent_logs 
-        if l.transferred and l.transferred[0].isdigit()
-    ) if recent_logs else 0
-    
-    return {
-        "total_jobs": total_jobs,
-        "active_jobs": active_jobs,
-        "runs_24h": len(recent_logs),
-        "success_24h": success_count,
-        "failed_24h": failed_count,
-        "success_rate": round(success_count / len(recent_logs) * 100, 1) if recent_logs else 0
-    }
 
 
 # ============== Snapshot Management ==============

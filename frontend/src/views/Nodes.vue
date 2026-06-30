@@ -615,7 +615,6 @@ const openModal = () => {
 };
 
 const editNode = (node: Node) => {
- console.log("Editing node data:", JSON.parse(JSON.stringify(node)));
  editingNodeId.value = node.id;
  form.name = node.name || '';
  form.hostname = node.hostname || '';
@@ -637,7 +636,7 @@ const closeModal = () => {
 
 const saveNode = async () => {
  if(!form.name || !form.hostname) {
- alert("Nome e Hostname richiesti");
+ _toast.warning("Nome e Hostname richiesti");
  return;
  }
  creating.value = true;
@@ -671,7 +670,7 @@ const saveNode = async () => {
  } catch (e: any) {
  console.error('Error saving node', e);
  const errorMsg = e.response?.data?.detail || e.message;
- alert('Errore salvataggio nodo: ' + errorMsg);
+ _toast.error('Errore salvataggio nodo', errorMsg);
  } finally {
  creating.value = false;
  }
@@ -752,12 +751,12 @@ const formatSize = (bytes: number) => {
 const updateSanoid = async (node: Node) => {
  if(!await confirmDangerous(`Aggiornare Sanoid sul nodo ${node.name}? L'operazione potrebbe richiedere alcuni minuti.`)) return;
  try {
- alert(`Aggiornamento Sanoid avviato su ${node.name}...`);
+ _toast.info(`Aggiornamento Sanoid avviato su ${node.name}…`);
  await nodesService.updateSanoid(node.id);
- alert('Aggiornamento completato con successo!');
+ _toast.success('Aggiornamento Sanoid completato');
  loadNodes();
  } catch (e: any) {
- alert('Errore aggiornamento Sanoid: ' + (e.response?.data?.detail || e.message));
+ _toast.error('Errore aggiornamento Sanoid', errorMessage(e));
  }
 };
 

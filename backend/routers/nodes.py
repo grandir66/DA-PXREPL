@@ -615,6 +615,17 @@ async def install_sanoid_on_node(
     }
 
 
+@router.post("/{node_id}/update-sanoid")
+async def update_sanoid_on_node(
+    node_id: int,
+    request: Request,
+    user: User = Depends(require_operator),
+    db: Session = Depends(get_db),
+):
+    """Aggiorna/reinstalla Sanoid su un nodo (alias di install-sanoid)."""
+    return await install_sanoid_on_node(node_id, request, user, db)
+
+
 @router.get("/{node_id}/datasets", response_model=List[DatasetResponse])
 async def get_node_datasets(
     node_id: int,

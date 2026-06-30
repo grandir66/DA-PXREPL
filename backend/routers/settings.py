@@ -841,7 +841,7 @@ async def update_server_config(
 
 async def update_systemd_service(config: dict):
     """Aggiorna il file di servizio systemd con la nuova configurazione"""
-    service_file = Path("/etc/systemd/system/dapx-backandrepl.service")
+    service_file = Path("/etc/systemd/system/dapx-unified.service")
     
     if not service_file.exists():
         return
@@ -888,7 +888,7 @@ async def restart_server(
     db: Session = Depends(get_db)
 ):
     """
-    Riavvia il servizio dapx-backandrepl.
+    Riavvia il servizio dapx-unified.
     
     ⚠️ La connessione verrà persa durante il riavvio.
     """
@@ -906,7 +906,7 @@ async def restart_server(
         import time
         time.sleep(1)  # Attendi 1 secondo per permettere la risposta HTTP
         # Prova diversi nomi di servizio
-        for service in ["dapx-backandrepl", "sanoid-manager"]:
+        for service in ["dapx-unified", "dapx-backandrepl", "sanoid-manager"]:
             result = subprocess.run(["systemctl", "is-active", service], capture_output=True)
             if result.returncode == 0:
                 subprocess.Popen(["systemctl", "restart", service])

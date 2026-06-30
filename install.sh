@@ -671,6 +671,9 @@ DAPX_SECRET_KEY=$SECRET_KEY
 # Database path
 DAPX_DB=$DATA_DIR/dapx.db
 
+# Log directory (allineato a systemd StandardOutput in install.sh)
+DAPX_LOG_DIR=$LOG_DIR
+
 # Web server port
 DAPX_PORT=$SERVICE_PORT
 

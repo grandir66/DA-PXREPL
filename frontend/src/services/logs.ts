@@ -40,8 +40,8 @@ export default {
         return apiClient.get<JobLog[]>(`/logs/job/${jobId}/history`, { params: { limit } });
     },
 
-    clearLogs() {
-        return apiClient.delete('/logs/');
+    clearLogs(days: number = 30) {
+        return apiClient.delete('/logs/cleanup', { params: { days } });
     },
 
     getSystemLogs(params?: { lines?: number; level?: string; search?: string; file?: string }) {

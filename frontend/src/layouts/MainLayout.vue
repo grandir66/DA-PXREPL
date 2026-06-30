@@ -32,7 +32,7 @@
             <Icon name="cluster" :size="16" />
             <span>Cluster &amp; HA</span>
           </router-link>
-          <router-link :to="{ name: 'load-balancer' }" class="nav-item" active-class="active">
+          <router-link v-if="authStore.isAdmin" :to="{ name: 'load-balancer' }" class="nav-item" active-class="active">
             <Icon name="scale" :size="16" />
             <span>Load Balancer</span>
           </router-link>
@@ -43,10 +43,6 @@
           <router-link :to="{ name: 'replication' }" class="nav-item" active-class="active">
             <Icon name="archive" :size="16" />
             <span>Repliche</span>
-          </router-link>
-          <router-link :to="{ name: 'backup-jobs' }" class="nav-item" active-class="active">
-            <Icon name="database" :size="16" />
-            <span>Backup PBS</span>
           </router-link>
           <router-link :to="{ name: 'migration-jobs' }" class="nav-item" active-class="active">
             <Icon name="arrow-right-left" :size="16" />
@@ -72,7 +68,7 @@
             <Icon name="settings" :size="16" />
             <span>Impostazioni</span>
           </router-link>
-          <router-link :to="{ name: 'updates' }" class="nav-item" active-class="active">
+          <router-link v-if="authStore.isAdmin" :to="{ name: 'updates' }" class="nav-item" active-class="active">
             <Icon name="package" :size="16" />
             <span>Aggiornamenti</span>
           </router-link>
@@ -117,9 +113,11 @@ import api from '../services/api'
 import Icon from '../components/ui/Icon.vue'
 import ToastContainer from '../components/ui/ToastContainer.vue'
 import ConfirmDialog from '../components/ui/ConfirmDialog.vue'
+import { useToast, errorMessage } from '../stores/toast'
 
 const authStore = useAuthStore()
 const router = useRouter()
+const toast = useToast()
 const refreshing = ref(false)
 const systemMode = ref<'full' | 'lb'>('full')
 
@@ -127,9 +125,10 @@ async function refreshData() {
   if (refreshing.value) return
   refreshing.value = true
   try {
-    await nodesService.fetchNodes?.()
-  } catch {
-    /* best-effort */
+    await nodesService.refreshAllCache()
+    toast.success('Cache aggiornata', 'Dati nodi e VM in refresh')
+  } catch (e) {
+    toast.error('Errore aggiornamento', errorMessage(e))
   } finally {
     refreshing.value = false
   }
@@ -149,7 +148,12 @@ function logout() {
   router.push('/login')
 }
 
-onMounted(fetchSystemMode)
+onMounted(async () => {
+  fetchSystemMode()
+  if (authStore.isAuthenticated && !authStore.user?.role) {
+    await authStore.fetchUser()
+  }
+})
 </script>
 
 <style scoped>

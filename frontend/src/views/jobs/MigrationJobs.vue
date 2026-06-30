@@ -83,11 +83,14 @@
 </template>
 
 <script setup lang="ts">
+import { useToast, errorMessage } from '../../stores/toast';
 import { ref, onMounted } from 'vue';
 import Icon from '../../components/ui/Icon.vue';
 import { confirmDangerous, confirmDelete } from '../../stores/confirm';
 import PageHeader from '../../components/ui/PageHeader.vue';
 import migrationJobsService, { type MigrationJob } from '../../services/migrationJobs';
+
+const toast = useToast()
 
 const jobs = ref<MigrationJob[]>([]);
 const loading = ref(false);
@@ -120,7 +123,7 @@ const runJob = async (job: MigrationJob) => {
  }
  loadJobs();
  } catch (e) {
- alert('Errore avvio migrazione');
+ toast.error('Errore avvio migrazione');
  }
 };
 
@@ -129,7 +132,7 @@ const toggleJob = async (job: MigrationJob) => {
  await migrationJobsService.toggleJob(job.id);
  job.is_active = !job.is_active;
  } catch (e) {
- alert('Errore modifica stato job');
+ toast.error('Errore modifica stato job');
  }
 }
 
@@ -139,7 +142,7 @@ const deleteJob = async (job: MigrationJob) => {
  await migrationJobsService.deleteJob(job.id);
  loadJobs();
  } catch (e) {
- alert('Errore eliminazione job');
+ toast.error('Errore eliminazione job');
  }
 };
 

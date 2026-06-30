@@ -1,5 +1,6 @@
 
 <template>
+<AdminGate>
 <div class="load-balancer-view">
  <PageHeader
  title="Cluster Load Balancer"
@@ -896,10 +897,13 @@
  </div>
  </div>
 </div>
+</AdminGate>
 </template>
 
 <script setup lang="ts">
+import { useToast, errorMessage } from '../stores/toast';
 import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue';
+import AdminGate from '../components/ui/AdminGate.vue';
 import Icon from '../components/ui/Icon.vue';
 import { confirmDangerous, confirmDelete } from '../stores/confirm';
 import PageHeader from '../components/ui/PageHeader.vue';
@@ -908,6 +912,8 @@ import { useHAStore } from '../stores/ha_store';
 import { storeToRefs } from 'pinia';
 import loadBalancerService from '../services/loadBalancer';
 import axios from 'axios';
+
+const toast = useToast()
 
 // Cluster State
 interface ProxmoxCluster {
@@ -1128,15 +1134,15 @@ const bulkUnlockGuests = async () => {
  }
  
  if (totalSuccess > 0) {
- alert(`Unlocked ${totalSuccess} guests${totalFailed > 0 ? `, ${totalFailed} failed` : ''}`);
+ toast.success('Sblocco completato', `Sbloccati ${totalSuccess} guest${totalFailed > 0 ? `, ${totalFailed} falliti` : ''}`);
  } else if (totalFailed > 0) {
- alert(`Failed to unlock ${totalFailed} guests`);
+ toast.error('Sblocco fallito', `${totalFailed} guest non sbloccati`);
  }
  
  selectedGuests.value = [];
  } catch (err) {
  console.error('Bulk unlock error:', err);
- alert('Error during bulk unlock');
+ toast.error('Errore sblocco massivo');
  } finally {
  loading.value = false;
  }
@@ -1258,10 +1264,10 @@ const removeFromHA = async (resource: any) => {
  headers: { 'Authorization': `Bearer ${token}` }
  });
  const data = await res.json();
- alert(data.message || 'Resource removed');
+ toast.success(data.message || 'Risorsa rimossa');
  loadHAData();
  } catch (err) {
- alert('Error removing resource from HA');
+ toast.error('Errore rimozione risorsa HA');
  }
 };
 
@@ -1278,10 +1284,10 @@ const deleteHAGroup = async (groupName: string) => {
  headers: { 'Authorization': `Bearer ${token}` }
  });
  const data = await res.json();
- alert(data.message || 'Group removed');
+ toast.success(data.message || 'Gruppo rimosso');
  loadHAData();
  } catch (err) {
- alert('Error removing HA group');
+ toast.error('Errore rimozione gruppo HA');
  }
 };
 
@@ -1341,7 +1347,7 @@ const addSelectedGuestsToHA = async () => {
  const results = await Promise.all(promises);
  successCount = results.filter(r => r).length;
  
- alert(`Process complete. Added ${successCount} guests.`);
+ toast.success('Operazione completata', `Aggiunti ${successCount} guest`);
  
  selectedGuestsForHA.value = [];
  await loadHAData();
@@ -1385,7 +1391,7 @@ const createHAGroupFromSelection = async () => {
  if (!nodeId) return;
  
  if (!newHAGroup.name) {
- alert('Please enter a group name');
+ toast.warning('Inserire un nome gruppo');
  return;
  }
 
@@ -1408,16 +1414,16 @@ const createHAGroupFromSelection = async () => {
  
  const data = await res.json();
  if (res.ok) {
- alert(data.message || 'HA Group created');
+ toast.success(data.message || 'Gruppo HA creato');
  newHAGroup.name = '';
  selectedNodesForGroup.value = [];
  loadHAData();
  } else {
- alert('Error: ' + data.detail);
+ toast.error('Errore', data.detail);
  }
  } catch (err) {
  console.error(err);
- alert('Failed to create HA group');
+ toast.error('Creazione gruppo HA fallita');
  } finally {
  haLoading.value = false;
  }
@@ -1438,13 +1444,13 @@ const removeNodeFromCluster = async (nodeName: string) => {
  const data = await res.json();
  
  if (data.success) {
- alert(`Node ${nodeName} removed successfully`);
+ toast.success('Nodo rimosso', nodeName);
  loadClusterData();
  } else {
- alert(`Error: ${data.message}`);
+ toast.error('Errore', data.message);
  }
  } catch (err) {
- alert('Error removing node from cluster');
+ toast.error('Errore rimozione nodo dal cluster');
  }
 };
 
@@ -1461,9 +1467,9 @@ const cleanNodeReferences = async (nodeName: string) => {
  headers: { 'Authorization': `Bearer ${token}` }
  });
  const data = await res.json();
- alert(`Cleanup complete for ${nodeName}`);
+ toast.success('Pulizia completata', nodeName);
  } catch (err) {
- alert('Error cleaning node references');
+ toast.error('Errore pulizia riferimenti nodo');
  }
 };
 
@@ -1493,16 +1499,16 @@ const addNodeToCluster = async () => {
  const data = await res.json();
  
  if (data.success) {
- alert(`Node ${newNodeIP.value} added successfully!`);
+ toast.success('Nodo aggiunto', newNodeIP.value);
  newNodeIP.value = '';
  newNodeLink0.value = '';
  newNodeLink1.value = '';
  loadClusterData();
  } else {
- alert(`Error: ${data.message}`);
+ toast.error('Errore', data.message);
  }
  } catch (err) {
- alert('Error adding node to cluster');
+ toast.error('Errore aggiunta nodo al cluster');
  } finally {
  loading.value = false;
  }
@@ -1848,9 +1854,9 @@ const saveConfiguration = async () => {
  }
  
  await loadBalancerService.updateConfig(fullConfig);
- alert('Configurazione salvata!');
+ toast.success('Configurazione salvata');
  } catch (e) {
- alert('Errore nel salvataggio della configurazione');
+ toast.error('Errore nel salvataggio della configurazione');
  console.error(e);
  }
 };

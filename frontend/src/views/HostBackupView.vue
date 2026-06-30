@@ -228,12 +228,15 @@
 </template>
 
 <script setup lang="ts">
+import { useToast, errorMessage } from '../stores/toast';
 import { ref, reactive, onMounted } from 'vue';
 import Icon from '../components/ui/Icon.vue';
 import { confirmDangerous, confirmDelete } from '../stores/confirm';
 import PageHeader from '../components/ui/PageHeader.vue';
 import apiClient from '../services/api';
 import nodesService from '../services/nodes';
+
+const toast = useToast()
 
 const nodes = ref<any[]>([]);
 const jobs = ref<any[]>([]);
@@ -284,15 +287,15 @@ const loadJobs = async () => {
 };
 
 const createJob = async () => {
- if (!form.node_id) { alert("Seleziona un nodo"); return; }
+ if (!form.node_id) { toast.warning('Seleziona un nodo'); return; }
  creating.value = true;
  try {
  await apiClient.post('/host-backup/jobs', form);
- alert("Job creato con successo");
+ toast.success("Job creato con successo");
  loadJobs();
  showCreateForm.value = false;
  } catch (e: any) {
- alert("Errore creazione: " + (e.response?.data?.detail || e.message));
+ toast.error('Errore creazione', errorMessage(e));
  } finally {
  creating.value = false;
  }
@@ -304,7 +307,7 @@ const deleteJob = async (job: any) => {
  await apiClient.delete(`/host-backup/jobs/${job.id}`);
  loadJobs();
  } catch (e) {
- alert("Errore eliminazione");
+ toast.error("Errore eliminazione");
  }
 }
 
@@ -312,10 +315,10 @@ const runJob = async (job: any) => {
  try {
  job.running = true;
  await apiClient.post(`/host-backup/jobs/${job.id}/run`);
- alert(`Backup ${job.name} avviato e completato!`);
+ toast.success('Backup completato', job.name);
  loadJobs();
  } catch (e: any) {
- alert("Errore esecuzione: " + (e.response?.data?.detail || e.message));
+ toast.error('Errore esecuzione', errorMessage(e));
  } finally {
  job.running = false;
  }
@@ -330,10 +333,10 @@ const runManualBackup = async () => {
  dest_path: "/var/backups/proxmox-config",
  compress: true
  });
- alert("Backup manuale completato!");
+ toast.success('Backup manuale completato');
  loadJobs(); // Refresh if it impacts any list or just to be safe
  } catch (e: any) {
- alert("Errore backup manuale: " + (e.response?.data?.detail || e.message));
+ toast.error('Errore backup manuale', errorMessage(e));
  } finally {
  runningManual.value = false;
  }
@@ -370,10 +373,12 @@ const loadBackups = async () => {
 const deleteBackup = async (backup: any) => {
  if (!await confirmDangerous(`Eliminare backup ${backup.filename}?`)) return;
  try {
- await apiClient.delete(`/host-backup/nodes/${backupListNodeId.value}/backups/${backup.filename}`);
+ await apiClient.delete(`/host-backup/nodes/${backupListNodeId.value}/backups`, {
+  params: { backup_file: backup.filename },
+ });
  loadBackups();
  } catch (e: any) {
- alert("Errore eliminazione: " + (e.response?.data?.detail || e.message));
+ toast.error('Errore eliminazione', errorMessage(e));
  }
 };
 
@@ -394,7 +399,7 @@ const downloadBackup = async (backup: any) => {
  link.remove();
  window.URL.revokeObjectURL(url);
  } catch (e: any) {
- alert("Errore download: " + (e.response?.data?.detail || e.message));
+ toast.error('Errore download', errorMessage(e));
  }
 };
 </script>

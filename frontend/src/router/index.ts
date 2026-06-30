@@ -2,9 +2,6 @@ import { createRouter, createWebHistory } from 'vue-router'
 import Dashboard from '../views/Dashboard.vue'
 import Nodes from '../views/Nodes.vue'
 import VMs from '../views/VMs.vue'
-import SyncJobs from '../views/jobs/SyncJobs.vue'
-import BackupJobs from '../views/jobs/BackupJobs.vue'
-import RecoveryJobs from '../views/jobs/RecoveryJobs.vue'
 import MigrationJobs from '../views/jobs/MigrationJobs.vue'
 import Logs from '../views/Logs.vue'
 import Settings from '../views/Settings.vue'
@@ -25,7 +22,7 @@ const router = createRouter({
             meta: { requiresAuth: true },
             children: [
                 {
-                    path: '', // Default child
+                    path: '',
                     name: 'dashboard',
                     component: Dashboard
                 },
@@ -44,25 +41,14 @@ const router = createRouter({
                     name: 'replication',
                     component: () => import('../views/Replication.vue')
                 },
-                {
-                    path: 'sync-jobs',
-                    name: 'sync-jobs',
-                    component: SyncJobs
-                },
-                {
-                    path: 'backup-jobs',
-                    name: 'backup-jobs',
-                    component: BackupJobs
-                },
+                // Legacy routes → modulo unificato Repliche
+                { path: 'sync-jobs', redirect: { name: 'replication' } },
+                { path: 'backup-jobs', redirect: { name: 'replication' } },
+                { path: 'recovery-jobs', redirect: { name: 'replication' } },
                 {
                     path: 'host-backup',
                     name: 'host-backup',
                     component: () => import('../views/HostBackupView.vue')
-                },
-                {
-                    path: 'recovery-jobs',
-                    name: 'recovery-jobs',
-                    component: RecoveryJobs
                 },
                 {
                     path: 'migration-jobs',
@@ -82,6 +68,7 @@ const router = createRouter({
                 {
                     path: 'updates',
                     name: 'updates',
+                    meta: { requiresAdmin: true },
                     component: () => import('../views/settings/Updates.vue')
                 },
                 {
@@ -92,6 +79,7 @@ const router = createRouter({
                 {
                     path: 'load-balancer',
                     name: 'load-balancer',
+                    meta: { requiresAdmin: true },
                     component: () => import('../views/LoadBalancer.vue')
                 },
                 {
@@ -101,17 +89,28 @@ const router = createRouter({
                 },
             ]
         },
-        // Add other routes here
     ]
 })
 
-router.beforeEach((to, _from, next) => {
+router.beforeEach(async (to, _from, next) => {
     const isAuthenticated = localStorage.getItem('access_token')
     if (to.meta.requiresAuth && !isAuthenticated) {
         next({ name: 'login' })
-    } else {
-        next()
+        return
     }
+    if (to.meta.requiresAdmin) {
+        let user: { role?: string } | null = null
+        try {
+            user = JSON.parse(localStorage.getItem('user') || 'null')
+        } catch {
+            user = null
+        }
+        if (user?.role !== 'admin') {
+            next({ name: 'dashboard' })
+            return
+        }
+    }
+    next()
 })
 
 export default router

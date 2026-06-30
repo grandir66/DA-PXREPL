@@ -607,7 +607,7 @@ async def refresh_version(user: User = Depends(require_admin)):
 
 
 @router.get("/debug-github")
-async def debug_github():
+async def debug_github(user: User = Depends(require_admin)):
     """Debug: testa connessione a GitHub e recupero versione"""
     results = {
         "current_version": get_current_version(),

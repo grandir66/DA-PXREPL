@@ -19,7 +19,9 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # Directory dei log di sistema
-SYSTEM_LOG_DIR = os.environ.get("DAPX_LOG_DIR", "/var/log/dapx-backandrepl")
+SYSTEM_LOG_DIR = os.environ.get("DAPX_LOG_DIR", "/var/log/dapx-unified")
+SYSTEMD_UNIT = os.environ.get("DAPX_SYSTEMD_UNIT", "dapx-unified")
+DEFAULT_LOG_FILES = ["dapx.log", "dapx-unified.log", "dapx-errors.log", "dapx.json.log"]
 
 
 # ============== Schemas ==============
@@ -123,19 +125,6 @@ async def get_log_stats(
     )
 
 
-@router.get("/{log_id}", response_model=JobLogResponse)
-async def get_log(
-    log_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Ottiene un log specifico"""
-    log = db.query(JobLog).filter(JobLog.id == log_id).first()
-    if not log:
-        raise HTTPException(status_code=404, detail="Log non trovato")
-    return log
-
-
 @router.delete("/cleanup")
 async def cleanup_old_logs(
     days: int = 30,
@@ -144,12 +133,12 @@ async def cleanup_old_logs(
 ):
     """Elimina log più vecchi di N giorni (solo admin)"""
     cutoff = datetime.utcnow() - timedelta(days=days)
-    
+
     count = db.query(JobLog).filter(JobLog.started_at < cutoff).count()
     db.query(JobLog).filter(JobLog.started_at < cutoff).delete()
     db.commit()
-    
-    return {"message": f"Eliminati {count} log più vecchi di {days} giorni"}
+
+    return {"message": f"Eliminati {count} log più vecchi di {days} giorni", "deleted": count, "days": days}
 
 
 @router.get("/recent/failed")
@@ -162,7 +151,7 @@ async def get_recent_failures(
     logs = db.query(JobLog).filter(
         JobLog.status == "failed"
     ).order_by(JobLog.started_at.desc()).limit(limit).all()
-    
+
     return logs
 
 
@@ -177,7 +166,7 @@ async def get_job_history(
     logs = db.query(JobLog).filter(
         JobLog.job_id == job_id
     ).order_by(JobLog.started_at.desc()).limit(limit).all()
-    
+
     return logs
 
 
@@ -268,7 +257,7 @@ async def get_system_logs(
     - Thread/Task asyncio
     """
     # Valida nome file (previeni path traversal)
-    allowed_files = ["dapx.log", "dapx-errors.log", "dapx.json.log"]
+    allowed_files = DEFAULT_LOG_FILES
     if file not in allowed_files:
         raise HTTPException(status_code=400, detail=f"File non valido. Ammessi: {', '.join(allowed_files)}")
     
@@ -333,7 +322,7 @@ async def get_system_logs(
 async def get_journalctl_logs(lines: int, level: Optional[str], search: Optional[str]):
     """Fallback: legge log da journalctl"""
     try:
-        cmd = ["journalctl", "-u", "sanoid-manager", "-n", str(lines), "--no-pager", "-o", "short-iso"]
+        cmd = ["journalctl", "-u", SYSTEMD_UNIT, "-n", str(lines), "--no-pager", "-o", "short-iso"]
         
         # Aggiungi filtro priorità se specificato
         priority_map = {
@@ -463,14 +452,14 @@ async def list_log_files(user: User = Depends(require_admin)):
     # Aggiungi info su journalctl
     try:
         result = subprocess.run(
-            ["journalctl", "-u", "sanoid-manager", "--disk-usage"],
+            ["journalctl", "-u", SYSTEMD_UNIT, "--disk-usage"],
             capture_output=True,
             text=True,
             timeout=5
         )
         if result.returncode == 0:
             files.append({
-                "name": "journalctl (sanoid-manager)",
+                "name": f"journalctl ({SYSTEMD_UNIT})",
                 "path": "journalctl",
                 "size": 0,
                 "size_human": result.stdout.strip(),
@@ -495,7 +484,9 @@ async def get_live_logs(
     Ottiene gli ultimi log in tempo reale (per polling).
     Utile per aggiornamento live nell'interfaccia.
     """
-    log_file = os.path.join(SYSTEM_LOG_DIR, "dapx.log")
+    log_file = os.path.join(SYSTEM_LOG_DIR, "dapx-unified.log")
+    if not os.path.exists(log_file):
+        log_file = os.path.join(SYSTEM_LOG_DIR, "dapx.log")
     
     if os.path.exists(log_file):
         try:
@@ -512,7 +503,7 @@ async def get_live_logs(
         # Fallback a journalctl
         try:
             result = subprocess.run(
-                ["journalctl", "-u", "sanoid-manager", "-n", str(lines), "--no-pager"],
+                ["journalctl", "-u", SYSTEMD_UNIT, "-n", str(lines), "--no-pager"],
                 capture_output=True,
                 text=True,
                 timeout=5
@@ -526,6 +517,19 @@ async def get_live_logs(
         "count": len(log_lines),
         "logs": log_lines[-lines:]  # Ultime N righe
     }
+
+
+@router.get("/{log_id}", response_model=JobLogResponse)
+async def get_log(
+    log_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Ottiene un log specifico (deve restare dopo le route statiche)."""
+    log = db.query(JobLog).filter(JobLog.id == log_id).first()
+    if not log:
+        raise HTTPException(status_code=404, detail="Log non trovato")
+    return log
 
 
 def format_size(size_bytes: int) -> str:

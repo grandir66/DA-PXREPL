@@ -94,10 +94,13 @@
 </template>
 
 <script setup lang="ts">
+import { useToast, errorMessage } from '../../stores/toast';
 import { ref, onMounted, reactive } from 'vue';
 import Icon from '../../components/ui/Icon.vue';
 import { confirmDangerous, confirmDelete } from '../../stores/confirm';
 import authService from '../../services/auth';
+
+const toast = useToast()
 
 const users = ref<any[]>([]);
 const showModal = ref(false);
@@ -149,7 +152,7 @@ const submitUser = async () => {
         showModal.value = false;
         loadUsers();
     } catch (e: any) {
-        alert('Errore creazione utente: ' + (e.response?.data?.detail || e.message));
+        toast.error('Errore creazione utente', errorMessage(e));
     } finally {
         saving.value = false;
     }
@@ -161,7 +164,7 @@ const deleteUser = async (user: any) => {
         await authService.deleteUser(user.id);
         loadUsers();
     } catch (e) {
-        alert('Errore eliminazione');
+        toast.error('Errore eliminazione');
     }
 };
 

@@ -176,6 +176,7 @@
 </template>
 
 <script setup lang="ts">
+import { useToast, errorMessage } from '../stores/toast';
 import { ref, onMounted, computed } from 'vue';
 import Icon from '../components/ui/Icon.vue';
 import settingsService, { type NotificationConfig, type AuthConfig } from '../services/settings';
@@ -185,6 +186,8 @@ import PageHeader from '../components/ui/PageHeader.vue';
 import UserManagement from './settings/UserManagement.vue';
 import UserProfile from './settings/UserProfile.vue';
 import Certificates from './settings/Certificates.vue';
+
+const toast = useToast()
 
 const activeTab = ref('general');
 const notifications = ref<NotificationConfig | null>(null);
@@ -217,9 +220,9 @@ const saveNotifications = async () => {
  saving.value = true;
  try {
  await settingsService.updateNotificationConfig(notifications.value);
- alert('Impostazioni salvate');
+ toast.success('Impostazioni salvate');
  } catch (e) {
- alert('Errore salvataggio');
+ toast.error('Errore salvataggio');
  } finally {
  saving.value = false;
  }
@@ -229,27 +232,27 @@ const saveAuth = async () => {
  if (!authConfig.value) return;
  try {
  await settingsService.updateAuthConfig(authConfig.value);
- alert('Impostazioni Auth salvate');
+ toast.success('Impostazioni Auth salvate');
  } catch (e) {
- alert('Errore salvataggio');
+ toast.error('Errore salvataggio');
  }
 };
 
 const testNotification = async (channel: string) => {
  try {
  await settingsService.testNotification(channel);
- alert(`Test ${channel} inviato`);
+ toast.success(`Test ${channel} inviato`);
  } catch (e: any) {
- alert('Errore test: ' + (e.response?.data?.detail || e.message));
+ toast.error('Errore test', errorMessage(e));
  }
 }
 
 const sendDailySummary = async () => {
  try {
  await apiClient.post('/settings/notifications/send-daily-summary');
- alert("Riepilogo giornaliero inviato ai canali configurati.");
+ toast.success("Riepilogo giornaliero inviato");
  } catch (e: any) {
- alert("Errore invio riepilogo: " + (e.response?.data?.detail || e.message));
+ toast.error("Errore invio riepilogo", errorMessage(e));
  }
 };
 </script>

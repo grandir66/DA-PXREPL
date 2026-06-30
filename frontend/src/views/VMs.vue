@@ -565,6 +565,7 @@
 </template>
 
 <script setup lang="ts">
+import { useToast, errorMessage } from '../stores/toast';
 import { ref, onMounted, computed } from 'vue';
 import { confirmDangerous, confirmDelete } from '../stores/confirm';
 import { useRoute } from 'vue-router';
@@ -574,6 +575,8 @@ import vmsService, { type VM, type Snapshot, type Backup, type SanoidConfig, typ
 import nodesService from '../services/nodes';
 import ModalDialog from '../components/ModalDialog.vue';
 import JobModal from '../components/jobs/JobModal.vue';
+
+const toast = useToast()
 
 // State
 const vms = ref<VM[]>([]);
@@ -773,7 +776,7 @@ const manageState = async (vm: VM, action: any) => {
  await vmsService.manageState(vm.node_id!, vm.vmid, action);
  setTimeout(() => loadVMs(), 2000);
  } catch (e) {
- alert('Errore azione: ' + e);
+ toast.error('Errore azione', errorMessage(e));
  vm.loading = false;
  }
 };
@@ -851,16 +854,16 @@ const createPveSnapshot = async () => {
  showCreatePveSnapshot.value = false;
  newSnapName.value = '';
  loadPveSnapshots();
- } catch(e) { alert('Errore: ' + e); }
+ } catch(e) { toast.error('Errore', errorMessage(e)); }
 };
 
 const rollbackPveSnapshot = async (name: string) => {
  if(!await confirmDangerous(`Rollback a ${name}?`)) return;
  try {
  await vmsService.rollbackSnapshot(selectedVM.value!.node_id!, selectedVM.value!.vmid, name, true);
- alert('Rollback avviato.');
+ toast.success('Rollback avviato');
  loadPveSnapshots();
- } catch(e) { alert('Errore: ' + e); }
+ } catch(e) { toast.error('Errore', errorMessage(e)); }
 };
 
 const deletePveSnapshot = async (name: string) => {
@@ -868,7 +871,7 @@ const deletePveSnapshot = async (name: string) => {
  try {
  await vmsService.deleteSnapshot(selectedVM.value!.node_id!, selectedVM.value!.vmid, name);
  loadPveSnapshots();
- } catch(e) { alert('Errore: ' + e); }
+ } catch(e) { toast.error('Errore', errorMessage(e)); }
 };
 
 // ZFS
@@ -891,17 +894,17 @@ const rollbackZfs = async (snap: ZFSSnapshot) => {
  if(!await confirmDangerous(`ATTENZIONE: Rollback distruttivo ZFS a ${snap.name} per dataset ${snap.dataset} (e altri). Confermi?`)) return;
  try {
  await vmsService.restoreZFSSnapshot(selectedVM.value!.node_id!, selectedVM.value!.vmid, snap.name, 'rollback');
- alert('Rollback ZFS eseguito.');
- } catch(e) { alert('Errore: ' + e); }
+ toast.success('Rollback ZFS eseguito');
+ } catch(e) { toast.error('Errore', errorMessage(e)); }
 };
 
 const deleteZfsSnapshot = async (snap: ZFSSnapshot) => {
  if(!await confirmDangerous(`Eliminare lo snapshot "${snap.name}" da tutti i dischi della VM? Questa azione è irreversibile.`)) return;
  try {
  await vmsService.deleteZfsSnapshot(selectedVM.value!.node_id!, selectedVM.value!.vmid, snap.name);
- alert('Snapshot eliminato.');
+ toast.success('Snapshot eliminato');
  loadZfsSnapshots();
- } catch(e) { alert('Errore: ' + e); }
+ } catch(e) { toast.error('Errore', errorMessage(e)); }
 };
 
 const startZfsCloneWizard = (snap: ZFSSnapshot) => {
@@ -916,7 +919,7 @@ const startZfsCloneWizard = (snap: ZFSSnapshot) => {
 const confirmZfsClone = async () => {
  if (!selectedVM.value || !zfsCloneSelection.value) return;
  const newId = zfsCloneOptions.value.newVmid;
- if (!newId) { alert("Devi specificare un Nuovo VMID per il clone."); return; }
+ if (!newId) { toast.warning("Devi specificare un Nuovo VMID per il clone."); return; }
  
  if (!await confirmDangerous(`Sei sicuro di voler clonare la VM ${selectedVM.value.vmid} su VM ${newId}?\nQuesta operazione creerà nuovi dischi.`)) return;
  
@@ -928,10 +931,10 @@ const confirmZfsClone = async () => {
  'clone', 
  newId
  );
- alert(`Clone ZFS avviato per VM ${newId}. La nuova VM apparirà nella lista.`);
+ toast.success('Clone ZFS avviato', `VM ${newId} in creazione`);
  showZfsCloneModal.value = false;
  loadVMs();
- } catch(e) { alert('Errore: ' + e); }
+ } catch(e) { toast.error('Errore', errorMessage(e)); }
 };
 
 // Sanoid
@@ -955,8 +958,8 @@ const saveSanoidConfig = async () => {
  sanoidSaving.value = true;
  try {
  await vmsService.updateSanoidConfig(selectedVM.value.node_id!, selectedVM.value.vmid, sanoidConfig.value);
- alert('Configurazione salvata!');
- } catch(e) { alert('Errore: ' + e); }
+ toast.success('Configurazione salvata');
+ } catch(e) { toast.error('Errore', errorMessage(e)); }
  finally { sanoidSaving.value = false; }
 };
 
@@ -983,9 +986,9 @@ const triggerSanoidSnapshot = async () => {
  // If so, we just need to refresh.
  
  await loadZfsSnapshots();
- alert('✅ Snapshot Manuale eseguito! Verifica la lista ZFS Snapshots qui sopra.');
+ toast.success('Snapshot manuale eseguito', 'Verifica la lista ZFS Snapshots');
  } catch(e) { 
- alert('❌ Errore durante lo snapshot: ' + e);
+ toast.error('Errore snapshot', errorMessage(e));
  }
  finally { sanoidTriggering.value = false; }
 };
@@ -1087,10 +1090,10 @@ const executeRestore = async () => {
  restoreOptions.value.start,
  restoreOptions.value.targetNodeId // Pass target node explicit
  );
- alert('Restore avviato!');
+ toast.success('Restore avviato');
  showBackupModal.value = false;
  } catch(e) {
- alert('Errore restore: ' + e);
+ toast.error('Errore restore', errorMessage(e));
  }
 };
 

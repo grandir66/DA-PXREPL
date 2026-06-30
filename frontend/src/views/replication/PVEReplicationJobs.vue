@@ -63,9 +63,12 @@
 </template>
 
 <script setup lang="ts">
+import { useToast, errorMessage } from '../../stores/toast';
 import { ref, onMounted } from 'vue';
 import { confirmDangerous, confirmDelete } from '../../stores/confirm';
 import { pveReplicationService, type PVEReplicationJob } from '../../services/pveReplication';
+
+const toast = useToast()
 
 const jobs = ref<PVEReplicationJob[]>([]);
 const loading = ref(true);
@@ -86,10 +89,10 @@ const runJob = async (id: string) => {
   runningJobs.value.add(id);
   try {
     await pveReplicationService.runJob(id);
-    alert('Replica completata con successo');
+    toast.success('Replica completata');
     await loadJobs();
   } catch (e: any) {
-    alert('Errore durante la replica: ' + (e.response?.data?.detail || e.message));
+    toast.error('Errore replica', errorMessage(e));
   } finally {
     runningJobs.value.delete(id);
   }
@@ -101,7 +104,7 @@ const confirmDelete = async (id: string) => {
     await pveReplicationService.deleteJob(id);
     await loadJobs();
   } catch (e) {
-    alert('Errore eliminazione job');
+    toast.error('Errore eliminazione job');
   }
 };
 

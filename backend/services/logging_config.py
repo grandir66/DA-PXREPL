@@ -21,7 +21,7 @@ import asyncio
 LOG_LEVEL = os.environ.get("DAPX_LOG_LEVEL", "INFO").upper()
 
 # Directory per i file di log
-LOG_DIR = os.environ.get("DAPX_LOG_DIR", "/var/log/dapx-backandrepl")
+LOG_DIR = os.environ.get("DAPX_LOG_DIR", "/var/log/dapx-unified")
 
 # Dimensione massima file di log (10MB default)
 LOG_MAX_BYTES = int(os.environ.get("DAPX_LOG_MAX_BYTES", 10 * 1024 * 1024))
