@@ -11,10 +11,23 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 - Script debug spostati in `scripts/debug/` (fuori dal path backend produzione).
 - Endpoint `POST /nodes/{id}/update-sanoid`; fix `toggleJob` sync; toast al posto di alert su Logs/Nodes/Replication (`backend/routers/nodes.py`, `frontend/src/services/syncJobs.ts`, viste correlate).
 
-### Correzioni (fase 2 — UX e hardening)
+### Correzioni (fase 3 — audit profondo)
+- Rimosso endpoint duplicato e rotto `POST /api/nodes/{id}/diagnostic` da `host_info.py` (shadowing di `nodes.py`).
+- Fix parsing storage in restore VM (`VMs.vue`: `res.data.storages`, campi `storage`/`avail`).
+- Route statiche `recovery_jobs` (`/pbs-nodes/`, `/restore`, `/node/...`) spostate prima di `/{job_id}`.
+- Path frontend produzione `/opt/dapx-unified/frontend/dist` in `main.py`; host backup create richiede `require_operator`.
+- Rimossi relitti `HelloWorld.vue`, `views/components/JobLogViewer.vue` duplicato; `print()` startup in `database.py` → logger.
 - Migrazione completa `alert()` → toast in tutte le viste (`scripts/migrate_alerts_to_toast.py`, 12 file Vue).
 - Guard admin: componente `AdminGate`, meta router `requiresAdmin`, voci menu Updates/Load Balancer visibili solo ad admin (`frontend/src/components/ui/AdminGate.vue`, `router/index.ts`, `MainLayout.vue`, `Updates.vue`, `LoadBalancer.vue`).
 - Auth store: getter `isAdmin` / `isOperator`; route `/sync-jobs/stats/summary` spostata prima di `/{job_id}` (`backend/routers/sync_jobs.py`, `frontend/src/stores/auth.ts`).
+
+### Ottimizzazioni (fase 4)
+- Gate modalità `DAPX_MODE`: route full-only (`vms`, `replication`, `host-backup`, `migration-jobs`) bloccate in modalità LB; nav Cluster visibile anche in LB; sync mode da `/api/health` (`frontend/src/utils/appMode.ts`, `router/index.ts`, `MainLayout.vue`).
+- Interfacce TypeScript allineate ai modelli backend per sync/backup/recovery jobs; pulizia metodi morti in `nodes.ts` e `dashboard.ts`.
+- Hardening API updates: `/updates/version` espone solo `{version}`; `/updates/changelog` richiede admin (`backend/routers/updates.py`).
+- Rimosso `getDownloadUrl()` con token in query string; relitti import duplicati in `config_backup.py`.
+- UI Chiavi SSH in Impostazioni (admin): genera, distribuisci, test connessioni (`frontend/src/views/settings/SSHKeys.vue`, `services/sshKeys.ts`).
+- Branding docstring `DAPX-Unified` in `main.py`, `database.py`, `updates.py`; config-backup e menu visibili solo ad admin.
 
 ### Correzioni (replica — sessione precedente)
 - Fix run manuale sync job: `BackgroundTasks` non eseguiva `execute_sync_job_task` (coroutine non awaited); il lock scheduler veniva rilasciato subito e in UI non partiva alcun log (`backend/routers/sync_jobs.py`).

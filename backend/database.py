@@ -1,5 +1,5 @@
 """
-Database models per DAPX-backandrepl
+Database models per DAPX-Unified
 Con supporto autenticazione integrata Proxmox
 """
 
@@ -7,8 +7,11 @@ from sqlalchemy import create_engine, Column, Integer, BigInteger, String, Boole
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
+import logging
 import os
 import enum
+
+logger = logging.getLogger(__name__)
 
 def get_default_db_path():
     """Determina il path del database in base al sistema operativo"""
@@ -1000,7 +1003,7 @@ def migrate_legacy_cluster(db):
         db.add(cluster)
         db.commit()
     except Exception as e:
-        print(f"Migration error: {e}")
+        logger.warning(f"Migration error: {e}")
 
 
 def init_default_config(db_session):
@@ -1067,7 +1070,9 @@ def init_default_config(db_session):
     
     # Se non esistono utenti, il setup iniziale avverrà via /api/auth/setup
     if db_session.query(User).count() == 0:
-        print("⚠ Nessun utente configurato. Usa /api/auth/setup per creare il primo amministratore.")
+        logger.warning(
+            "Nessun utente configurato. Usa /api/auth/setup per creare il primo amministratore."
+        )
     
     db_session.commit()
 

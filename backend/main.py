@@ -1,5 +1,5 @@
 """
-DAPX-backandrepl - Backend API
+DAPX-Unified - Backend API
 Sistema centralizzato di backup e replica per infrastrutture Proxmox
 Con autenticazione integrata Proxmox VE
 # Supporta replica ZFS (Sanoid/Syncoid), BTRFS e PBS (Proxmox Backup Server)
@@ -200,9 +200,10 @@ async def setup_required(db=Depends(get_db)):
 # Serve static files (frontend)
 # Prova diversi percorsi possibili per il frontend
 possible_frontend_paths = [
-    os.path.join(os.path.dirname(__file__), "frontend", "dist"),  # /opt/sanoid-manager/frontend/dist
-    os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"),  # Struttura sviluppo
-    "/opt/sanoid-manager/frontend/dist",  # Percorso assoluto installazione
+    os.path.join(os.path.dirname(__file__), "frontend", "dist"),
+    os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"),
+    "/opt/dapx-unified/frontend/dist",
+    "/opt/sanoid-manager/frontend/dist",  # legacy install path
 ]
 
 frontend_path = None

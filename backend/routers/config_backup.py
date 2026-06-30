@@ -246,13 +246,6 @@ async def create_backup(
         }
 
 
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Query
-from routers.auth import get_current_user, User
-
-# ...
-
-
-
 @router.get("/download/{filename}")
 async def download_backup(
     request: Request,

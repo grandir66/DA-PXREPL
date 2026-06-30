@@ -1007,7 +1007,12 @@ const loadTargetStorages = async () => {
  if (!restoreOptions.value.targetNodeId) return;
  try {
  const res = await nodesService.getStorages(restoreOptions.value.targetNodeId);
- targetStorages.value = res.data || [];
+ const raw = res.data?.storages || [];
+ targetStorages.value = raw.map((s: any) => ({
+  name: s.storage || s.name,
+  type: s.type,
+  avail_gb: s.avail_gb ?? (s.avail ? Math.round(s.avail / (1024 ** 3)) : undefined),
+ }));
  } catch(e) { 
  console.error('Failed to load storages', e);
  targetStorages.value = []; 

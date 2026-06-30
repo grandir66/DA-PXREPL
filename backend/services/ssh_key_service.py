@@ -91,7 +91,7 @@ class SSHKeyService:
         key_path: str = None,
         key_type: str = "rsa",
         bits: int = 4096,
-        comment: str = "sanoid-manager",
+        comment: str = "dapx-unified",
         overwrite: bool = False
     ) -> Tuple[bool, str]:
         """Genera una nuova coppia di chiavi SSH"""

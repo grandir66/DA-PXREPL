@@ -70,17 +70,11 @@ export default {
         );
     },
 
-    // Download backup
-    // Download backup
+    // Download backup (blob autenticato via Authorization header)
     async downloadBackup(filename: string) {
         return apiClient.get(`/config-backup/download/${filename}`, {
             responseType: 'blob'
         });
-    },
-
-    getDownloadUrl(filename: string) {
-        const token = localStorage.getItem('access_token');
-        return `${apiClient.defaults.baseURL}/config-backup/download/${filename}?token=${token}`;
     },
 
     // Upload e ripristina backup

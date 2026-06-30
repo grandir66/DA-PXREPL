@@ -11,7 +11,7 @@ from typing import Optional, List
 from datetime import datetime
 
 from database import get_db, Node, JobLog, HostBackupJob
-from routers.auth import get_current_user, User
+from routers.auth import get_current_user, require_operator, User
 from services.host_backup_service import host_backup_service
 
 import logging
@@ -112,7 +112,7 @@ async def list_host_backup_jobs(
 async def create_host_backup_job(
     job_data: HostBackupJobCreate,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    user: User = Depends(require_operator),
 ):
     """Crea un nuovo job di host backup schedulato."""
     # Verifica nodo

@@ -1,112 +1,81 @@
 import apiClient from './api'
 
-export interface Node {
-    id: number;
-    name: string;
-    hostname: string;
-    is_online: boolean;
-    node_type?: string; // 'pve' | 'pbs'
-    storage_type?: string; // 'zfs' | 'btrfs'
-    cpu?: {
-        cores?: number;
-    };
-    memory?: {
-        total_gb?: number;
-        used_gb?: number;
-    };
-    storage_total_gb?: number;
-    storage_used_gb?: number;
-    vm_count?: number;
-    running_vm_count?: number;
-    temperature_highest_c?: number;
-    proxmox_version?: string;
-    // PBS specific
-    pbs_datastore?: string;
-    pbs_fingerprint?: string;
-    pbs_username?: string;
-    pbs_available?: boolean;
-    pbs_version?: string;
-    // Status & Extra
-    sanoid_installed?: boolean;
-    sanoid_version?: string;
-    host_info?: any; // Detailed host stats
+export interface NodeStorage {
+  name: string
+  type: string
+  content?: string
+  enabled?: boolean
+  shared?: boolean
+  avail_gb?: number
+  total_gb?: number
+  used_gb?: number
 }
 
-export interface HostDetails {
-    // Add specific details interface if needed based on /nodes/{node_id}/host-details
-    [key: string]: any;
+export interface Node {
+  id: number
+  name: string
+  hostname: string
+  is_online: boolean
+  node_type?: string
+  storage_type?: string
+  cpu?: { cores?: number }
+  memory?: { total_gb?: number; used_gb?: number }
+  storage_total_gb?: number
+  storage_used_gb?: number
+  vm_count?: number
+  running_vm_count?: number
+  temperature_highest_c?: number
+  proxmox_version?: string
+  pbs_datastore?: string
+  pbs_fingerprint?: string
+  pbs_username?: string
+  pbs_available?: boolean
+  pbs_version?: string
+  sanoid_installed?: boolean
+  sanoid_version?: string
+  host_info?: Record<string, unknown>
 }
 
 export default {
-    getNodes() {
-        return apiClient.get<Node[]>('/nodes/');
-    },
+  getNodes() {
+    return apiClient.get<Node[]>('/nodes/')
+  },
 
-    getHostDetails(nodeId: string) {
-        return apiClient.get<HostDetails>(`/nodes/${nodeId}/host-details`);
-    },
+  createNode(data: Record<string, unknown>) {
+    return apiClient.post('/nodes/', data)
+  },
 
-    createNode(data: any) {
-        return apiClient.post('/nodes/', data);
-    },
+  updateNode(id: number | string, data: Record<string, unknown>) {
+    return apiClient.put(`/nodes/${id}`, data)
+  },
 
-    updateNode(id: number | string, data: any) {
-        return apiClient.put(`/nodes/${id}`, data);
-    },
+  deleteNode(id: number | string) {
+    return apiClient.delete(`/nodes/${id}`)
+  },
 
-    deleteNode(id: number | string) {
-        return apiClient.delete(`/nodes/${id}`);
-    },
+  testNode(id: number | string) {
+    return apiClient.post(`/nodes/${id}/test`)
+  },
 
-    testNode(id: number | string) {
-        return apiClient.post(`/nodes/${id}/test`);
-    },
+  installSanoid(id: number | string) {
+    return apiClient.post(`/nodes/${id}/install-sanoid`)
+  },
 
-    installSanoid(id: number | string) {
-        return apiClient.post(`/nodes/${id}/install-sanoid`);
-    },
+  updateSanoid(id: number | string) {
+    return apiClient.post(`/nodes/${id}/update-sanoid`)
+  },
 
-    updateSanoid(id: number | string) {
-        return apiClient.post(`/nodes/${id}/update-sanoid`);
-    },
+  getStorages(nodeId: number | string) {
+    return apiClient.get<{ storages: NodeStorage[] }>(`/nodes/${nodeId}/storages`)
+  },
 
-    refreshNode(_id: number | string) {
-        return apiClient.post('/nodes/refresh-cache');
-    },
+  refreshAllCache() {
+    return apiClient.post('/nodes/refresh-cache')
+  },
 
-
-    // Get list of storages for a specific node
-    getStorages(nodeId: number | string) {
-        return apiClient.get<{ storages: any[] }>(`/nodes/${nodeId}/storages`);
-    },
-
-    // Trigger sanoid snapshot immediately
-    runSanoid(nodeId: number | string) {
-        return apiClient.post(`/nodes/${nodeId}/run-sanoid`);
-    },
-
-    // Get ZFS datasets from a node
-    getNodeDatasets(nodeId: number | string, refresh: boolean = false) {
-        return apiClient.get<any[]>(`/nodes/${nodeId}/datasets?refresh=${refresh}`);
-    },
-
-    // Get PBS datastores
-    getPBSDatastores(nodeId: number | string) {
-        return apiClient.get<{ datastores: string[] }>(`/nodes/${nodeId}/pbs-datastores`);
-    },
-
-    // Get VMs for a node (cached)
-    getNodeVMs(nodeId: number | string, refresh: boolean = false) {
-        return apiClient.get<any[]>(`/nodes/${nodeId}/vms?refresh=${refresh}`);
-    },
-
-    // Refresh global cache
-    refreshAllCache() {
-        return apiClient.post('/nodes/refresh-cache');
-    },
-
-    // Run Quick Diagnostic
-    runDiagnostic(id: number | string) {
-        return apiClient.post<{ output: string, error: string, exit_code: number }>(`/nodes/${id}/diagnostic`);
-    }
+  runDiagnostic(id: number | string) {
+    return apiClient.post<{ output: string; error: string; exit_code: number }>(
+      `/nodes/${id}/diagnostic`
+    )
+  },
 }

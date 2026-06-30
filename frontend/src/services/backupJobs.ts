@@ -1,36 +1,50 @@
 import apiClient from './api'
 
+/** Allineato a BackupJobResponse (backend/routers/backup_jobs.py) */
 export interface BackupJob {
-    id: string;
-    job_name: string;
-    node_id: string;
-    vmid: string;
-    pbs_node_id: string;
-    datastore: string;
-    schedule: string; // 'manual' or cron
-    retention: string;
-    mode: string; // 'snapshot', 'stop', 'suspend'
-    compression: string; // 'zstd', 'lzo', 'gzip'
-    last_run?: string;
-    last_status?: string;
-    last_duration?: string;
-    enabled: boolean;
+  id: number
+  name: string
+  source_node_id: number
+  source_node_name?: string
+  vm_id: number
+  vm_type: string
+  vm_name?: string
+  pbs_node_id: number
+  pbs_node_name?: string
+  pbs_datastore?: string
+  pbs_storage_id?: string
+  backup_mode: string
+  backup_compress: string
+  include_all_disks: boolean
+  schedule?: string
+  schedule_config?: Record<string, unknown>
+  is_active: boolean
+  current_status?: string
+  last_run?: string
+  last_status?: string
+  last_duration?: number
+  run_count?: number
+  error_count?: number
 }
 
 export default {
-    getJobs() {
-        return apiClient.get<BackupJob[]>('/backup-jobs');
-    },
+  getJobs() {
+    return apiClient.get<BackupJob[]>('/backup-jobs')
+  },
 
-    createJob(job: Partial<BackupJob>) {
-        return apiClient.post('/backup-jobs', job);
-    },
+  createJob(job: Record<string, unknown>) {
+    return apiClient.post('/backup-jobs', job)
+  },
 
-    deleteJob(id: string) {
-        return apiClient.delete(`/backup-jobs/${id}`);
-    },
+  updateJob(id: number | string, job: Record<string, unknown>) {
+    return apiClient.put(`/backup-jobs/${id}`, job)
+  },
 
-    runJob(id: string) {
-        return apiClient.post(`/backup-jobs/${id}/run`);
-    }
+  deleteJob(id: number | string) {
+    return apiClient.delete(`/backup-jobs/${id}`)
+  },
+
+  runJob(id: number | string) {
+    return apiClient.post(`/backup-jobs/${id}/run`)
+  },
 }

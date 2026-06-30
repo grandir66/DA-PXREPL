@@ -24,6 +24,9 @@
  <div class="nav-item" :class="{ active: activeTab === 'certs' }" @click="activeTab = 'certs'" v-if="isAdmin">
  🔒 Certificati SSL
  </div>
+ <div class="nav-item" :class="{ active: activeTab === 'ssh' }" @click="activeTab = 'ssh'" v-if="isAdmin">
+ 🔑 Chiavi SSH
+ </div>
  </div>
 
  <!-- Content Area -->
@@ -170,6 +173,11 @@
  <div v-if="activeTab === 'certs'" class="card">
  <Certificates />
  </div>
+
+ <!-- SSH KEYS TAB -->
+ <div v-if="activeTab === 'ssh'" class="card">
+ <SSHKeys />
+ </div>
  </div>
  </div>
  </div>
@@ -186,6 +194,7 @@ import PageHeader from '../components/ui/PageHeader.vue';
 import UserManagement from './settings/UserManagement.vue';
 import UserProfile from './settings/UserProfile.vue';
 import Certificates from './settings/Certificates.vue';
+import SSHKeys from './settings/SSHKeys.vue';
 
 const toast = useToast()
 
@@ -211,7 +220,7 @@ onMounted(async () => {
  notifications.value = notifRes.data;
  authConfig.value = authRes.data;
  } catch (e) {
- console.error('Failed to load settings', e);
+ toast.error('Errore caricamento impostazioni', errorMessage(e));
  }
 });
 

@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { getAppMode } from '../utils/appMode'
 import Dashboard from '../views/Dashboard.vue'
 import Nodes from '../views/Nodes.vue'
 import VMs from '../views/VMs.vue'
@@ -34,11 +35,13 @@ const router = createRouter({
                 {
                     path: 'vms',
                     name: 'vms',
+                    meta: { requiresFullMode: true },
                     component: VMs
                 },
                 {
                     path: 'replication',
                     name: 'replication',
+                    meta: { requiresFullMode: true },
                     component: () => import('../views/Replication.vue')
                 },
                 // Legacy routes → modulo unificato Repliche
@@ -48,11 +51,13 @@ const router = createRouter({
                 {
                     path: 'host-backup',
                     name: 'host-backup',
+                    meta: { requiresFullMode: true },
                     component: () => import('../views/HostBackupView.vue')
                 },
                 {
                     path: 'migration-jobs',
                     name: 'migration-jobs',
+                    meta: { requiresFullMode: true },
                     component: MigrationJobs
                 },
                 {
@@ -74,6 +79,7 @@ const router = createRouter({
                 {
                     path: 'config-backup',
                     name: 'config-backup',
+                    meta: { requiresAdmin: true },
                     component: () => import('../views/settings/ConfigBackup.vue')
                 },
                 {
@@ -109,6 +115,10 @@ router.beforeEach(async (to, _from, next) => {
             next({ name: 'dashboard' })
             return
         }
+    }
+    if (to.meta.requiresFullMode && getAppMode() === 'lb') {
+        next({ name: 'dashboard' })
+        return
     }
     next()
 })

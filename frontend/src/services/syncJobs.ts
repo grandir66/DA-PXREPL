@@ -1,56 +1,74 @@
 import apiClient from './api'
 
+/** Allineato a SyncJobResponse (backend/routers/sync_jobs.py) */
 export interface SyncJob {
-    id: string;
-    job_name: string;
-    source_node_id: string;
-    source_dataset: string;
-    dest_node_id: string;
-    dest_dataset: string;
-    source_node_name?: string;
-    dest_node_name?: string;
-    schedule: string;
-    recursive: boolean;
-    compress: string;
-    last_run?: string;
-    last_duration_seconds?: number;
-    last_transfer_size_bytes?: number;
-    last_status?: string; // 'success', 'error', 'running'
-    enabled: boolean;
-    vm_id?: string;
-    vm_name?: string;
+  id: number
+  name: string
+  sync_method?: string
+  source_node_id: number
+  source_dataset: string
+  dest_node_id: number
+  dest_dataset: string
+  dest_subfolder?: string
+  recursive: boolean
+  compress?: string
+  schedule?: string
+  schedule_config?: Record<string, unknown>
+  is_active: boolean
+  register_vm?: boolean
+  vm_id?: number
+  dest_vm_id?: number
+  vm_type?: string
+  vm_name?: string
+  vm_group_id?: string
+  disk_name?: string
+  source_storage?: string
+  dest_storage?: string
+  last_run?: string
+  last_status?: string
+  current_status?: string
+  last_duration?: number
+  last_transferred?: string
+  run_count?: number
+  error_count?: number
+  source_node_name?: string
+  dest_node_name?: string
 }
 
 export default {
-    getJobs() {
-        return apiClient.get<SyncJob[]>('/sync-jobs');
-    },
+  getJobs() {
+    return apiClient.get<SyncJob[]>('/sync-jobs')
+  },
 
-    createJob(job: Partial<SyncJob>) {
-        return apiClient.post('/sync-jobs', job);
-    },
+  getJob(id: number | string) {
+    return apiClient.get<SyncJob>(`/sync-jobs/${id}`)
+  },
 
-    updateJob(id: string, job: Partial<SyncJob>) {
-        return apiClient.put(`/sync-jobs/${id}`, job); // Backend usually expects PUT for updates
-    },
+  createJob(job: Record<string, unknown>) {
+    return apiClient.post('/sync-jobs', job)
+  },
 
-    deleteJob(id: string) {
-        return apiClient.delete(`/sync-jobs/${id}`);
-    },
+  updateJob(id: number | string, job: Record<string, unknown>) {
+    return apiClient.put(`/sync-jobs/${id}`, job)
+  },
 
-    runJob(id: string) {
-        return apiClient.post(`/sync-jobs/${id}/run`);
-    },
+  deleteJob(id: number | string) {
+    return apiClient.delete(`/sync-jobs/${id}`)
+  },
 
-    runVmGroup(groupId: string) {
-        return apiClient.post(`/sync-jobs/vm-group/${groupId}/run`);
-    },
+  runJob(id: number | string) {
+    return apiClient.post(`/sync-jobs/${id}/run`)
+  },
 
-    toggleJob(id: string) {
-        return apiClient.post(`/sync-jobs/${id}/toggle`);
-    },
+  runVmGroup(groupId: string) {
+    return apiClient.post(`/sync-jobs/vm-group/${groupId}/run`)
+  },
 
-    createVMReplica(data: any) {
-        return apiClient.post('/sync-jobs/vm-replica', data);
-    }
+  toggleJob(id: number | string) {
+    return apiClient.post(`/sync-jobs/${id}/toggle`)
+  },
+
+  createVMReplica(data: Record<string, unknown>) {
+    return apiClient.post('/sync-jobs/vm-replica', data)
+  },
 }

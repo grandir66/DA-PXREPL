@@ -1,5 +1,5 @@
 """
-DAPX-backandrepl - Sistema di Aggiornamento
+DAPX-Unified - Sistema di Aggiornamento
 Gestione aggiornamenti da interfaccia web
 """
 
@@ -535,27 +535,13 @@ async def start_update(
 
 @router.get("/version")
 async def get_version():
-    """Ottieni versione corrente (pubblico)"""
-    version = get_current_version()
-    version_file_exists = os.path.exists(VERSION_FILE)
-    return {
-        "version": version,
-        "install_dir": INSTALL_DIR,
-        "version_file": VERSION_FILE,
-        "version_file_exists": version_file_exists,
-        "version_file_content": None if not version_file_exists else open(VERSION_FILE, 'r').read().strip()
-    }
+    """Versione corrente installata (pubblico, solo numero versione)."""
+    return {"version": get_current_version()}
 
 
 @router.get("/changelog")
-async def get_changelog():
-    """Ritorna il contenuto raw di CHANGELOG.md (markdown).
-
-    Cerca il file in più posizioni note: install dir di produzione,
-    cartella padre del backend (layout repo), cwd. Pubblico (no auth)
-    perché serve a leggere note di rilascio anche da utenti senza
-    privilegi admin.
-    """
+async def get_changelog(user: User = Depends(require_admin)):
+    """Contenuto raw di CHANGELOG.md (solo admin)."""
     candidates = [
         os.path.join(INSTALL_DIR, "CHANGELOG.md"),
         os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", "CHANGELOG.md"),

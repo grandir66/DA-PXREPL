@@ -26,13 +26,13 @@
           </router-link>
         </div>
 
-        <div class="nav-group" v-if="systemMode === 'full'">
+        <div class="nav-group">
           <div class="nav-group-title">Cluster</div>
           <router-link :to="{ name: 'cluster' }" class="nav-item" active-class="active">
             <Icon name="cluster" :size="16" />
             <span>Cluster &amp; HA</span>
           </router-link>
-          <router-link v-if="authStore.isAdmin" :to="{ name: 'load-balancer' }" class="nav-item" active-class="active">
+          <router-link v-if="systemMode === 'full' && authStore.isAdmin" :to="{ name: 'load-balancer' }" class="nav-item" active-class="active">
             <Icon name="scale" :size="16" />
             <span>Load Balancer</span>
           </router-link>
@@ -72,7 +72,7 @@
             <Icon name="package" :size="16" />
             <span>Aggiornamenti</span>
           </router-link>
-          <router-link :to="{ name: 'config-backup' }" class="nav-item" active-class="active">
+          <router-link v-if="authStore.isAdmin" :to="{ name: 'config-backup' }" class="nav-item" active-class="active">
             <Icon name="download" :size="16" />
             <span>Backup config</span>
           </router-link>
@@ -114,6 +114,7 @@ import Icon from '../components/ui/Icon.vue'
 import ToastContainer from '../components/ui/ToastContainer.vue'
 import ConfirmDialog from '../components/ui/ConfirmDialog.vue'
 import { useToast, errorMessage } from '../stores/toast'
+import { setAppMode } from '../utils/appMode'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -137,9 +138,12 @@ async function refreshData() {
 async function fetchSystemMode() {
   try {
     const res = await api.get('/health')
-    if (res.data?.mode === 'lb') systemMode.value = 'lb'
+    const mode = res.data?.mode === 'lb' ? 'lb' : 'full'
+    systemMode.value = mode
+    setAppMode(mode)
   } catch {
-    /* default full */
+    systemMode.value = 'full'
+    setAppMode('full')
   }
 }
 

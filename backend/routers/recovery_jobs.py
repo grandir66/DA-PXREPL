@@ -841,218 +841,6 @@ async def create_recovery_job(
     return job
 
 
-@router.get("/{job_id}", response_model=RecoveryJobResponse)
-async def get_recovery_job(
-    job_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Ottiene un recovery job specifico"""
-    job = db.query(RecoveryJob).filter(RecoveryJob.id == job_id).first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Recovery job non trovato")
-    return job
-
-
-@router.put("/{job_id}", response_model=RecoveryJobResponse)
-async def update_recovery_job(
-    job_id: int,
-    job_data: RecoveryJobUpdate,
-    request: Request,
-    user: User = Depends(require_operator),
-    db: Session = Depends(get_db)
-):
-    """Aggiorna un recovery job"""
-    job = db.query(RecoveryJob).filter(RecoveryJob.id == job_id).first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Recovery job non trovato")
-    
-    update_data = job_data.model_dump(exclude_unset=True)
-    if "schedule" in update_data or "schedule_config" in update_data:
-        new_cron, new_cfg = _resolve_schedule_pair(
-            update_data.get("schedule", job.schedule),
-            update_data.get("schedule_config", job.schedule_config),
-        )
-        update_data["schedule"] = new_cron
-        update_data["schedule_config"] = new_cfg
-    for key, value in update_data.items():
-        setattr(job, key, value)
-
-    job.updated_at = datetime.utcnow()
-
-    log_audit(
-        db, user.id, "recovery_job_updated", "recovery_job",
-        resource_id=job_id,
-        details=f"Updated recovery job: {job.name}",
-        ip_address=request.client.host if request.client else None
-    )
-    
-    db.commit()
-    db.refresh(job)
-    return job
-
-
-@router.delete("/{job_id}")
-async def delete_recovery_job(
-    job_id: int,
-    request: Request,
-    user: User = Depends(require_admin),
-    db: Session = Depends(get_db)
-):
-    """Elimina un recovery job"""
-    job = db.query(RecoveryJob).filter(RecoveryJob.id == job_id).first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Recovery job non trovato")
-    
-    job_name = job.name
-    db.delete(job)
-    
-    log_audit(
-        db, user.id, "recovery_job_deleted", "recovery_job",
-        resource_id=job_id,
-        details=f"Deleted recovery job: {job_name}",
-        ip_address=request.client.host if request.client else None
-    )
-    
-    db.commit()
-    return {"message": "Recovery job eliminato"}
-
-
-@router.post("/{job_id}/run")
-async def run_recovery_job(
-    job_id: int,
-    background_tasks: BackgroundTasks,
-    request: Request,
-    user: User = Depends(require_operator),
-    db: Session = Depends(get_db)
-):
-    """Esegue manualmente un recovery job"""
-    job = db.query(RecoveryJob).filter(RecoveryJob.id == job_id).first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Recovery job non trovato")
-    
-    # Verifica che non sia già in esecuzione
-    if job.current_status in [
-        RecoveryJobStatus.BACKING_UP.value,
-        RecoveryJobStatus.RESTORING.value,
-        RecoveryJobStatus.REGISTERING.value
-    ]:
-        raise HTTPException(status_code=400, detail="Job già in esecuzione")
-    
-    log_audit(
-        db, user.id, "recovery_job_manual_run", "recovery_job",
-        resource_id=job_id,
-        details=f"Manual run: {job.name}",
-        ip_address=request.client.host if request.client else None
-    )
-    
-    # Avvia il job in background
-    background_tasks.add_task(execute_recovery_job_task, job_id, user.id)
-    
-    return {
-        "message": f"Recovery job {job.name} avviato",
-        "job_id": job_id
-    }
-
-
-@router.post("/{job_id}/backup-only")
-async def run_backup_only(
-    job_id: int,
-    background_tasks: BackgroundTasks,
-    request: Request,
-    user: User = Depends(require_operator),
-    db: Session = Depends(get_db)
-):
-    """Esegue solo la fase di backup di un recovery job"""
-    job = db.query(RecoveryJob).filter(RecoveryJob.id == job_id).first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Recovery job non trovato")
-    
-    source_node = db.query(Node).filter(Node.id == job.source_node_id).first()
-    pbs_node = db.query(Node).filter(Node.id == job.pbs_node_id).first()
-    
-    if not source_node or not pbs_node:
-        raise HTTPException(status_code=404, detail="Nodi non trovati")
-    
-    datastore = job.pbs_datastore or pbs_node.pbs_datastore or "datastore1"
-    
-    # Esegui backup
-    result = await pbs_service.run_backup(
-        source_node_hostname=source_node.hostname,
-        vm_id=job.vm_id,
-        pbs_hostname=pbs_node.hostname,
-        datastore=datastore,
-        pbs_user=pbs_node.pbs_username or f"{pbs_node.ssh_user}@pam",
-        pbs_password=pbs_node.pbs_password,
-        pbs_fingerprint=pbs_node.pbs_fingerprint,
-        pbs_storage_id=job.pbs_storage_id,  # Usa storage esistente se specificato
-        vm_type=job.vm_type,
-        mode=job.backup_mode,
-        compress=job.backup_compress,
-        source_node_port=source_node.ssh_port,
-        source_node_user=source_node.ssh_user,
-        source_node_key=source_node.ssh_key_path
-    )
-    
-    # Aggiorna job
-    if result["success"]:
-        job.last_backup_time = datetime.utcnow()
-        job.last_backup_id = result.get("backup_id")
-        db.commit()
-    
-    return result
-
-
-@router.post("/{job_id}/restore-only")
-async def run_restore_only(
-    job_id: int,
-    backup_id: Optional[str] = None,
-    request: Request = None,
-    user: User = Depends(require_operator),
-    db: Session = Depends(get_db)
-):
-    """Esegue solo la fase di restore di un recovery job (usa ultimo backup disponibile o backup_id specifico)"""
-    job = db.query(RecoveryJob).filter(RecoveryJob.id == job_id).first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Recovery job non trovato")
-    
-    pbs_node = db.query(Node).filter(Node.id == job.pbs_node_id).first()
-    dest_node = db.query(Node).filter(Node.id == job.dest_node_id).first()
-    
-    if not pbs_node or not dest_node:
-        raise HTTPException(status_code=404, detail="Nodi non trovati")
-    
-    datastore = job.pbs_datastore or pbs_node.pbs_datastore or "datastore1"
-    
-    # Esegui restore
-    result = await pbs_service.run_restore(
-        dest_node_hostname=dest_node.hostname,
-        vm_id=job.vm_id,
-        pbs_hostname=pbs_node.hostname,
-        datastore=datastore,
-        backup_id=backup_id or job.last_backup_id,
-        pbs_user=pbs_node.pbs_username or f"{pbs_node.ssh_user}@pam",
-        pbs_password=pbs_node.pbs_password,
-        pbs_fingerprint=pbs_node.pbs_fingerprint,
-        dest_vm_id=job.dest_vm_id,
-        dest_storage=job.dest_storage,
-        vm_type=job.vm_type,
-        start_vm=job.restore_start_vm,
-        unique=job.restore_unique,
-        overwrite=job.overwrite_existing,
-        dest_node_port=dest_node.ssh_port,
-        dest_node_user=dest_node.ssh_user,
-        dest_node_key=dest_node.ssh_key_path
-    )
-    
-    # Aggiorna job
-    if result["success"]:
-        job.last_restore_time = datetime.utcnow()
-        db.commit()
-    
-    return result
-
-
 # ============== PBS Node Endpoints ==============
 
 @router.get("/pbs-nodes/", response_model=List[PBSNodeInfo])
@@ -1807,4 +1595,217 @@ async def get_node_vms_for_recovery(
         "vms": vms,
         "count": len(vms)
     }
+
+
+@router.get("/{job_id}", response_model=RecoveryJobResponse)
+async def get_recovery_job(
+    job_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Ottiene un recovery job specifico"""
+    job = db.query(RecoveryJob).filter(RecoveryJob.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Recovery job non trovato")
+    return job
+
+
+@router.put("/{job_id}", response_model=RecoveryJobResponse)
+async def update_recovery_job(
+    job_id: int,
+    job_data: RecoveryJobUpdate,
+    request: Request,
+    user: User = Depends(require_operator),
+    db: Session = Depends(get_db)
+):
+    """Aggiorna un recovery job"""
+    job = db.query(RecoveryJob).filter(RecoveryJob.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Recovery job non trovato")
+    
+    update_data = job_data.model_dump(exclude_unset=True)
+    if "schedule" in update_data or "schedule_config" in update_data:
+        new_cron, new_cfg = _resolve_schedule_pair(
+            update_data.get("schedule", job.schedule),
+            update_data.get("schedule_config", job.schedule_config),
+        )
+        update_data["schedule"] = new_cron
+        update_data["schedule_config"] = new_cfg
+    for key, value in update_data.items():
+        setattr(job, key, value)
+
+    job.updated_at = datetime.utcnow()
+
+    log_audit(
+        db, user.id, "recovery_job_updated", "recovery_job",
+        resource_id=job_id,
+        details=f"Updated recovery job: {job.name}",
+        ip_address=request.client.host if request.client else None
+    )
+    
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+@router.delete("/{job_id}")
+async def delete_recovery_job(
+    job_id: int,
+    request: Request,
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Elimina un recovery job"""
+    job = db.query(RecoveryJob).filter(RecoveryJob.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Recovery job non trovato")
+    
+    job_name = job.name
+    db.delete(job)
+    
+    log_audit(
+        db, user.id, "recovery_job_deleted", "recovery_job",
+        resource_id=job_id,
+        details=f"Deleted recovery job: {job_name}",
+        ip_address=request.client.host if request.client else None
+    )
+    
+    db.commit()
+    return {"message": "Recovery job eliminato"}
+
+
+@router.post("/{job_id}/run")
+async def run_recovery_job(
+    job_id: int,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    user: User = Depends(require_operator),
+    db: Session = Depends(get_db)
+):
+    """Esegue manualmente un recovery job"""
+    job = db.query(RecoveryJob).filter(RecoveryJob.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Recovery job non trovato")
+    
+    # Verifica che non sia già in esecuzione
+    if job.current_status in [
+        RecoveryJobStatus.BACKING_UP.value,
+        RecoveryJobStatus.RESTORING.value,
+        RecoveryJobStatus.REGISTERING.value
+    ]:
+        raise HTTPException(status_code=400, detail="Job già in esecuzione")
+    
+    log_audit(
+        db, user.id, "recovery_job_manual_run", "recovery_job",
+        resource_id=job_id,
+        details=f"Manual run: {job.name}",
+        ip_address=request.client.host if request.client else None
+    )
+    
+    # Avvia il job in background
+    background_tasks.add_task(execute_recovery_job_task, job_id, user.id)
+    
+    return {
+        "message": f"Recovery job {job.name} avviato",
+        "job_id": job_id
+    }
+
+
+@router.post("/{job_id}/backup-only")
+async def run_backup_only(
+    job_id: int,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    user: User = Depends(require_operator),
+    db: Session = Depends(get_db)
+):
+    """Esegue solo la fase di backup di un recovery job"""
+    job = db.query(RecoveryJob).filter(RecoveryJob.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Recovery job non trovato")
+    
+    source_node = db.query(Node).filter(Node.id == job.source_node_id).first()
+    pbs_node = db.query(Node).filter(Node.id == job.pbs_node_id).first()
+    
+    if not source_node or not pbs_node:
+        raise HTTPException(status_code=404, detail="Nodi non trovati")
+    
+    datastore = job.pbs_datastore or pbs_node.pbs_datastore or "datastore1"
+    
+    # Esegui backup
+    result = await pbs_service.run_backup(
+        source_node_hostname=source_node.hostname,
+        vm_id=job.vm_id,
+        pbs_hostname=pbs_node.hostname,
+        datastore=datastore,
+        pbs_user=pbs_node.pbs_username or f"{pbs_node.ssh_user}@pam",
+        pbs_password=pbs_node.pbs_password,
+        pbs_fingerprint=pbs_node.pbs_fingerprint,
+        pbs_storage_id=job.pbs_storage_id,  # Usa storage esistente se specificato
+        vm_type=job.vm_type,
+        mode=job.backup_mode,
+        compress=job.backup_compress,
+        source_node_port=source_node.ssh_port,
+        source_node_user=source_node.ssh_user,
+        source_node_key=source_node.ssh_key_path
+    )
+    
+    # Aggiorna job
+    if result["success"]:
+        job.last_backup_time = datetime.utcnow()
+        job.last_backup_id = result.get("backup_id")
+        db.commit()
+    
+    return result
+
+
+@router.post("/{job_id}/restore-only")
+async def run_restore_only(
+    job_id: int,
+    backup_id: Optional[str] = None,
+    request: Request = None,
+    user: User = Depends(require_operator),
+    db: Session = Depends(get_db)
+):
+    """Esegue solo la fase di restore di un recovery job (usa ultimo backup disponibile o backup_id specifico)"""
+    job = db.query(RecoveryJob).filter(RecoveryJob.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Recovery job non trovato")
+    
+    pbs_node = db.query(Node).filter(Node.id == job.pbs_node_id).first()
+    dest_node = db.query(Node).filter(Node.id == job.dest_node_id).first()
+    
+    if not pbs_node or not dest_node:
+        raise HTTPException(status_code=404, detail="Nodi non trovati")
+    
+    datastore = job.pbs_datastore or pbs_node.pbs_datastore or "datastore1"
+    
+    # Esegui restore
+    result = await pbs_service.run_restore(
+        dest_node_hostname=dest_node.hostname,
+        vm_id=job.vm_id,
+        pbs_hostname=pbs_node.hostname,
+        datastore=datastore,
+        backup_id=backup_id or job.last_backup_id,
+        pbs_user=pbs_node.pbs_username or f"{pbs_node.ssh_user}@pam",
+        pbs_password=pbs_node.pbs_password,
+        pbs_fingerprint=pbs_node.pbs_fingerprint,
+        dest_vm_id=job.dest_vm_id,
+        dest_storage=job.dest_storage,
+        vm_type=job.vm_type,
+        start_vm=job.restore_start_vm,
+        unique=job.restore_unique,
+        overwrite=job.overwrite_existing,
+        dest_node_port=dest_node.ssh_port,
+        dest_node_user=dest_node.ssh_user,
+        dest_node_key=dest_node.ssh_key_path
+    )
+    
+    # Aggiorna job
+    if result["success"]:
+        job.last_restore_time = datetime.utcnow()
+        db.commit()
+    
+    return result
+
 
