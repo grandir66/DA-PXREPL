@@ -93,6 +93,7 @@
         @run="onRun"
         @delete="onDelete"
         @show-log="onShowLog"
+        @toggle-active="onToggleActive"
       />
     </main>
 
@@ -223,6 +224,28 @@ async function onRun(j: UnifiedJob, group?: { jobs: UnifiedJob[] }) {
   } catch (e) {
     const msg = (e as any)?.response?.data?.detail || (e as any)?.message
     ;(window as any).alert?.('Errore avvio job: ' + msg)
+  }
+}
+
+async function onToggleActive(j: UnifiedJob) {
+  const newActive = j.is_active === false
+  if (!await confirmDangerous(
+    `${newActive ? 'Attivare' : 'Disattivare'} il job "${j.name}"?`,
+    undefined,
+    newActive ? 'Attiva' : 'Disattiva'
+  )) return
+  try {
+    if (j.kind === 'syncoid' || j.kind === 'pve_native') {
+      await syncJobsService.toggleJob(String(j.id))
+    } else if (j.kind === 'backup_pbs') {
+      await backupJobsService.updateJob(String(j.id), { is_active: newActive })
+    } else if (j.kind === 'recovery_pbs') {
+      await recoveryJobsService.updateJob(String(j.id), { is_active: newActive })
+    }
+    toast.success(newActive ? 'Job attivato' : 'Job disattivato')
+    await reload()
+  } catch (e) {
+    toast.error('Errore modifica stato job', errorMessage(e))
   }
 }
 

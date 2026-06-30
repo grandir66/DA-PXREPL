@@ -29,6 +29,12 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 - UI Chiavi SSH in Impostazioni (admin): genera, distribuisci, test connessioni (`frontend/src/views/settings/SSHKeys.vue`, `services/sshKeys.ts`).
 - Branding docstring `DAPX-Unified` in `main.py`, `database.py`, `updates.py`; config-backup e menu visibili solo ad admin.
 
+### Correzioni (fase 5 — sicurezza + UI)
+- Host backup: mutazioni con `require_operator` + `check_node_access` su job e nodi (`backend/routers/host_backup.py`, `routers/deps.py`).
+- HA e recovery: scoping nodi per operatori con `allowed_nodes` su tutti gli endpoint node-scoped e job (`backend/routers/ha.py`, `recovery_jobs.py`).
+- Migrazioni: modal creazione job funzionante; icona toggle corretta (`frontend/src/views/jobs/MigrationJobs.vue`).
+- Repliche: pulsante attiva/disattiva job in `JobsList` (sync toggle API, backup/recovery via update) (`Replication.vue`, `JobsList.vue`).
+
 ### Correzioni (replica — sessione precedente)
 - Fix run manuale sync job: `BackgroundTasks` non eseguiva `execute_sync_job_task` (coroutine non awaited); il lock scheduler veniva rilasciato subito e in UI non partiva alcun log (`backend/routers/sync_jobs.py`).
 - Fix stato UI job sync: `SyncJobResponse` ora espone `current_status`; lista replica e log viewer trattano `last_status=running` / log `started` come *in esecuzione* (`backend/routers/sync_jobs.py`, `frontend/src/components/jobs/JobsList.vue`, `JobLogViewer.vue`, `Replication.vue`).

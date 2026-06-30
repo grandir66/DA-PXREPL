@@ -12,6 +12,7 @@ from datetime import datetime
 
 from database import get_db, Node, JobLog, HostBackupJob
 from routers.auth import get_current_user, require_operator, User
+from routers.deps import assert_node_access, check_node_access
 from services.host_backup_service import host_backup_service
 
 import logging
@@ -19,6 +20,25 @@ import logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _get_node_or_404(db: Session, node_id: int) -> Node:
+    node = db.query(Node).filter(Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    return node
+
+
+def _require_node(db: Session, user: User, node_id: int) -> Node:
+    node = _get_node_or_404(db, node_id)
+    assert_node_access(user, node)
+    return node
+
+
+def _require_job_node(db: Session, user: User, job: HostBackupJob) -> Node:
+    node = _get_node_or_404(db, job.node_id)
+    assert_node_access(user, node)
+    return node
 
 
 # ============== SCHEMAS ==============
@@ -74,6 +94,9 @@ async def list_host_backup_jobs(
 ):
     """Elenca tutti i job di host backup."""
     jobs = db.query(HostBackupJob).all()
+    if user.role != "admin" and user.allowed_nodes is not None:
+        allowed = set(user.allowed_nodes)
+        jobs = [j for j in jobs if j.node_id in allowed]
     
     result = []
     for job in jobs:
@@ -122,6 +145,7 @@ async def create_host_backup_job(
     
     if node.node_type not in ['pve', 'pbs']:
         raise HTTPException(status_code=400, detail="Il nodo deve essere PVE o PBS")
+    assert_node_access(user, node)
     
     # Crea job
     job = HostBackupJob(
@@ -160,6 +184,7 @@ async def get_host_backup_job(
     job = db.query(HostBackupJob).filter(HostBackupJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job non trovato")
+    _require_job_node(db, user, job)
     
     node = db.query(Node).filter(Node.id == job.node_id).first()
     
@@ -195,12 +220,13 @@ async def update_host_backup_job(
     job_id: int,
     job_data: HostBackupJobUpdate,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    user: User = Depends(require_operator),
 ):
     """Aggiorna un job esistente."""
     job = db.query(HostBackupJob).filter(HostBackupJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job non trovato")
+    _require_job_node(db, user, job)
     
     # Aggiorna solo i campi forniti
     update_data = job_data.model_dump(exclude_unset=True)
@@ -218,12 +244,13 @@ async def update_host_backup_job(
 async def delete_host_backup_job(
     job_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    user: User = Depends(require_operator),
 ):
     """Elimina un job."""
     job = db.query(HostBackupJob).filter(HostBackupJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job non trovato")
+    _require_job_node(db, user, job)
     
     db.delete(job)
     db.commit()
@@ -235,16 +262,14 @@ async def delete_host_backup_job(
 async def run_host_backup_job(
     job_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    user: User = Depends(require_operator),
 ):
     """Esegue un job di host backup manualmente."""
     job = db.query(HostBackupJob).filter(HostBackupJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job non trovato")
     
-    node = db.query(Node).filter(Node.id == job.node_id).first()
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    node = _require_job_node(db, user, job)
     
     # Rileva tipo host
     host_type = await host_backup_service.detect_host_type(
@@ -365,9 +390,7 @@ async def detect_host_type(
     user: User = Depends(get_current_user)
 ):
     """Rileva il tipo di host (pve/pbs)."""
-    node = db.query(Node).filter(Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    node = _require_node(db, user, node_id)
     
     host_type = await host_backup_service.detect_host_type(
         hostname=node.hostname,
@@ -391,9 +414,7 @@ async def list_backup_paths(
     user: User = Depends(get_current_user)
 ):
     """Elenca i percorsi di configurazione con dimensioni."""
-    node = db.query(Node).filter(Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    node = _require_node(db, user, node_id)
     
     host_type = await host_backup_service.detect_host_type(
         hostname=node.hostname,
@@ -430,12 +451,10 @@ async def create_manual_backup(
     node_id: int,
     config: ManualBackupRequest,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    user: User = Depends(require_operator),
 ):
     """Crea un backup manuale (one-time)."""
-    node = db.query(Node).filter(Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    node = _require_node(db, user, node_id)
     
     host_type = await host_backup_service.detect_host_type(
         hostname=node.hostname,
@@ -509,9 +528,7 @@ async def list_node_backups(
     user: User = Depends(get_current_user)
 ):
     """Elenca i backup esistenti su un nodo."""
-    node = db.query(Node).filter(Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    node = _require_node(db, user, node_id)
     
     backups = await host_backup_service.list_host_backups(
         hostname=node.hostname,
@@ -549,12 +566,10 @@ async def download_node_backup(
     backup_file: str,
     backup_path: str = "/var/backups/proxmox-config",
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    user: User = Depends(require_operator),
 ):
     """Scarica un backup da un nodo."""
-    node = db.query(Node).filter(Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    node = _require_node(db, user, node_id)
 
     full_path = _safe_join(backup_path, backup_file)
     
@@ -584,12 +599,10 @@ async def delete_node_backup(
     backup_file: str,
     backup_path: str = "/var/backups/proxmox-config",
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    user: User = Depends(require_operator),
 ):
     """Elimina un backup da un nodo."""
-    node = db.query(Node).filter(Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    node = _require_node(db, user, node_id)
 
     full_path = _safe_join(backup_path, backup_file)
     
@@ -613,12 +626,10 @@ async def apply_node_retention(
     policy: RetentionPolicy,
     backup_path: str = "/var/backups/proxmox-config",
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    user: User = Depends(require_operator),
 ):
     """Applica retention policy ai backup di un nodo."""
-    node = db.query(Node).filter(Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    node = _require_node(db, user, node_id)
     
     result = await host_backup_service.apply_retention(
         hostname=node.hostname,

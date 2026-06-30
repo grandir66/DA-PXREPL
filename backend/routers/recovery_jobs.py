@@ -37,6 +37,8 @@ def _resolve_schedule_pair(schedule: Optional[str], schedule_config: Optional[Di
 from services.proxmox_service import proxmox_service
 from services.ssh_service import ssh_service
 from routers.auth import get_current_user, require_operator, require_admin, log_audit
+from routers.deps import assert_node_access, check_node_access, filter_nodes_for_user
+from routers.deps import assert_node_access, check_node_access, filter_nodes_for_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -323,13 +325,20 @@ class BackupInfo(BaseModel):
 
 # ============== Helper Functions ==============
 
-def check_node_access(user: User, node: Node) -> bool:
-    """Verifica se l'utente ha accesso al nodo"""
-    if user.role == "admin":
-        return True
-    if user.allowed_nodes is None:
-        return True
-    return node.id in user.allowed_nodes
+def _require_recovery_node(db: Session, user: User, node_id: int) -> Node:
+    node = db.query(Node).filter(Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    assert_node_access(user, node)
+    return node
+
+
+def assert_recovery_job_access(user: User, job: RecoveryJob, db: Session) -> None:
+    """Verifica accesso a tutti i nodi coinvolti in un recovery job."""
+    for node_id in (job.source_node_id, job.pbs_node_id, job.dest_node_id):
+        node = db.query(Node).filter(Node.id == node_id).first()
+        if node:
+            assert_node_access(user, node)
 
 
 async def execute_recovery_job_task(job_id: int, triggered_by: Optional[int] = None):
@@ -736,6 +745,12 @@ async def list_recovery_jobs(
 ):
     """Lista tutti i recovery jobs con durate delle ultime fasi"""
     jobs = db.query(RecoveryJob).all()
+    if user.role != "admin" and user.allowed_nodes is not None:
+        allowed = set(user.allowed_nodes)
+        jobs = [
+            j for j in jobs
+            if j.source_node_id in allowed and j.dest_node_id in allowed and j.pbs_node_id in allowed
+        ]
     
     # Cache dei nomi dei nodi per efficienza
     node_names = {n.id: n.name for n in db.query(Node).all()}
@@ -818,6 +833,8 @@ async def create_recovery_job(
     # Verifica accesso ai nodi
     if not check_node_access(user, source_node) or not check_node_access(user, dest_node):
         raise HTTPException(status_code=403, detail="Accesso negato ai nodi specificati")
+    if not check_node_access(user, pbs_node):
+        raise HTTPException(status_code=403, detail="Accesso negato al nodo PBS")
     
     # Crea il job: allinea schedule (cron) e schedule_config (JSON struct)
     payload = job_data.model_dump()
@@ -850,6 +867,7 @@ async def list_pbs_nodes(
 ):
     """Lista tutti i nodi PBS configurati"""
     pbs_nodes = db.query(Node).filter(Node.node_type == NodeType.PBS.value).all()
+    pbs_nodes = filter_nodes_for_user(user, pbs_nodes)
     
     result = []
     for node in pbs_nodes:
@@ -880,6 +898,7 @@ async def test_pbs_node(
     
     if not node:
         raise HTTPException(status_code=404, detail="Nodo PBS non trovato")
+    assert_node_access(user, node)
     
     # Test connessione SSH
     ssh_ok, ssh_msg = await ssh_service.test_connection(
@@ -955,6 +974,7 @@ async def list_pbs_backups(
     
     if not node:
         raise HTTPException(status_code=404, detail="Nodo PBS non trovato")
+    assert_node_access(user, node)
     
     ds = datastore or node.pbs_datastore or "datastore1"
     backups = []
@@ -969,6 +989,8 @@ async def list_pbs_backups(
             Node.id == pve_node_id,
             Node.node_type == NodeType.PVE.value
         ).first()
+        if pve_node:
+            assert_node_access(user, pve_node)
     else:
         # Cerca un nodo PVE qualsiasi
         pve_node = db.query(Node).filter(
@@ -1145,6 +1167,8 @@ async def direct_restore(
     
     if not dest_node:
         raise HTTPException(status_code=404, detail="Nodo PVE destinazione non trovato")
+    assert_node_access(user, pbs_node)
+    assert_node_access(user, dest_node)
     
     # Estrai VMID dal backup_id se non specificato
     vmid = request.dest_vmid
@@ -1248,10 +1272,7 @@ async def get_node_storages(
     Ottiene la lista degli storage disponibili su un nodo PVE.
     Utile per selezionare lo storage di destinazione per il restore.
     """
-    node = db.query(Node).filter(Node.id == node_id).first()
-    
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    node = _require_recovery_node(db, user, node_id)
     
     if node.node_type == NodeType.PBS.value:
         raise HTTPException(status_code=400, detail="Questo endpoint è solo per nodi PVE, non PBS")
@@ -1336,10 +1357,7 @@ async def get_node_pbs_storages(
     Ottiene la lista degli storage PBS configurati su un nodo PVE.
     Questi sono gli storage che possono essere usati per backup verso PBS.
     """
-    node = db.query(Node).filter(Node.id == node_id).first()
-    
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    node = _require_recovery_node(db, user, node_id)
     
     if node.node_type == NodeType.PBS.value:
         raise HTTPException(status_code=400, detail="Questo endpoint è solo per nodi PVE, non PBS")
@@ -1411,10 +1429,7 @@ async def check_vmid_available(
     Verifica se un VMID è disponibile su un nodo PVE.
     Ritorna info sulla VM esistente se il VMID è già in uso.
     """
-    node = db.query(Node).filter(Node.id == node_id).first()
-    
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    node = _require_recovery_node(db, user, node_id)
     
     if node.node_type == NodeType.PBS.value:
         raise HTTPException(status_code=400, detail="Questo endpoint è solo per nodi PVE, non PBS")
@@ -1495,10 +1510,7 @@ async def get_next_available_vmid(
     """
     Ottiene il prossimo VMID disponibile su un nodo PVE.
     """
-    node = db.query(Node).filter(Node.id == node_id).first()
-    
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    node = _require_recovery_node(db, user, node_id)
     
     if node.node_type == NodeType.PBS.value:
         raise HTTPException(status_code=400, detail="Questo endpoint è solo per nodi PVE, non PBS")
@@ -1535,10 +1547,7 @@ async def get_node_vms_for_recovery(
     Ottiene la lista delle VM/CT su un nodo PVE.
     Include VMID, nome, tipo e stato.
     """
-    node = db.query(Node).filter(Node.id == node_id).first()
-    
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    node = _require_recovery_node(db, user, node_id)
     
     if node.node_type == NodeType.PBS.value:
         raise HTTPException(status_code=400, detail="Questo endpoint è solo per nodi PVE, non PBS")
@@ -1607,6 +1616,7 @@ async def get_recovery_job(
     job = db.query(RecoveryJob).filter(RecoveryJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Recovery job non trovato")
+    assert_recovery_job_access(user, job, db)
     return job
 
 
@@ -1622,6 +1632,7 @@ async def update_recovery_job(
     job = db.query(RecoveryJob).filter(RecoveryJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Recovery job non trovato")
+    assert_recovery_job_access(user, job, db)
     
     update_data = job_data.model_dump(exclude_unset=True)
     if "schedule" in update_data or "schedule_config" in update_data:
@@ -1659,6 +1670,7 @@ async def delete_recovery_job(
     job = db.query(RecoveryJob).filter(RecoveryJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Recovery job non trovato")
+    assert_recovery_job_access(user, job, db)
     
     job_name = job.name
     db.delete(job)
@@ -1686,6 +1698,7 @@ async def run_recovery_job(
     job = db.query(RecoveryJob).filter(RecoveryJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Recovery job non trovato")
+    assert_recovery_job_access(user, job, db)
     
     # Verifica che non sia già in esecuzione
     if job.current_status in [
@@ -1723,6 +1736,7 @@ async def run_backup_only(
     job = db.query(RecoveryJob).filter(RecoveryJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Recovery job non trovato")
+    assert_recovery_job_access(user, job, db)
     
     source_node = db.query(Node).filter(Node.id == job.source_node_id).first()
     pbs_node = db.query(Node).filter(Node.id == job.pbs_node_id).first()
@@ -1771,6 +1785,7 @@ async def run_restore_only(
     job = db.query(RecoveryJob).filter(RecoveryJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Recovery job non trovato")
+    assert_recovery_job_access(user, job, db)
     
     pbs_node = db.query(Node).filter(Node.id == job.pbs_node_id).first()
     dest_node = db.query(Node).filter(Node.id == job.dest_node_id).first()

@@ -160,13 +160,7 @@ class DatasetResponse(BaseModel):
 
 # ============== Helper Functions ==============
 
-def check_node_access(user: User, node: Node) -> bool:
-    """Verifica se l'utente ha accesso al nodo"""
-    if user.role == "admin":
-        return True
-    if user.allowed_nodes is None:
-        return True
-    return node.id in user.allowed_nodes
+from routers.deps import check_node_access
 
 
 def filter_nodes_for_user(db: Session, user: User, nodes_query):

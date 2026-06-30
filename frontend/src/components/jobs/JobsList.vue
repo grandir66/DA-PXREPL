@@ -109,6 +109,11 @@
             <td class="jl-actions" @click.stop>
               <button
                 class="btn btn-secondary btn-sm"
+                :title="g.jobs[0].is_active ? 'Disattiva job' : 'Attiva job'"
+                @click="$emit('toggle-active', g.jobs[0])"
+              >{{ g.jobs[0].is_active !== false ? '⏸' : '▶' }}</button>
+              <button
+                class="btn btn-secondary btn-sm"
                 @click="$emit('run', g.jobs[0], g)"
                 :title="g.jobs.length > 1 ? `Esegui tutti i ${g.jobs.length} job di questa VM` : 'Esegui ora'"
               >▶</button>
@@ -167,6 +172,11 @@
                 </span>
               </td>
               <td class="jl-actions">
+                <button
+                  class="btn btn-secondary btn-sm"
+                  :title="j.is_active ? 'Disattiva job' : 'Attiva job'"
+                  @click="$emit('toggle-active', j)"
+                >{{ j.is_active !== false ? '⏸' : '▶' }}</button>
                 <button class="btn btn-secondary btn-sm" @click="$emit('run', j, g)" title="Esegui">▶</button>
                 <button v-if="j.kind === 'syncoid' || j.kind === 'pve_native'" class="btn btn-secondary btn-sm" @click="$emit('show-log', j)" title="Log live">…</button>
                 <button class="btn btn-secondary btn-sm" @click="$emit('edit', j)" title="Modifica">✎</button>
@@ -213,6 +223,7 @@ defineEmits<{
   (e: 'delete', j: UnifiedJob): void
   (e: 'refresh'): void
   (e: 'show-log', j: UnifiedJob): void
+  (e: 'toggle-active', j: UnifiedJob): void
 }>()
 
 const filter = ref('')

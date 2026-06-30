@@ -11,8 +11,15 @@ from database import get_db, Node, User
 from services.ha_service import ha_service
 from services.cluster_service import cluster_service
 from routers.auth import get_current_user, require_operator, log_audit
+from routers.deps import assert_node_access
 
 router = APIRouter()
+
+
+def _require_ha_node(db: Session, user: User, node_id: int) -> Node:
+    node = _require_ha_node(db, user, node_id)
+    assert_node_access(user, node)
+    return node
 
 
 # ============== Schemas ==============
@@ -46,9 +53,7 @@ async def get_ha_resources(
     db: Session = Depends(get_db)
 ):
     """Lista tutte le risorse HA configurate"""
-    node = db.query(Node).filter(Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    node = _require_ha_node(db, user, node_id)
     
     resources = await ha_service.get_ha_resources(
         hostname=node.hostname,
@@ -67,9 +72,7 @@ async def get_ha_status(
     db: Session = Depends(get_db)
 ):
     """Ottiene lo stato HA completo"""
-    node = db.query(Node).filter(Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    node = _require_ha_node(db, user, node_id)
     
     status = await ha_service.get_ha_status(
         hostname=node.hostname,
@@ -90,9 +93,7 @@ async def add_ha_resource(
     db: Session = Depends(get_db)
 ):
     """Aggiunge una risorsa (VM/CT) all'HA"""
-    node = db.query(Node).filter(Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    node = _require_ha_node(db, user, node_id)
     
     success, message = await ha_service.add_resource_to_ha(
         hostname=node.hostname,
@@ -128,9 +129,7 @@ async def remove_ha_resource(
     db: Session = Depends(get_db)
 ):
     """Rimuove una risorsa dall'HA"""
-    node = db.query(Node).filter(Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    node = _require_ha_node(db, user, node_id)
     
     success, message = await ha_service.remove_resource_from_ha(
         hostname=node.hostname,
@@ -163,9 +162,7 @@ async def set_ha_resource_state(
     db: Session = Depends(get_db)
 ):
     """Imposta lo stato di una risorsa HA"""
-    node = db.query(Node).filter(Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    node = _require_ha_node(db, user, node_id)
     
     success, message = await ha_service.set_resource_state(
         hostname=node.hostname,
@@ -189,9 +186,7 @@ async def get_ha_groups(
     db: Session = Depends(get_db)
 ):
     """Lista tutti i gruppi HA"""
-    node = db.query(Node).filter(Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    node = _require_ha_node(db, user, node_id)
     
     groups = await ha_service.get_ha_groups(
         hostname=node.hostname,
@@ -211,9 +206,7 @@ async def get_ha_group_detail(
     db: Session = Depends(get_db)
 ):
     """Ottiene dettagli di un gruppo HA"""
-    node = db.query(Node).filter(Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    node = _require_ha_node(db, user, node_id)
     
     group = await ha_service.get_ha_group_detail(
         hostname=node.hostname,
@@ -235,9 +228,7 @@ async def create_ha_group(
     db: Session = Depends(get_db)
 ):
     """Crea un nuovo gruppo HA"""
-    node = db.query(Node).filter(Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    node = _require_ha_node(db, user, node_id)
     
     success, message = await ha_service.create_ha_group(
         hostname=node.hostname,
@@ -269,9 +260,7 @@ async def delete_ha_group(
     db: Session = Depends(get_db)
 ):
     """Elimina un gruppo HA"""
-    node = db.query(Node).filter(Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    node = _require_ha_node(db, user, node_id)
     
     success, message = await ha_service.delete_ha_group(
         hostname=node.hostname,
@@ -300,9 +289,7 @@ async def get_cluster_status(
     db: Session = Depends(get_db)
 ):
     """Ottiene lo stato del cluster Proxmox"""
-    node = db.query(Node).filter(Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    node = _require_ha_node(db, user, node_id)
     
     status = await cluster_service.get_cluster_status(
         hostname=node.hostname,
@@ -322,9 +309,7 @@ async def get_cluster_monitor(
     """
     Ottiene dati di monitoraggio cluster (simil-LoadBalancer) ma leggeri e indipendenti.
     """
-    node = db.query(Node).filter(Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    node = _require_ha_node(db, user, node_id)
     
     data = await cluster_service.get_cluster_monitor_data(
         hostname=node.hostname,
@@ -346,9 +331,7 @@ async def get_cluster_topology(
     Ottiene la topologia di rete del cluster (Corosync, Nodi, Guests).
     NB: Operazione più lenta del monitor.
     """
-    node = db.query(Node).filter(Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    node = _require_ha_node(db, user, node_id)
     
     data = await cluster_service.get_cluster_topology(
         hostname=node.hostname,
@@ -367,9 +350,7 @@ async def get_cluster_nodes(
     db: Session = Depends(get_db)
 ):
     """Lista i nodi del cluster con stato"""
-    node = db.query(Node).filter(Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    node = _require_ha_node(db, user, node_id)
     
     nodes = await cluster_service.get_cluster_nodes(
         hostname=node.hostname,
@@ -399,9 +380,7 @@ async def add_node_to_cluster(
     Aggiunge un nuovo nodo al cluster.
     ATTENZIONE: Operazione rischiosa, richiede conferma.
     """
-    node = db.query(Node).filter(Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    node = _require_ha_node(db, user, node_id)
     
     success, message = await cluster_service.add_node_to_cluster(
         existing_cluster_host=node.hostname,
@@ -440,9 +419,7 @@ async def remove_node_from_cluster(
     Rimuove un nodo dal cluster.
     ATTENZIONE: Il nodo deve essere SPENTO prima della rimozione.
     """
-    node = db.query(Node).filter(Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    node = _require_ha_node(db, user, node_id)
     
     success, message = await cluster_service.remove_node_from_cluster(
         hostname=node.hostname,
@@ -474,9 +451,7 @@ async def clean_node_references(
     """
     Pulisce i riferimenti a un nodo rimosso su tutti i nodi del cluster.
     """
-    node = db.query(Node).filter(Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    node = _require_ha_node(db, user, node_id)
     
     results = await cluster_service.clean_node_on_all_nodes(
         hostname=node.hostname,
@@ -509,9 +484,7 @@ async def get_available_guests(
     """
     from services.proxmox_service import proxmox_service
     
-    node = db.query(Node).filter(Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    node = _require_ha_node(db, user, node_id)
     
     # Ottieni risorse cluster
     resources = await proxmox_service.get_cluster_resources(
@@ -582,9 +555,7 @@ async def get_ha_complete_data(
     """
     from services.proxmox_service import proxmox_service
     
-    node = db.query(Node).filter(Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    node = _require_ha_node(db, user, node_id)
     
     # Esegui tutte le chiamate in parallelo
     import asyncio
