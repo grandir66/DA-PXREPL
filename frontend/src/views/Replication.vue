@@ -152,12 +152,13 @@ const filteredJobs = computed(() => {
 })
 
 const activeCount = computed(() => store.jobs.filter(j => j.is_active !== false).length)
-const runningCount = computed(() =>
-  store.jobs.filter(j => {
-    const cs = (j.current_status || '').toLowerCase()
-    return ['running', 'backing_up', 'restoring', 'registering'].includes(cs)
-  }).length
-)
+function isJobRunning(j: UnifiedJob): boolean {
+  const cur = (j.current_status || '').toLowerCase()
+  if (['running', 'backing_up', 'restoring', 'registering'].includes(cur)) return true
+  const last = (j.last_status || '').toLowerCase()
+  return last === 'running' || last === 'started'
+}
+const runningCount = computed(() => store.jobs.filter(isJobRunning).length)
 const failedCount = computed(() =>
   store.jobs.filter(j => ['error', 'failed'].includes((j.last_status || '').toLowerCase())).length
 )
@@ -202,19 +203,11 @@ function onShowLog(j: UnifiedJob) {
 
 async function onRun(j: UnifiedJob, group?: { jobs: UnifiedJob[] }) {
   try {
-    // Syncoid VM con piu' disk-job → endpoint vm-group (forza tutti).
     if (
-      j.kind === 'syncoid' &&
-      group && group.jobs.length > 1 &&
+      (j.kind === 'syncoid' || j.kind === 'pve_native') &&
       j.raw?.vm_group_id
     ) {
-      const r = await syncJobsService.runVmGroup(String(j.raw.vm_group_id))
-      const started = (r as any)?.data?.jobs_started ?? group.jobs.length
-      const skipped = (r as any)?.data?.jobs_skipped ?? 0
-      if (skipped > 0) {
-        // qualche job e' stato saltato: lo segnaliamo
-        ;(window as any).alert?.(`Avviati ${started} job, ${skipped} saltati.`)
-      }
+      await syncJobsService.runVmGroup(String(j.raw.vm_group_id))
     } else if (j.kind === 'syncoid' || j.kind === 'pve_native') {
       // pve_native vive nello stesso endpoint /api/sync-jobs
       await syncJobsService.runJob(String(j.id))

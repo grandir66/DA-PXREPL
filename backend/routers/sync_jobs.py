@@ -10,6 +10,8 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel
 import re
+import asyncio
+import logging
 
 from database import get_db, Node, SyncJob, JobLog, User, SyncMethod
 from services.syncoid_service import syncoid_service
@@ -17,6 +19,8 @@ from services.btrfs_service import btrfs_service
 from services.scheduler import scheduler_service
 from services.schedule_translator import to_cron as _sched_to_cron, from_cron as _sched_from_cron
 from routers.auth import get_current_user, require_operator, require_admin, log_audit
+
+logger = logging.getLogger(__name__)
 
 
 def _resolve_schedule_pair(schedule: Optional[str], schedule_config: Optional[Dict[str, Any]]):
@@ -93,11 +97,493 @@ async def send_job_notification_helper(
 
 # ============== Helper Function per esecuzione job ==============
 
-async def execute_sync_job_task(job_id: int, triggered_by_user_id: int = None):
+async def _persist_sync_progress(
+    job_id: int,
+    log_entry_id: int,
+    progress: Dict[str, Any],
+) -> None:
+    """Salva avanzamento replica nel log e nel job (best-effort)."""
+    from database import SessionLocal, SyncJob, JobLog
+
+    ts = datetime.utcnow().strftime("%H:%M:%S")
+    line = (
+        f"[{ts}] Avanzamento: {progress['percent']}% "
+        f"({progress['dest_human']} scritti su {progress['source_human']} sorgente)"
+    )
+    db = SessionLocal()
+    try:
+        job = db.query(SyncJob).filter(SyncJob.id == job_id).first()
+        log = db.query(JobLog).filter(JobLog.id == log_entry_id).first()
+        if job:
+            job.last_transferred = progress["label"]
+        if log:
+            prev = log.output or ""
+            if line not in prev:
+                log.output = prev + ("\n" if prev else "") + line
+        db.commit()
+    except Exception as e:
+        logger.debug(f"persist progress job {job_id}: {e}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
+async def _poll_sync_progress(
+    stop_event: asyncio.Event,
+    job_id: int,
+    log_entry_id: int,
+    source_node,
+    dest_node,
+    source_dataset: str,
+    dest_dataset: str,
+    interval: int = 30,
+) -> None:
+    """Polling ogni `interval` secondi del rapporto used/refer ZFS."""
+    while not stop_event.is_set():
+        try:
+            progress = await syncoid_service.get_replication_progress(
+                executor_host=source_node.hostname,
+                executor_port=source_node.ssh_port,
+                executor_user=source_node.ssh_user,
+                executor_key=source_node.ssh_key_path,
+                source_dataset=source_dataset,
+                dest_host=dest_node.hostname,
+                dest_port=dest_node.ssh_port,
+                dest_user=dest_node.ssh_user,
+                dest_key=dest_node.ssh_key_path,
+                dest_dataset=dest_dataset,
+            )
+            if progress:
+                await _persist_sync_progress(job_id, log_entry_id, progress)
+        except Exception as e:
+            logger.debug(f"poll progress job {job_id}: {e}")
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=interval)
+            break
+        except asyncio.TimeoutError:
+            continue
+
+
+def _dest_zfs_pool_for_job(job: SyncJob) -> str:
+    """Pool/dataset Proxmox per i volumi replicati (es. ZFS-LARGE/replica)."""
+    parts = (job.dest_dataset or "").split("/")
+    if len(parts) >= 2:
+        return "/".join(parts[:-1])
+    return parts[0] if parts else ""
+
+
+def _vm_group_sync_complete(db, job: SyncJob) -> bool:
+    """True se tutti i job disco dello stesso gruppo VM sono in success."""
+    if not job.vm_group_id:
+        return (job.last_status or "").lower() == "success"
+    siblings = db.query(SyncJob).filter(
+        SyncJob.vm_group_id == job.vm_group_id,
+        SyncJob.dest_node_id == job.dest_node_id,
+    ).all()
+    if not siblings:
+        return (job.last_status or "").lower() == "success"
+    return all((s.last_status or "").lower() == "success" for s in siblings)
+
+
+_vm_register_inflight: set[str] = set()
+
+
+async def _try_register_vm_after_sync(job_id: int, log_entry_id: int) -> None:
+    """Registra la VM su Proxmox quando la sync (e tutti i dischi gemelli) sono OK."""
+    from database import SessionLocal, SyncJob, Node, JobLog, SyncMethod
+    from services.proxmox_service import proxmox_service
+    from services.ssh_service import ssh_service
+
+    db = SessionLocal()
+    reg_key = None
+    try:
+        job = db.query(SyncJob).filter(SyncJob.id == job_id).first()
+        log = db.query(JobLog).filter(JobLog.id == log_entry_id).first()
+        if not job or not log:
+            return
+        if not job.register_vm or not job.vm_id:
+            return
+        sync_method = job.sync_method or SyncMethod.SYNCOID.value
+        if sync_method in (SyncMethod.BTRFS_SEND.value, SyncMethod.PVE_NATIVE.value):
+            return
+        if (job.last_status or "").lower() != "success":
+            return
+        if not _vm_group_sync_complete(db, job):
+            note = " | Registrazione VM in attesa: sync di tutti i dischi del gruppo non completata"
+            if note not in (log.message or ""):
+                log.message = (log.message or "") + note
+                db.commit()
+            return
+
+        target_vmid = job.dest_vm_id or job.vm_id
+        reg_key = f"{job.dest_node_id}:{target_vmid}"
+        if reg_key in _vm_register_inflight:
+            return
+        _vm_register_inflight.add(reg_key)
+
+        source_node = db.query(Node).filter(Node.id == job.source_node_id).first()
+        dest_node = db.query(Node).filter(Node.id == job.dest_node_id).first()
+        if not source_node or not dest_node:
+            return
+
+        vm_type = job.vm_type or "qemu"
+        config_path = (
+            f"/etc/pve/qemu-server/{job.vm_id}.conf"
+            if vm_type == "qemu"
+            else f"/etc/pve/lxc/{job.vm_id}.conf"
+        )
+        config_result = await ssh_service.execute(
+            hostname=source_node.hostname,
+            command=f"cat {config_path} 2>/dev/null",
+            port=source_node.ssh_port,
+            username=source_node.ssh_user,
+            key_path=source_node.ssh_key_path,
+            timeout=30,
+        )
+        if not config_result.success or not config_result.stdout.strip():
+            log.message = (log.message or "") + " | Config VM non trovata su sorgente"
+            db.commit()
+            return
+
+        dest_zfs_pool = _dest_zfs_pool_for_job(job)
+        try:
+            dest_bridges = await proxmox_service.get_node_bridges(
+                hostname=dest_node.hostname,
+                port=dest_node.ssh_port,
+                username=dest_node.ssh_user,
+                key_path=dest_node.ssh_key_path,
+            )
+        except Exception:
+            dest_bridges = None
+
+        success, msg, warnings = await proxmox_service.register_vm(
+            hostname=dest_node.hostname,
+            vmid=target_vmid,
+            vm_type=vm_type,
+            config_content=config_result.stdout,
+            source_storage=job.source_storage,
+            dest_storage=job.dest_storage,
+            dest_zfs_pool=dest_zfs_pool,
+            vm_name_suffix=job.dest_vm_name_suffix,
+            new_name=getattr(job, "dest_vm_name", None),
+            force_cpu_host=bool(getattr(job, "force_cpu_host", True)),
+            dest_node_bridges=dest_bridges,
+            dest_bridge=getattr(job, "dest_bridge", None),
+            dest_vlan=getattr(job, "dest_vlan", None),
+            port=dest_node.ssh_port,
+            username=dest_node.ssh_user,
+            key_path=dest_node.ssh_key_path,
+        )
+
+        if success:
+            vm_info = f"VM {target_vmid}" + (
+                f" (da {job.vm_id})" if target_vmid != job.vm_id else ""
+            )
+            log.message = (log.message or "") + f" | {vm_info} registrata su {dest_node.name}"
+            if warnings:
+                log.message += f" [Avvisi: {'; '.join(warnings)}]"
+        else:
+            log.message = (log.message or "") + f" | Registrazione VM fallita: {msg}"
+        db.commit()
+    except Exception as e:
+        logger.warning(f"Registrazione VM post-sync job {job_id}: {e}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+    finally:
+        if reg_key:
+            _vm_register_inflight.discard(reg_key)
+        db.close()
+
+
+async def _finalize_sync_job(
+    job_id: int,
+    log_entry_id: int,
+    dest_node,
+    dest_dataset: str,
+    job_key: str,
+) -> bool:
+    """Chiude job/log quando la replica non è più attiva sui nodi."""
+    from database import SessionLocal, SyncJob, JobLog
+    from services.ssh_service import ssh_service
+
+    db = SessionLocal()
+    try:
+        job = db.query(SyncJob).filter(SyncJob.id == job_id).first()
+        log = db.query(JobLog).filter(JobLog.id == log_entry_id).first()
+        if not job or not log:
+            return False
+        if log.completed_at:
+            if hasattr(job, "current_status"):
+                try:
+                    job.current_status = "idle"
+                except Exception:
+                    pass
+            if (job.last_status or "").lower() == "running":
+                job.last_status = log.status or "success"
+            db.commit()
+            return (log.status or "").lower() == "success"
+
+        check = await ssh_service.execute(
+            hostname=dest_node.hostname,
+            command=f"zfs list -H -o name {dest_dataset} 2>&1",
+            port=dest_node.ssh_port,
+            username=dest_node.ssh_user,
+            key_path=dest_node.ssh_key_path,
+            timeout=20,
+        )
+        ok = check.success and dest_dataset in (check.stdout or "")
+        job.last_status = "success" if ok else "failed"
+        if hasattr(job, "current_status"):
+            try:
+                job.current_status = "idle"
+            except Exception:
+                pass
+        if not ok:
+            job.error_count += 1
+            job.consecutive_failures += 1
+        else:
+            job.consecutive_failures = 0
+            job.run_count += 1
+        job.last_run = datetime.utcnow()
+        log.status = "success" if ok else "failed"
+        log.completed_at = datetime.utcnow()
+        log.message = (
+            (log.message or "")
+            + (" | Replica completata" if ok else " | Replica terminata — verifica dataset/log syncoid")
+        )
+        if not ok:
+            log.error = (log.error or "") + (check.stderr or check.stdout or "")
+        db.commit()
+        if ok:
+            await _try_register_vm_after_sync(job_id, log_entry_id)
+            db2 = SessionLocal()
+            try:
+                job2 = db2.query(SyncJob).filter(SyncJob.id == job_id).first()
+                if job2 and job2.vm_group_id:
+                    asyncio.create_task(_continue_vm_group_chain(job2.vm_group_id))
+            finally:
+                db2.close()
+        return ok
+    except Exception as e:
+        logger.warning(f"Finalize job {job_id} fallito: {e}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return False
+    finally:
+        db.close()
+        scheduler_service.mark_done(job_key)
+
+
+async def _monitor_sync_job_completion(
+    job_id: int,
+    job_key: str,
+    log_entry_id: int,
+    source_node,
+    dest_node,
+    source_dataset: str,
+    dest_dataset: str,
+):
+    """Attende fine syncoid/receive remoto e aggiorna stato job."""
+    import asyncio as _asyncio
+    from database import SessionLocal, SyncJob, Node
+
+    # Nodi possono arrivare da sessioni DB già chiuse (reconcile startup).
+    db_boot = SessionLocal()
+    try:
+        job_boot = db_boot.query(SyncJob).filter(SyncJob.id == job_id).first()
+        if job_boot:
+            source_node = (
+                db_boot.query(Node).filter(Node.id == job_boot.source_node_id).first()
+                or source_node
+            )
+            dest_node = (
+                db_boot.query(Node).filter(Node.id == job_boot.dest_node_id).first()
+                or dest_node
+            )
+            source_dataset = job_boot.source_dataset
+            dest_dataset = job_boot.dest_dataset
+    finally:
+        db_boot.close()
+
+    if not source_node or not dest_node:
+        scheduler_service.mark_done(job_key)
+        return
+
+    try:
+        for _ in range(720):  # max ~6h @ 30s
+            active = await syncoid_service.is_replication_active(
+                executor_host=source_node.hostname,
+                executor_port=source_node.ssh_port,
+                executor_user=source_node.ssh_user,
+                executor_key=source_node.ssh_key_path,
+                source_dataset=source_dataset,
+                dest_host=dest_node.hostname,
+                dest_port=dest_node.ssh_port,
+                dest_user=dest_node.ssh_user,
+                dest_key=dest_node.ssh_key_path,
+                dest_dataset=dest_dataset,
+            )
+            if active:
+                progress = await syncoid_service.get_replication_progress(
+                    executor_host=source_node.hostname,
+                    executor_port=source_node.ssh_port,
+                    executor_user=source_node.ssh_user,
+                    executor_key=source_node.ssh_key_path,
+                    source_dataset=source_dataset,
+                    dest_host=dest_node.hostname,
+                    dest_port=dest_node.ssh_port,
+                    dest_user=dest_node.ssh_user,
+                    dest_key=dest_node.ssh_key_path,
+                    dest_dataset=dest_dataset,
+                )
+                if progress:
+                    await _persist_sync_progress(job_id, log_entry_id, progress)
+                await _asyncio.sleep(30)
+                continue
+
+            await _finalize_sync_job(
+                job_id, log_entry_id, dest_node, dest_dataset, job_key
+            )
+            return
+    except Exception as e:
+        logger.warning(f"Monitor job {job_id} interrotto: {e}")
+    finally:
+        scheduler_service.mark_done(job_key)
+
+
+async def _reconcile_running_sync_jobs_once() -> None:
+    """Periodicamente: chiude job completati o riavvia monitor caduti."""
+    from database import SessionLocal, SyncJob, Node, JobLog, SyncMethod
+
+    db = SessionLocal()
+    try:
+        jobs = db.query(SyncJob).filter(SyncJob.last_status == "running").all()
+        for job in jobs:
+            sync_method = job.sync_method or SyncMethod.SYNCOID.value
+            if sync_method in (SyncMethod.BTRFS_SEND.value, SyncMethod.PVE_NATIVE.value):
+                continue
+            source = db.query(Node).filter(Node.id == job.source_node_id).first()
+            dest = db.query(Node).filter(Node.id == job.dest_node_id).first()
+            if not source or not dest:
+                continue
+            try:
+                active = await syncoid_service.is_replication_active(
+                    executor_host=source.hostname,
+                    executor_port=source.ssh_port,
+                    executor_user=source.ssh_user,
+                    executor_key=source.ssh_key_path,
+                    source_dataset=job.source_dataset,
+                    dest_host=dest.hostname,
+                    dest_port=dest.ssh_port,
+                    dest_user=dest.ssh_user,
+                    dest_key=dest.ssh_key_path,
+                    dest_dataset=job.dest_dataset,
+                )
+            except Exception:
+                active = False
+
+            log = (
+                db.query(JobLog)
+                .filter(JobLog.job_id == job.id)
+                .order_by(JobLog.started_at.desc())
+                .first()
+            )
+            if not log:
+                continue
+
+            job_key = f"sync_{job.id}"
+            if not active:
+                if not log.completed_at:
+                    await _finalize_sync_job(
+                        job.id, log.id, dest, job.dest_dataset, job_key
+                    )
+                continue
+
+            if scheduler_service.is_running(job_key):
+                continue
+
+            scheduler_service.mark_running(job_key)
+            asyncio.create_task(
+                _monitor_sync_job_completion(
+                    job_id=job.id,
+                    job_key=job_key,
+                    log_entry_id=log.id,
+                    source_node=source,
+                    dest_node=dest,
+                    source_dataset=job.source_dataset,
+                    dest_dataset=job.dest_dataset,
+                )
+            )
+            logger.info(f"Reconcile: monitor riavviato per job {job.id}")
+    except Exception as e:
+        logger.warning(f"Reconcile running sync jobs fallito: {e}")
+    finally:
+        db.close()
+
+
+async def _reconcile_pending_vm_registrations() -> None:
+    """Registra VM mancanti per job già in success (es. completati via monitor)."""
+    from database import SessionLocal, SyncJob, Node, JobLog
+    from services.ssh_service import ssh_service
+
+    db = SessionLocal()
+    try:
+        jobs = db.query(SyncJob).filter(
+            SyncJob.last_status == "success",
+            SyncJob.register_vm == True,  # noqa: E712
+            SyncJob.vm_id.isnot(None),
+        ).all()
+        for job in jobs:
+            if not _vm_group_sync_complete(db, job):
+                continue
+            target_vmid = job.dest_vm_id or job.vm_id
+            dest = db.query(Node).filter(Node.id == job.dest_node_id).first()
+            if not dest:
+                continue
+            vm_type = job.vm_type or "qemu"
+            conf = (
+                f"/etc/pve/qemu-server/{target_vmid}.conf"
+                if vm_type == "qemu"
+                else f"/etc/pve/lxc/{target_vmid}.conf"
+            )
+            exists = await ssh_service.execute(
+                hostname=dest.hostname,
+                command=f"test -f {conf} && echo yes",
+                port=dest.ssh_port,
+                username=dest.ssh_user,
+                key_path=dest.ssh_key_path,
+                timeout=15,
+            )
+            if "yes" in (exists.stdout or ""):
+                continue
+            log = (
+                db.query(JobLog)
+                .filter(JobLog.job_id == job.id)
+                .order_by(JobLog.started_at.desc())
+                .first()
+            )
+            if not log:
+                continue
+            if "registrata" in (log.message or ""):
+                continue
+            await _try_register_vm_after_sync(job.id, log.id)
+    except Exception as e:
+        logger.warning(f"Reconcile registrazioni VM pendenti fallito: {e}")
+    finally:
+        db.close()
+
+
+async def execute_sync_job_task(job_id: int, triggered_by_user_id: int = None) -> bool:
     """
-    Funzione standalone per eseguire un job di sincronizzazione.
-    Supporta sia ZFS (syncoid) che BTRFS (btrfs send/receive).
-    Può essere usata da più endpoint come task in background.
+    Esegue un job di sync. Ritorna True se il lock scheduler va tenuto
+    (replica ancora attiva sui nodi, monitor in background).
     """
     from database import SessionLocal, SyncJob, Node, JobLog, SyncMethod
     from services.syncoid_service import syncoid_service
@@ -113,13 +599,13 @@ async def execute_sync_job_task(job_id: int, triggered_by_user_id: int = None):
         # Recupera job e nodi dal database
         job = db_session.query(SyncJob).filter(SyncJob.id == job_id).first()
         if not job:
-            return
+            return False
         
         source_node = db_session.query(Node).filter(Node.id == job.source_node_id).first()
         dest_node = db_session.query(Node).filter(Node.id == job.dest_node_id).first()
         
         if not source_node or not dest_node:
-            return
+            return False
         
         # Determina il tipo di job
         sync_method = job.sync_method or SyncMethod.SYNCOID.value
@@ -290,26 +776,45 @@ async def execute_sync_job_task(job_id: int, triggered_by_user_id: int = None):
                     else:
                         log_entry.message = f"Attenzione: impossibile creare {dest_parent}: {create_result.stderr}"
             
-            # Esegui sync ZFS
-            result = await syncoid_service.run_sync(
-                executor_host=source_node.hostname,
-                source_host=None,
-                source_dataset=job.source_dataset,
-                dest_host=dest_node.hostname,
-                dest_dataset=job.dest_dataset,
-                dest_user=dest_node.ssh_user,
-                dest_port=dest_node.ssh_port,
-                dest_key=dest_node.ssh_key_path,
-                executor_port=source_node.ssh_port,
-                executor_user=source_node.ssh_user,
-                executor_key=source_node.ssh_key_path,
-                recursive=job.recursive,
-                compress=job.compress or "lz4",
-                mbuffer_size=job.mbuffer_size or "128M",
-                no_sync_snap=job.no_sync_snap,
-                force_delete=job.force_delete,
-                extra_args=job.extra_args or ""
+            # Esegui sync ZFS (con polling avanzamento ogni 30s)
+            stop_progress = asyncio.Event()
+            progress_task = asyncio.create_task(
+                _poll_sync_progress(
+                    stop_progress,
+                    job_id,
+                    log_entry.id,
+                    source_node,
+                    dest_node,
+                    job.source_dataset,
+                    job.dest_dataset,
+                )
             )
+            try:
+                result = await syncoid_service.run_sync(
+                    executor_host=source_node.hostname,
+                    source_host=None,
+                    source_dataset=job.source_dataset,
+                    dest_host=dest_node.hostname,
+                    dest_dataset=job.dest_dataset,
+                    dest_user=dest_node.ssh_user,
+                    dest_port=dest_node.ssh_port,
+                    dest_key=dest_node.ssh_key_path,
+                    executor_port=source_node.ssh_port,
+                    executor_user=source_node.ssh_user,
+                    executor_key=source_node.ssh_key_path,
+                    recursive=job.recursive,
+                    compress=job.compress or "lz4",
+                    mbuffer_size=job.mbuffer_size or "128M",
+                    no_sync_snap=job.no_sync_snap,
+                    force_delete=job.force_delete,
+                    extra_args=job.extra_args or ""
+                )
+            finally:
+                stop_progress.set()
+                try:
+                    await asyncio.wait_for(progress_task, timeout=5)
+                except Exception:
+                    progress_task.cancel()
             
             # Se retention configurata, crea snapshot backup_* sulla destinazione DOPO il sync
             use_retention = job.keep_snapshots and job.keep_snapshots > 0
@@ -369,6 +874,43 @@ async def execute_sync_job_task(job_id: int, triggered_by_user_id: int = None):
                             result["retention_deleted"] = deleted_count
         
         # Aggiorna job e log
+        if result.get("still_running"):
+            # Transfer ancora in corso sui nodi: non marcare failed.
+            job_record.last_status = "running"
+            if hasattr(job_record, "current_status"):
+                try:
+                    job_record.current_status = "running"
+                except Exception:
+                    pass
+            log_entry.status = "started"
+            note = (
+                "Replica ancora in esecuzione sui nodi sorgente/destinazione "
+                "(syncoid o zfs receive attivo). "
+                "Il monitoraggio continuerà fino al completamento."
+            )
+            err_hint = (result.get("error") or "").strip()
+            if err_hint:
+                note += f"\nNota syncoid: {err_hint[:500]}"
+            log_entry.message = (log_entry.message or "") + (" | " if log_entry.message else "") + note
+            if result.get("output"):
+                prev = log_entry.output or ""
+                sep = "\n--- output ---\n" if prev else ""
+                log_entry.output = prev + sep + result["output"]
+            db_session.commit()
+            job_key = f"sync_{job_id}"
+            asyncio.create_task(
+                _monitor_sync_job_completion(
+                    job_id=job_id,
+                    job_key=job_key,
+                    log_entry_id=log_entry.id,
+                    source_node=source_node,
+                    dest_node=dest_node,
+                    source_dataset=job.source_dataset,
+                    dest_dataset=job.dest_dataset,
+                )
+            )
+            return True
+
         job_record.last_run = datetime.utcnow()
         job_record.last_duration = result["duration"]
         job_record.last_transferred = result.get("transferred")
@@ -376,56 +918,15 @@ async def execute_sync_job_task(job_id: int, triggered_by_user_id: int = None):
         
         if result["success"]:
             job_record.last_status = "success"
+            if hasattr(job_record, "current_status"):
+                try:
+                    job_record.current_status = "idle"
+                except Exception:
+                    pass
             job_record.consecutive_failures = 0
             log_entry.status = "success"
             log_entry.message = (log_entry.message or "") + " Sincronizzazione completata"
-            
-            # Registrazione VM se richiesta
-            if job.register_vm and job.vm_id:
-                from services.proxmox_service import proxmox_service
-                target_vmid = job.dest_vm_id if job.dest_vm_id else job.vm_id
-                
-                try:
-                    vm_type = job.vm_type or "qemu"
-                    config_path = f"/etc/pve/qemu-server/{job.vm_id}.conf" if vm_type == "qemu" else f"/etc/pve/lxc/{job.vm_id}.conf"
-                    
-                    config_result = await ssh_service.execute(
-                        hostname=source_node.hostname,
-                        command=f"cat {config_path} 2>/dev/null",
-                        port=source_node.ssh_port,
-                        username=source_node.ssh_user,
-                        key_path=source_node.ssh_key_path,
-                        timeout=30
-                    )
-                    
-                    if config_result.success and config_result.stdout.strip():
-                        dest_zfs_pool = "/".join(job.dest_dataset.split("/")[:-1]) or job.dest_dataset.split("/")[0]
-                        
-                        success, msg, warnings = await proxmox_service.register_vm(
-                            hostname=dest_node.hostname,
-                            vmid=target_vmid,
-                            vm_type=vm_type,
-                            config_content=config_result.stdout,
-                            source_storage=job.source_storage,
-                            dest_storage=job.dest_storage,
-                            dest_zfs_pool=dest_zfs_pool,
-                            vm_name_suffix=job.dest_vm_name_suffix,
-                            port=dest_node.ssh_port,
-                            username=dest_node.ssh_user,
-                            key_path=dest_node.ssh_key_path
-                        )
-                        
-                        if success:
-                            vm_info = f"VM {target_vmid}" + (f" (da {job.vm_id})" if target_vmid != job.vm_id else "")
-                            log_entry.message += f" | {vm_info} registrata"
-                            if warnings:
-                                log_entry.message += f" [Avvisi: {'; '.join(warnings)}]"
-                        else:
-                            log_entry.message += f" | Registrazione VM fallita: {msg}"
-                    else:
-                        log_entry.message += f" | Config VM non trovata su sorgente"
-                except Exception as e:
-                    log_entry.message += f" | Errore registrazione VM: {str(e)}"
+            await _try_register_vm_after_sync(job_id, log_entry.id)
             
             # Log retention info
             if use_retention:
@@ -436,6 +937,11 @@ async def execute_sync_job_task(job_id: int, triggered_by_user_id: int = None):
                     log_entry.message += f" | Retention: {job.keep_snapshots} versioni"
         else:
             job_record.last_status = "failed"
+            if hasattr(job_record, "current_status"):
+                try:
+                    job_record.current_status = "idle"
+                except Exception:
+                    pass
             job_record.error_count += 1
             job_record.consecutive_failures += 1
             log_entry.status = "failed"
@@ -480,10 +986,64 @@ async def execute_sync_job_task(job_id: int, triggered_by_user_id: int = None):
             )
         except Exception as notify_err:
             # Non bloccare se la notifica fallisce
-            import logging
             logging.getLogger(__name__).warning(f"Errore invio notifica: {notify_err}")
         
+        return False
+        
     except Exception as e:
+        # Se la replica e' ancora attiva sui nodi, non segnare failed.
+        still_active = False
+        try:
+            if (
+                job_record
+                and source_node
+                and dest_node
+                and (job_record.sync_method or SyncMethod.SYNCOID.value) not in (
+                    SyncMethod.BTRFS_SEND.value,
+                    SyncMethod.PVE_NATIVE.value,
+                )
+            ):
+                still_active = await syncoid_service.is_replication_active(
+                    executor_host=source_node.hostname,
+                    executor_port=source_node.ssh_port,
+                    executor_user=source_node.ssh_user,
+                    executor_key=source_node.ssh_key_path,
+                    source_dataset=job_record.source_dataset,
+                    dest_host=dest_node.hostname,
+                    dest_port=dest_node.ssh_port,
+                    dest_user=dest_node.ssh_user,
+                    dest_key=dest_node.ssh_key_path,
+                    dest_dataset=job_record.dest_dataset,
+                )
+        except Exception:
+            still_active = False
+
+        if still_active and log_entry and job_record:
+            job_record.last_status = "running"
+            if hasattr(job_record, "current_status"):
+                try:
+                    job_record.current_status = "running"
+                except Exception:
+                    pass
+            log_entry.message = (
+                (log_entry.message or "")
+                + " | Eccezione lato manager ma replica ancora attiva sui nodi"
+            )
+            db_session.commit()
+            job_key = f"sync_{job_id}"
+            asyncio.create_task(
+                _monitor_sync_job_completion(
+                    job_id=job_id,
+                    job_key=job_key,
+                    log_entry_id=log_entry.id,
+                    source_node=source_node,
+                    dest_node=dest_node,
+                    source_dataset=job_record.source_dataset,
+                    dest_dataset=job_record.dest_dataset,
+                )
+            )
+            return True
+
         if log_entry:
             log_entry.status = "failed"
             log_entry.error = f"Eccezione Python: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
@@ -492,6 +1052,11 @@ async def execute_sync_job_task(job_id: int, triggered_by_user_id: int = None):
         if job_record:
             try:
                 job_record.last_status = "failed"
+                if hasattr(job_record, "current_status"):
+                    try:
+                        job_record.current_status = "idle"
+                    except Exception:
+                        pass
                 job_record.error_count += 1
                 job_record.consecutive_failures += 1
             except:
@@ -501,16 +1066,19 @@ async def execute_sync_job_task(job_id: int, triggered_by_user_id: int = None):
             db_session.commit()
         except:
             pass
+        return False
     finally:
         db_session.close()
 
 
 async def _run_sync_job_background(job_id: int, job_key: str, triggered_by_user_id: int = None):
-    """Avvia execute_sync_job_task in background e rilascia sempre il lock scheduler."""
+    """Avvia execute_sync_job_task in background; rilascia lock se il job termina qui."""
+    keep_lock = False
     try:
-        await execute_sync_job_task(job_id, triggered_by_user_id)
+        keep_lock = await execute_sync_job_task(job_id, triggered_by_user_id)
     finally:
-        scheduler_service.mark_done(job_key)
+        if not keep_lock:
+            scheduler_service.mark_done(job_key)
 
 
 # ============== Schemas ==============
@@ -694,6 +1262,7 @@ class SyncJobResponse(BaseModel):
     max_retries: int
     last_run: Optional[datetime]
     last_status: Optional[str]
+    current_status: Optional[str] = None
     last_duration: Optional[int]
     last_transferred: Optional[str]
     last_sync_type: Optional[str] = None  # full/incremental per BTRFS
@@ -709,9 +1278,343 @@ class SyncJobResponse(BaseModel):
 class SyncJobResponseWithNodes(SyncJobResponse):
     source_node_name: Optional[str] = None
     dest_node_name: Optional[str] = None
+    is_replicating: bool = False
+    transfer_progress: Optional[Dict[str, Any]] = None
+    group_transfer_progress: Optional[Dict[str, Any]] = None
+    group_disks_done: Optional[int] = None
+    group_disks_total: Optional[int] = None
+    group_is_running: bool = False
+
+
+def _vm_group_key(vm_group_id: str) -> str:
+    return f"vmgroup_{vm_group_id}"
+
+
+async def _wait_sync_job_terminal(job_id: int, job_key: str, poll_sec: int = 15, max_iter: int = 1440) -> str:
+    """Attende che un job sync termini (success/failed). max_iter ~6h @ 15s."""
+    from database import SessionLocal, SyncJob
+
+    for _ in range(max_iter):
+        db = SessionLocal()
+        try:
+            job = db.query(SyncJob).filter(SyncJob.id == job_id).first()
+            st = (job.last_status or "").lower() if job else ""
+        finally:
+            db.close()
+        if st in ("success", "failed"):
+            return st
+        if not scheduler_service.is_running(job_key) and st not in ("running", "started", ""):
+            return st or "unknown"
+        await asyncio.sleep(poll_sec)
+    return "timeout"
+
+
+async def execute_vm_group_sync_task(
+    vm_group_id: str,
+    triggered_by_user_id: int = None,
+) -> None:
+    """Replica sequenziale di tutti i dischi di un gruppo VM (salta quelli già success)."""
+    from database import SessionLocal, SyncJob
+
+    db = SessionLocal()
+    try:
+        jobs = (
+            db.query(SyncJob)
+            .filter(SyncJob.vm_group_id == vm_group_id, SyncJob.is_active == True)  # noqa: E712
+            .order_by(SyncJob.id)
+            .all()
+        )
+        job_ids = [j.id for j in jobs]
+    finally:
+        db.close()
+
+    logger.info(f"VM group {vm_group_id}: avvio replica sequenziale ({len(job_ids)} dischi)")
+
+    for job_id in job_ids:
+        db = SessionLocal()
+        try:
+            job = db.query(SyncJob).filter(SyncJob.id == job_id).first()
+            if not job:
+                continue
+            status = (job.last_status or "").lower()
+        finally:
+            db.close()
+
+        if status == "success":
+            continue
+        if status == "failed":
+            logger.warning(f"VM group {vm_group_id}: interrotto — job {job_id} fallito")
+            break
+
+        job_key = f"sync_{job_id}"
+        if scheduler_service.is_running(job_key):
+            final = await _wait_sync_job_terminal(job_id, job_key)
+            if final == "success":
+                continue
+            if final == "failed":
+                break
+            continue
+
+        if not scheduler_service.mark_running(job_key):
+            final = await _wait_sync_job_terminal(job_id, job_key)
+            if final == "failed":
+                break
+            continue
+
+        keep_lock = False
+        try:
+            keep_lock = await execute_sync_job_task(job_id, triggered_by_user_id)
+        except Exception as e:
+            logger.error(f"VM group {vm_group_id} job {job_id}: {e}", exc_info=True)
+            scheduler_service.mark_done(job_key)
+            break
+
+        if keep_lock:
+            final = await _wait_sync_job_terminal(job_id, job_key)
+            if final == "failed":
+                break
+        else:
+            scheduler_service.mark_done(job_key)
+            db = SessionLocal()
+            try:
+                job = db.query(SyncJob).filter(SyncJob.id == job_id).first()
+                if (job.last_status or "").lower() == "failed":
+                    break
+            finally:
+                db.close()
+
+    await _reconcile_pending_vm_registrations()
+
+
+async def _run_vm_group_background(
+    vm_group_id: str,
+    group_key: str,
+    triggered_by_user_id: int = None,
+) -> None:
+    try:
+        await execute_vm_group_sync_task(vm_group_id, triggered_by_user_id)
+    finally:
+        scheduler_service.mark_done(group_key)
+
+
+async def _continue_vm_group_chain(vm_group_id: str, triggered_by_user_id: int = None) -> None:
+    """Avvia il disco successivo se un job del gruppo è appena terminato."""
+    group_key = _vm_group_key(vm_group_id)
+    if scheduler_service.is_running(group_key):
+        return
+
+    from database import SessionLocal, SyncJob
+
+    db = SessionLocal()
+    try:
+        jobs = (
+            db.query(SyncJob)
+            .filter(SyncJob.vm_group_id == vm_group_id, SyncJob.is_active == True)  # noqa: E712
+            .order_by(SyncJob.id)
+            .all()
+        )
+        if not jobs:
+            return
+        if any((j.last_status or "").lower() == "running" for j in jobs):
+            return
+        if all((j.last_status or "").lower() == "success" for j in jobs):
+            await _reconcile_pending_vm_registrations()
+            return
+        if any((j.last_status or "").lower() == "failed" for j in jobs):
+            return
+        pending = [j for j in jobs if (j.last_status or "").lower() != "success"]
+        if not pending:
+            return
+    finally:
+        db.close()
+
+    if not scheduler_service.mark_running(group_key):
+        return
+    asyncio.create_task(_run_vm_group_background(vm_group_id, group_key, triggered_by_user_id))
+
+
+async def _compute_vm_group_progress(
+    group_jobs: List[SyncJob],
+    live_by_id: Dict[int, Dict[str, Any]],
+    nodes_by_id: Dict[int, Node],
+) -> Optional[Dict[str, Any]]:
+    """Progresso cumulativo su tutti i dischi del gruppo VM."""
+    total_source = 0
+    total_dest = 0
+    disks_done = 0
+    disks_total = len(group_jobs)
+
+    for job in group_jobs:
+        st = (live_by_id.get(job.id, {}).get("last_status") or job.last_status or "").lower()
+        if st == "success":
+            disks_done += 1
+
+        source_node = nodes_by_id.get(job.source_node_id)
+        dest_node = nodes_by_id.get(job.dest_node_id)
+        if not source_node or not dest_node:
+            continue
+
+        prog = live_by_id.get(job.id, {}).get("transfer_progress")
+        if not prog:
+            try:
+                prog = await syncoid_service.get_replication_progress(
+                    executor_host=source_node.hostname,
+                    executor_port=source_node.ssh_port,
+                    executor_user=source_node.ssh_user,
+                    executor_key=source_node.ssh_key_path,
+                    source_dataset=job.source_dataset,
+                    dest_host=dest_node.hostname,
+                    dest_port=dest_node.ssh_port,
+                    dest_user=dest_node.ssh_user,
+                    dest_key=dest_node.ssh_key_path,
+                    dest_dataset=job.dest_dataset,
+                )
+            except Exception:
+                prog = None
+
+        if prog:
+            total_source += int(prog.get("source_bytes") or 0)
+            total_dest += int(prog.get("dest_bytes") or 0)
+
+    if total_source <= 0:
+        return None
+
+    percent = min(100.0, round((total_dest / total_source) * 100.0, 1))
+    src_h = syncoid_service.format_bytes(total_source)
+    dst_h = syncoid_service.format_bytes(total_dest)
+    return {
+        "percent": percent,
+        "source_bytes": total_source,
+        "dest_bytes": total_dest,
+        "source_human": src_h,
+        "dest_human": dst_h,
+        "disks_done": disks_done,
+        "disks_total": disks_total,
+        "label": f"{dst_h} / {src_h} — {disks_done}/{disks_total} dischi ({percent}%)",
+    }
 
 
 # ============== Helper Functions ==============
+
+async def _get_sync_job_live_state(job: SyncJob, source_node: Node, dest_node: Node) -> Dict[str, Any]:
+    """Stato live da nodi remoti (syncoid/receive attivo + percentuale)."""
+    sync_method = job.sync_method or SyncMethod.SYNCOID.value
+    if sync_method in (SyncMethod.BTRFS_SEND.value, SyncMethod.PVE_NATIVE.value):
+        return {
+            "is_replicating": False,
+            "transfer_progress": None,
+            "last_status": job.last_status,
+            "current_status": getattr(job, "current_status", None),
+        }
+
+    job_key = f"sync_{job.id}"
+    in_mem = scheduler_service.is_running(job_key)
+    db_running = (job.last_status or "").lower() == "running"
+    is_replicating = in_mem or db_running
+
+    if not is_replicating and (job.last_status or "").lower() in ("failed", "running"):
+        try:
+            is_replicating = await syncoid_service.is_replication_active(
+                executor_host=source_node.hostname,
+                executor_port=source_node.ssh_port,
+                executor_user=source_node.ssh_user,
+                executor_key=source_node.ssh_key_path,
+                source_dataset=job.source_dataset,
+                dest_host=dest_node.hostname,
+                dest_port=dest_node.ssh_port,
+                dest_user=dest_node.ssh_user,
+                dest_key=dest_node.ssh_key_path,
+                dest_dataset=job.dest_dataset,
+            )
+        except Exception as e:
+            logger.debug(f"live state job {job.id}: {e}")
+
+    transfer_progress = None
+    if is_replicating:
+        try:
+            transfer_progress = await syncoid_service.get_replication_progress(
+                executor_host=source_node.hostname,
+                executor_port=source_node.ssh_port,
+                executor_user=source_node.ssh_user,
+                executor_key=source_node.ssh_key_path,
+                source_dataset=job.source_dataset,
+                dest_host=dest_node.hostname,
+                dest_port=dest_node.ssh_port,
+                dest_user=dest_node.ssh_user,
+                dest_key=dest_node.ssh_key_path,
+                dest_dataset=job.dest_dataset,
+            )
+        except Exception as e:
+            logger.debug(f"transfer_progress list job {job.id}: {e}")
+
+    last_status = job.last_status
+    current_status = getattr(job, "current_status", None)
+    if is_replicating:
+        last_status = "running"
+        current_status = "running"
+
+    return {
+        "is_replicating": is_replicating,
+        "transfer_progress": transfer_progress,
+        "last_status": last_status,
+        "current_status": current_status,
+    }
+
+
+
+async def reconcile_sync_jobs_after_restart() -> None:
+    """Allinea DB e riavvia monitor per replica ancora attiva dopo restart backend."""
+    from database import SessionLocal, SyncJob, Node, SyncMethod
+
+    db = SessionLocal()
+    try:
+        jobs = db.query(SyncJob).filter(SyncJob.last_status == "failed").all()
+        for job in jobs:
+            sync_method = job.sync_method or SyncMethod.SYNCOID.value
+            if sync_method in (SyncMethod.BTRFS_SEND.value, SyncMethod.PVE_NATIVE.value):
+                continue
+            source = db.query(Node).filter(Node.id == job.source_node_id).first()
+            dest = db.query(Node).filter(Node.id == job.dest_node_id).first()
+            if not source or not dest:
+                continue
+            try:
+                active = await syncoid_service.is_replication_active(
+                    executor_host=source.hostname,
+                    executor_port=source.ssh_port,
+                    executor_user=source.ssh_user,
+                    executor_key=source.ssh_key_path,
+                    source_dataset=job.source_dataset,
+                    dest_host=dest.hostname,
+                    dest_port=dest.ssh_port,
+                    dest_user=dest.ssh_user,
+                    dest_key=dest.ssh_key_path,
+                    dest_dataset=job.dest_dataset,
+                )
+            except Exception:
+                active = False
+            if active:
+                job.last_status = "running"
+                if hasattr(job, "current_status"):
+                    try:
+                        job.current_status = "running"
+                    except Exception:
+                        pass
+                logger.info(
+                    f"Reconcile startup: job {job.id} failed in DB ma ancora attivo → running"
+                )
+        db.commit()
+    except Exception as e:
+        logger.warning(f"Reconcile sync jobs startup fallito: {e}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+    await _reconcile_running_sync_jobs_once()
+    await _reconcile_pending_vm_registrations()
+
 
 def check_job_access(user: User, job: SyncJob, db: Session) -> bool:
     """Verifica se l'utente ha accesso al job"""
@@ -871,20 +1774,58 @@ async def list_sync_jobs(
 ):
     """Lista tutti i job di sincronizzazione"""
     jobs = db.query(SyncJob).all()
-    
+    accessible = [j for j in jobs if check_job_access(user, j, db)]
+    nodes_by_id = {n.id: n for n in db.query(Node).all()}
+
+    live_by_id: Dict[int, Dict[str, Any]] = {}
+    for job in accessible:
+        source_node = nodes_by_id.get(job.source_node_id)
+        dest_node = nodes_by_id.get(job.dest_node_id)
+        if source_node and dest_node:
+            live_by_id[job.id] = await _get_sync_job_live_state(job, source_node, dest_node)
+
+    groups: Dict[str, List[SyncJob]] = {}
+    for job in accessible:
+        if job.vm_group_id:
+            groups.setdefault(job.vm_group_id, []).append(job)
+
+    group_progress: Dict[str, Dict[str, Any]] = {}
+    for gid, group_jobs in groups.items():
+        gp = await _compute_vm_group_progress(group_jobs, live_by_id, nodes_by_id)
+        if gp:
+            group_progress[gid] = gp
+
+    group_is_running: Dict[str, bool] = {}
+    for gid, group_jobs in groups.items():
+        gkey = _vm_group_key(gid)
+        group_is_running[gid] = scheduler_service.is_running(gkey) or any(
+            live_by_id.get(j.id, {}).get("is_replicating")
+            or (live_by_id.get(j.id, {}).get("last_status") or "").lower() == "running"
+            for j in group_jobs
+        )
+
     result = []
-    for job in jobs:
-        if not check_job_access(user, job, db):
-            continue
-            
+    for job in accessible:
         job_dict = SyncJobResponse.model_validate(job).model_dump()
-        
-        source_node = db.query(Node).filter(Node.id == job.source_node_id).first()
-        dest_node = db.query(Node).filter(Node.id == job.dest_node_id).first()
-        
+        source_node = nodes_by_id.get(job.source_node_id)
+        dest_node = nodes_by_id.get(job.dest_node_id)
         job_dict["source_node_name"] = source_node.name if source_node else None
         job_dict["dest_node_name"] = dest_node.name if dest_node else None
-        
+
+        live = live_by_id.get(job.id, {})
+        job_dict["is_replicating"] = live.get("is_replicating", False)
+        job_dict["transfer_progress"] = live.get("transfer_progress")
+        job_dict["last_status"] = live.get("last_status", job.last_status)
+        job_dict["current_status"] = live.get("current_status", getattr(job, "current_status", None))
+
+        if job.vm_group_id:
+            if job.vm_group_id in group_progress:
+                gp = group_progress[job.vm_group_id]
+                job_dict["group_transfer_progress"] = gp
+                job_dict["group_disks_done"] = gp.get("disks_done")
+                job_dict["group_disks_total"] = gp.get("disks_total")
+            job_dict["group_is_running"] = group_is_running.get(job.vm_group_id, False)
+
         result.append(SyncJobResponseWithNodes(**job_dict))
     
     return result
@@ -1151,8 +2092,14 @@ async def create_vm_replica_jobs(
         # Crea il job
         # Determina storage sorgente (dal disco) e destinazione
         source_storage = disk.get("storage", None)  # es: local-zfs
-        # Se dest_storage non specificato, usa dest_subfolder come nome storage
-        dest_storage = vm_data.dest_storage or (vm_data.dest_subfolder if vm_data.dest_subfolder else vm_data.dest_pool)
+        dest_zfs_path = (
+            f"{vm_data.dest_pool}/{vm_data.dest_subfolder}"
+            if vm_data.dest_subfolder
+            else vm_data.dest_pool
+        )
+        base_storage = vm_data.dest_storage or vm_data.dest_pool
+        from services.proxmox_service import proxmox_service as _px
+        dest_storage = _px.derive_zfs_storage_name(base_storage, dest_zfs_path)
         
         db_job = SyncJob(
             name=job_name,
@@ -1256,52 +2203,39 @@ async def get_vm_group_jobs(
 @router.post("/vm-group/{vm_group_id}/run")
 async def run_vm_group_jobs(
     vm_group_id: str,
+    request: Request,
     background_tasks: BackgroundTasks,
     user: User = Depends(require_operator),
     db: Session = Depends(get_db)
 ):
-    """Esegue manualmente tutti i job di un gruppo VM.
-
-    Forza l'esecuzione (anche se il job non e' schedulato) per ogni
-    disk-job del gruppo, salvo lock di esecuzione gia' attivo per quel
-    job specifico.
-    """
+    """Esegue in sequenza tutti i dischi del gruppo VM (salta quelli già replicati)."""
     jobs = db.query(SyncJob).filter(SyncJob.vm_group_id == vm_group_id).all()
 
     if not jobs:
         raise HTTPException(status_code=404, detail="Gruppo non trovato")
 
-    started = 0
-    skipped = 0
-    skipped_reasons: list[str] = []
-    for job in jobs:
-        if not check_job_access(user, job, db):
-            continue
-        if not job.is_active:
-            skipped += 1
-            skipped_reasons.append(f"job {job.id} disattivato")
-            continue
-        job_key = f"sync_{job.id}"
-        if not scheduler_service.mark_running(job_key):
-            skipped += 1
-            skipped_reasons.append(f"job {job.id} gia' in esecuzione")
-            continue
+    active_jobs = [j for j in jobs if check_job_access(user, j, db) and j.is_active]
+    if not active_jobs:
+        raise HTTPException(status_code=403, detail="Nessun job accessibile nel gruppo")
 
-        background_tasks.add_task(_run_sync_job_background, job.id, job_key, user.id)
-        started += 1
+    group_key = _vm_group_key(vm_group_id)
+    if not scheduler_service.mark_running(group_key):
+        raise HTTPException(status_code=409, detail="Replica VM già in esecuzione")
 
-    if started == 0:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Nessun job avviato. {' / '.join(skipped_reasons) or 'nessuno disponibile'}",
-        )
+    background_tasks.add_task(_run_vm_group_background, vm_group_id, group_key, user.id)
+
+    log_audit(
+        db, user.id, "vm_group_started", "sync_job",
+        details=f"Sequential run group {vm_group_id} ({len(active_jobs)} dischi)",
+        ip_address=request.client.host if request.client else None,
+    )
 
     return {
         "success": True,
         "vm_group_id": vm_group_id,
-        "jobs_started": started,
-        "jobs_skipped": skipped,
-        "skipped_reasons": skipped_reasons,
+        "mode": "sequential",
+        "disks_total": len(active_jobs),
+        "message": f"Replica sequenziale avviata ({len(active_jobs)} dischi)",
     }
 
 
@@ -1501,6 +2435,25 @@ async def run_sync_job(
     if not source_node or not dest_node:
         raise HTTPException(status_code=400, detail="Nodi non configurati correttamente")
 
+    if job.vm_group_id:
+        group_key = _vm_group_key(job.vm_group_id)
+        if not scheduler_service.mark_running(group_key):
+            raise HTTPException(status_code=409, detail="Replica VM già in esecuzione")
+        background_tasks.add_task(
+            _run_vm_group_background, job.vm_group_id, group_key, user.id
+        )
+        log_audit(
+            db, user.id, "sync_job_started", "sync_job",
+            resource_id=job_id,
+            details=f"Manual run VM group {job.vm_group_id} (da job {job.name})",
+            ip_address=request.client.host if request.client else None,
+        )
+        return {
+            "message": "Replica sequenziale di tutti i dischi avviata",
+            "vm_group_id": job.vm_group_id,
+            "mode": "sequential",
+        }
+
     # No double-fire: se lo scheduler ha gia' marcato il job come running,
     # rifiuta la run manuale (l'utente vedra' il progress in UI).
     job_key = f"sync_{job_id}"
@@ -1605,17 +2558,89 @@ async def get_job_progress(
             "output_tail": lines,
         }
 
+    job_key = f"sync_{job_id}"
+    in_mem_running = scheduler_service.is_running(job_key)
+    db_running = (job.last_status or "").lower() == "running"
+    log_running = bool(
+        last_log
+        and (last_log.status or "").lower() in ("started", "running")
+        and not last_log.completed_at
+    )
+    is_running = in_mem_running or db_running or log_running
+
+    sync_method = job.sync_method or SyncMethod.SYNCOID.value
+    if not is_running and sync_method not in (
+        SyncMethod.BTRFS_SEND.value,
+        SyncMethod.PVE_NATIVE.value,
+    ):
+        source_node = db.query(Node).filter(Node.id == job.source_node_id).first()
+        dest_node = db.query(Node).filter(Node.id == job.dest_node_id).first()
+        if source_node and dest_node:
+            try:
+                remote_active = await syncoid_service.is_replication_active(
+                    executor_host=source_node.hostname,
+                    executor_port=source_node.ssh_port,
+                    executor_user=source_node.ssh_user,
+                    executor_key=source_node.ssh_key_path,
+                    source_dataset=job.source_dataset,
+                    dest_host=dest_node.hostname,
+                    dest_port=dest_node.ssh_port,
+                    dest_user=dest_node.ssh_user,
+                    dest_key=dest_node.ssh_key_path,
+                    dest_dataset=job.dest_dataset,
+                )
+                if remote_active:
+                    is_running = True
+                    if (job.last_status or "").lower() != "running":
+                        job.last_status = "running"
+                        if hasattr(job, "current_status"):
+                            try:
+                                job.current_status = "running"
+                            except Exception:
+                                pass
+                        db.commit()
+            except Exception as e:
+                logger.debug(f"remote active check job {job_id}: {e}")
+
+    transfer_progress = None
+    if is_running and sync_method not in (
+        SyncMethod.BTRFS_SEND.value,
+        SyncMethod.PVE_NATIVE.value,
+    ):
+        source_node = db.query(Node).filter(Node.id == job.source_node_id).first()
+        dest_node = db.query(Node).filter(Node.id == job.dest_node_id).first()
+        if source_node and dest_node:
+            try:
+                transfer_progress = await syncoid_service.get_replication_progress(
+                    executor_host=source_node.hostname,
+                    executor_port=source_node.ssh_port,
+                    executor_user=source_node.ssh_user,
+                    executor_key=source_node.ssh_key_path,
+                    source_dataset=job.source_dataset,
+                    dest_host=dest_node.hostname,
+                    dest_port=dest_node.ssh_port,
+                    dest_user=dest_node.ssh_user,
+                    dest_key=dest_node.ssh_key_path,
+                    dest_dataset=job.dest_dataset,
+                )
+            except Exception as e:
+                logger.debug(f"transfer_progress job {job_id}: {e}")
+
+    eff_last = "running" if is_running else job.last_status
+    eff_current = "running" if is_running else getattr(job, "current_status", None)
+
     return {
         "id": job.id,
         "name": job.name,
-        "is_running": scheduler_service.is_running(f"sync_{job_id}"),
-        "current_status": getattr(job, "current_status", None),
-        "last_status": job.last_status,
+        "is_running": is_running,
+        "current_status": eff_current,
+        "last_status": eff_last,
         "last_run": job.last_run.isoformat() if job.last_run else None,
         "last_duration": getattr(job, "last_duration", None),
         "last_transferred": getattr(job, "last_transferred", None),
         "run_count": getattr(job, "run_count", 0),
         "error_count": getattr(job, "error_count", 0),
+        "transfer_progress": transfer_progress,
         "log": log_payload,
     }
 

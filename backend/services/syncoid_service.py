@@ -265,6 +265,17 @@ class SyncoidService:
 
         logger.info(f"Esecuzione syncoid: {cmd}")
 
+        # Rimuovi eventuale dataset placeholder vuoto creato manualmente
+        # (syncoid rifiuta di sovrascriverlo senza --force-delete).
+        if dest_host:
+            await self._remove_empty_dest_placeholder(
+                dest_host=dest_host,
+                dest_port=dest_port,
+                dest_user=dest_user,
+                dest_key=executor_key,
+                dest_dataset=dest_dataset,
+            )
+
         # Esegui comando
         result = await ssh_service.execute(
             hostname=executor_host,
@@ -275,6 +286,8 @@ class SyncoidService:
             timeout=timeout
         )
 
+        combined_out = (result.stderr or "") + (result.stdout or "")
+
         # Auto-recovery: il dataset destinazione può rimanere "locked" da un
         # processo `zfs receive` orfano (parent SSH morto) o da un receive
         # parziale interrotto. Sintomo tipico:
@@ -284,7 +297,7 @@ class SyncoidService:
         if (
             not result.success
             and dest_host
-            and self._is_stuck_receive_error(result.stderr + result.stdout)
+            and self._is_stuck_receive_error(combined_out)
         ):
             logger.warning(
                 f"Rilevato lock di receive su {dest_host}:{dest_dataset}, "
@@ -306,15 +319,65 @@ class SyncoidService:
                     key_path=executor_key,
                     timeout=timeout,
                 )
+                combined_out = (result.stderr or "") + (result.stdout or "")
+
+        # Placeholder vuoto rimasto: syncoid "Cowardly refusing to destroy"
+        if (
+            not result.success
+            and dest_host
+            and self._is_empty_dest_placeholder_error(combined_out)
+        ):
+            logger.warning(
+                f"Placeholder vuoto su {dest_host}:{dest_dataset}, "
+                f"rimuovo e retry syncoid"
+            )
+            removed = await self._remove_empty_dest_placeholder(
+                dest_host=dest_host,
+                dest_port=dest_port,
+                dest_user=dest_user,
+                dest_key=executor_key,
+                dest_dataset=dest_dataset,
+            )
+            if removed:
+                result = await ssh_service.execute(
+                    hostname=executor_host,
+                    command=cmd,
+                    port=executor_port,
+                    username=executor_user,
+                    key_path=executor_key,
+                    timeout=timeout,
+                )
 
         end_time = datetime.utcnow()
         duration = int((end_time - start_time).total_seconds())
+
+        still_running = False
+        if not result.success and dest_host:
+            still_running = await self.is_replication_active(
+                executor_host=executor_host,
+                executor_port=executor_port,
+                executor_user=executor_user,
+                executor_key=executor_key,
+                source_dataset=source_dataset,
+                dest_host=dest_host,
+                dest_port=dest_port,
+                dest_user=dest_user,
+                dest_key=dest_key,
+                dest_dataset=dest_dataset,
+            )
+            if still_running:
+                logger.info(
+                    f"Syncoid fallito lato SSH ma replica ancora attiva su "
+                    f"{executor_host} -> {dest_host}:{dest_dataset}; "
+                    f"non segnalare come failed"
+                )
         
         # Parse output per trasferimento
         transferred = self._parse_transferred(result.stdout + result.stderr)
         
         return {
             "success": result.success,
+            "still_running": still_running,
             "output": result.stdout,
             "error": result.stderr,
             "duration": duration,
@@ -466,6 +529,110 @@ class SyncoidService:
         if not output:
             return False
         return "already target of a zfs receive process" in output.lower()
+
+    def _is_empty_dest_placeholder_error(self, output: str) -> bool:
+        """True se syncoid rifiuta un dataset dest vuoto pre-esistente."""
+        if not output:
+            return False
+        low = output.lower()
+        return (
+            "cowardly refusing" in low
+            or "has no snapshots matching" in low
+            or "must be to a non existent dataset" in low
+        )
+
+    async def _remove_empty_dest_placeholder(
+        self,
+        dest_host: str,
+        dest_port: int,
+        dest_user: str,
+        dest_key: str,
+        dest_dataset: str,
+    ) -> bool:
+        """
+        Elimina dataset destinazione vuoto (senza snapshot, <64MB) che blocca
+        la replica iniziale syncoid. Ritorna True se rimosso.
+        """
+        ds_q = dest_dataset.replace("'", "").replace('"', "")
+        script = (
+            f"if ! zfs list -H -o name {ds_q} >/dev/null 2>&1; then "
+            f"echo removed=0; exit 0; fi; "
+            f"used=$(zfs list -Hp -o used {ds_q} 2>/dev/null | head -1); "
+            f"snaps=$(zfs list -t snapshot -H -o name {ds_q} 2>/dev/null | wc -l); "
+            f"if [ \"${{snaps}}\" -eq 0 ] && [ \"${{used:-999999999}}\" -lt 67108864 ]; then "
+            f"  zfs destroy -r {ds_q} && echo removed=1; "
+            f"else echo removed=0; fi"
+        )
+        try:
+            r = await ssh_service.execute(
+                hostname=dest_host,
+                command=script,
+                port=dest_port,
+                username=dest_user,
+                key_path=dest_key,
+                timeout=30,
+            )
+        except Exception as e:
+            logger.warning(f"_remove_empty_dest_placeholder fallito: {e}")
+            return False
+        out = (r.stdout or "") + (r.stderr or "")
+        if "removed=1" in out:
+            logger.info(f"Rimosso placeholder vuoto {dest_host}:{dest_dataset}")
+            return True
+        return False
+
+    async def is_replication_active(
+        self,
+        executor_host: str,
+        executor_port: int,
+        executor_user: str,
+        executor_key: str,
+        source_dataset: str,
+        dest_host: str,
+        dest_port: int,
+        dest_user: str,
+        dest_key: str,
+        dest_dataset: str,
+    ) -> bool:
+        """
+        True se syncoid/zfs send/receive per questo job e' ancora in esecuzione
+        sui nodi (es. timeout SSH lato dapx mentre il transfer prosegue).
+        """
+        ds = source_dataset.replace("'", "").replace('"', "")
+        dest_ds = dest_dataset.replace("'", "").replace('"', "")
+        dest_h = dest_host.replace("'", "").replace('"', "")
+
+        try:
+            # ps + grep '[s]yncoid' / '[z]fs …' evita il falso positivo di
+            # pgrep -af che matcha la shell del comando diagnostico stesso.
+            on_executor = await ssh_service.execute(
+                hostname=executor_host,
+                command=(
+                    f"(ps -eo args= 2>/dev/null | grep '[s]yncoid' | grep -F '{ds}' | grep -F '{dest_h}'; "
+                    f"ps -eo args= 2>/dev/null | grep '[z]fs send' | grep -F '{ds}') 2>/dev/null | head -1"
+                ),
+                port=executor_port,
+                username=executor_user,
+                key_path=executor_key,
+                timeout=15,
+            )
+            if (on_executor.stdout or "").strip():
+                return True
+
+            on_dest = await ssh_service.execute(
+                hostname=dest_host,
+                command=(
+                    f"ps -eo args= 2>/dev/null | grep '[z]fs receive' | grep -F '{dest_ds}' 2>/dev/null | head -1"
+                ),
+                port=dest_port,
+                username=dest_user,
+                key_path=dest_key,
+                timeout=15,
+            )
+            return bool((on_dest.stdout or "").strip())
+        except Exception as e:
+            logger.warning(f"is_replication_active fallito: {e}")
+            return False
 
     async def _unstick_dest(
         self,
@@ -651,6 +818,91 @@ class SyncoidService:
         
         # Ritorna l'ultimo comune (il più recente per creation time)
         return dest_snaps[-1] if dest_snaps else None
+
+    @staticmethod
+    def format_bytes(num: Optional[int]) -> str:
+        if num is None or num < 0:
+            return "—"
+        units = ["B", "KB", "MB", "GB", "TB", "PB"]
+        size = float(num)
+        for unit in units:
+            if size < 1024.0 or unit == units[-1]:
+                if unit == "B":
+                    return f"{int(size)} {unit}"
+                return f"{size:.2f} {unit}"
+            size /= 1024.0
+        return f"{num} B"
+
+    async def _dataset_prop_bytes(
+        self,
+        hostname: str,
+        dataset: str,
+        prop: str,
+        port: int = 22,
+        username: str = "root",
+        key_path: str = "/root/.ssh/id_rsa",
+    ) -> Optional[int]:
+        ds = dataset.replace("'", "").replace('"', "")
+        if prop not in ("used", "refer"):
+            return None
+        result = await ssh_service.execute(
+            hostname=hostname,
+            command=f"zfs list -Hp -o {prop} {ds} 2>/dev/null | head -1",
+            port=port,
+            username=username,
+            key_path=key_path,
+            timeout=15,
+        )
+        if not result.success:
+            return None
+        line = (result.stdout or "").strip().split()
+        if not line:
+            return None
+        try:
+            return int(line[0])
+        except ValueError:
+            return None
+
+    async def get_replication_progress(
+        self,
+        executor_host: str,
+        executor_port: int,
+        executor_user: str,
+        executor_key: str,
+        source_dataset: str,
+        dest_host: str,
+        dest_port: int,
+        dest_user: str,
+        dest_key: str,
+        dest_dataset: str,
+    ) -> Optional[Dict]:
+        """
+        Stima avanzamento replica ZFS: dest.used / source.refer.
+        Ritorna percent, byte e label human-readable.
+        """
+        source_refer, dest_used = await asyncio.gather(
+            self._dataset_prop_bytes(
+                executor_host, source_dataset, "refer",
+                executor_port, executor_user, executor_key,
+            ),
+            self._dataset_prop_bytes(
+                dest_host, dest_dataset, "used",
+                dest_port, dest_user, dest_key,
+            ),
+        )
+        if source_refer is None or dest_used is None or source_refer <= 0:
+            return None
+        percent = min(100.0, round((dest_used / source_refer) * 100.0, 1))
+        source_human = self.format_bytes(source_refer)
+        dest_human = self.format_bytes(dest_used)
+        return {
+            "percent": percent,
+            "source_bytes": source_refer,
+            "dest_bytes": dest_used,
+            "source_human": source_human,
+            "dest_human": dest_human,
+            "label": f"{dest_human} / {source_human} ({percent}%)",
+        }
 
 
 # Singleton

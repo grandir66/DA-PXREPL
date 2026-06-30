@@ -43,8 +43,25 @@ export interface UnifiedJob {
   last_run?: string | null
   last_status?: string | null
   current_status?: string | null
-  // Riferimento al payload originario (necessario per edit di campi
-  // specifici del tipo di job non tracciati nel modello unificato)
+  is_replicating?: boolean
+  transfer_progress?: {
+    percent: number
+    dest_human?: string
+    source_human?: string
+    label?: string
+  } | null
+  group_transfer_progress?: {
+    percent: number
+    dest_human?: string
+    source_human?: string
+    label?: string
+    disks_done?: number
+    disks_total?: number
+  } | null
+  group_disks_done?: number
+  group_disks_total?: number
+  group_is_running?: boolean
+  // Riferimento al payload originario
   raw: any
 }
 
@@ -89,6 +106,12 @@ function unifySync(j: any): UnifiedJob {
     last_run: n(j.last_run),
     last_status: n(j.last_status),
     current_status: n(j.current_status),
+    is_replicating: !!j.is_replicating,
+    transfer_progress: j.transfer_progress ?? null,
+    group_transfer_progress: j.group_transfer_progress ?? null,
+    group_disks_done: j.group_disks_done ?? null,
+    group_disks_total: j.group_disks_total ?? null,
+    group_is_running: !!j.group_is_running,
     raw: j,
   }
 }

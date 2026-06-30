@@ -521,6 +521,46 @@ class ProxmoxService:
         
         return list(set(datasets))
     
+    @staticmethod
+    def derive_zfs_storage_name(storage_name: Optional[str], zfs_pool: str) -> str:
+        """Nome storage Proxmox coerente con il dataset ZFS usato dalla replica."""
+        if not zfs_pool:
+            return storage_name or ""
+        parts = zfs_pool.split("/")
+        root = parts[0]
+        base = (storage_name or root).strip()
+        if len(parts) <= 1 or zfs_pool == base or zfs_pool == root:
+            return base
+        sub = "-".join(parts[1:])
+        if base == root:
+            return f"{root}-{sub}"
+        return f"{base}-{sub}"
+
+    async def get_storage_zfs_pool(
+        self,
+        hostname: str,
+        storage_name: str,
+        port: int = 22,
+        username: str = "root",
+        key_path: str = "/root/.ssh/id_rsa",
+    ) -> Optional[str]:
+        """Legge il pool/dataset ZFS configurato per uno storage Proxmox."""
+        # pvesm config non esiste su tutte le versioni PVE; storage.cfg è l'API stabile.
+        safe_name = storage_name.replace("'", "'\\''")
+        result = await ssh_service.execute(
+            hostname=hostname,
+            command=(
+                f"grep -A8 '^zfspool: {safe_name}$' /etc/pve/storage.cfg 2>/dev/null "
+                f"| awk '/^\\tpool /{{print $2; exit}}'"
+            ),
+            port=port,
+            username=username,
+            key_path=key_path,
+            timeout=15,
+        )
+        pool = (result.stdout or "").strip()
+        return pool or None
+
     async def ensure_zfs_storage(
         self,
         hostname: str,
@@ -534,19 +574,16 @@ class ProxmoxService:
         Verifica/crea uno storage ZFS in Proxmox.
         Necessario per registrare VM con dischi in dataset personalizzati.
         """
-        
-        # Verifica se lo storage esiste già
-        check_cmd = f"pvesm status -storage {storage_name} 2>/dev/null"
-        result = await ssh_service.execute(
-            hostname=hostname,
-            command=check_cmd,
-            port=port,
-            username=username,
-            key_path=key_path
+        existing_pool = await self.get_storage_zfs_pool(
+            hostname, storage_name, port, username, key_path
         )
-        
-        if result.success and storage_name in result.stdout:
-            return True, f"Storage {storage_name} già esistente"
+        if existing_pool:
+            if existing_pool == zfs_pool:
+                return True, f"Storage {storage_name} già configurato su {zfs_pool}"
+            return False, (
+                f"Storage '{storage_name}' punta a '{existing_pool}' ma servirebbe "
+                f"'{zfs_pool}'. Usare storage '{self.derive_zfs_storage_name(storage_name, zfs_pool)}'."
+            )
         
         # Crea lo storage ZFS
         # Il formato del pool può essere "pool" o "pool/dataset"
@@ -559,10 +596,20 @@ class ProxmoxService:
             key_path=key_path
         )
         
-        if result.success or "already exists" in result.stderr:
+        err = (result.stderr or "") + (result.stdout or "")
+        if result.success or "already exists" in err or "already defined" in err:
+            existing_pool = await self.get_storage_zfs_pool(
+                hostname, storage_name, port, username, key_path
+            )
+            if existing_pool == zfs_pool:
+                return True, f"Storage {storage_name} già configurato su {zfs_pool}"
+            if existing_pool:
+                return False, (
+                    f"Storage '{storage_name}' punta a '{existing_pool}' ma servirebbe "
+                    f"'{zfs_pool}'"
+                )
             return True, f"Storage {storage_name} creato/verificato"
-        else:
-            return False, f"Errore creazione storage: {result.stderr}"
+        return False, f"Errore creazione storage: {result.stderr}"
 
     async def register_vm(
         self,
@@ -653,10 +700,14 @@ class ProxmoxService:
                     )
         
         # Se abbiamo un dest_storage e dest_zfs_pool, creiamo/verifichiamo lo storage
+        effective_dest_storage = dest_storage
         if dest_storage and dest_zfs_pool:
+            effective_dest_storage = self.derive_zfs_storage_name(dest_storage, dest_zfs_pool)
+
+        if effective_dest_storage and dest_zfs_pool:
             storage_ok, storage_msg = await self.ensure_zfs_storage(
                 hostname=hostname,
-                storage_name=dest_storage,
+                storage_name=effective_dest_storage,
                 zfs_pool=dest_zfs_pool,
                 port=port,
                 username=username,
@@ -669,9 +720,11 @@ class ProxmoxService:
             import re
             
             # Se abbiamo source_storage e dest_storage, sostituisci nella config
-            if source_storage and dest_storage and source_storage != dest_storage:
-                # Sostituisci il nome dello storage (es: local-zfs: -> replica-storage:)
-                config_content = config_content.replace(f"{source_storage}:", f"{dest_storage}:")
+            if source_storage and effective_dest_storage and source_storage != effective_dest_storage:
+                # Sostituisci il nome dello storage (es: zfs: -> ZFS-LARGE-replica:)
+                config_content = config_content.replace(
+                    f"{source_storage}:", f"{effective_dest_storage}:"
+                )
             
             # Gestione Nome VM
             name_pattern = re.compile(r'^(name:\s*)(.+)$', re.MULTILINE)

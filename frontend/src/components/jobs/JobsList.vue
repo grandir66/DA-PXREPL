@@ -81,10 +81,30 @@
               <span class="jl-run">{{ formatRun(g.jobs[0].last_run) }}</span>
             </td>
             <td>
-              <span class="jl-status" :class="`s-${groupStatus(g)}`">
-                <span class="status-dot" /> {{ statusLabel(groupStatus(g)) }}
-              </span>
-              <span v-if="g.jobs.some(j => !j.is_active)" class="badge badge-outline">disattivato</span>
+              <div v-if="groupIsLive(g)" class="jl-progress-cell">
+                <div class="jl-progress-row">
+                  <span class="jl-status s-running">
+                    <span class="status-dot" /> In esecuzione
+                  </span>
+                  <span v-if="groupProgress(g)" class="jl-progress-pct">{{ groupProgress(g)!.percent.toFixed(1) }}%</span>
+                  <span v-else-if="g.jobs[0]?.group_disks_total && g.jobs[0].group_disks_total > 1" class="jl-progress-pct subtle">
+                    {{ g.jobs.filter(j => jobStatus(j) === 'success').length }}/{{ g.jobs[0].group_disks_total }} dischi
+                  </span>
+                </div>
+                <div class="jl-progress-bar">
+                  <div
+                    class="jl-progress-fill"
+                    :class="{ indeterminate: !groupProgress(g) }"
+                    :style="groupProgress(g) ? { width: `${Math.min(100, Math.max(0, groupProgress(g)!.percent))}%` } : undefined"
+                  />
+                </div>
+              </div>
+              <template v-else>
+                <span class="jl-status" :class="`s-${groupStatus(g)}`">
+                  <span class="status-dot" /> {{ statusLabel(groupStatus(g)) }}
+                </span>
+                <span v-if="g.jobs.some(j => !j.is_active)" class="badge badge-outline">disattivato</span>
+              </template>
             </td>
             <td class="jl-actions" @click.stop>
               <button
@@ -127,12 +147,27 @@
               <td><span class="jl-schedule subtle">{{ humanSchedule(j) }}</span></td>
               <td><span class="jl-run subtle">{{ formatRun(j.last_run) }}</span></td>
               <td>
-                <span class="jl-status" :class="`s-${jobStatus(j)}`">
+                <div v-if="jobIsLive(j)" class="jl-progress-cell">
+                  <div class="jl-progress-row">
+                    <span class="jl-status s-running">
+                      <span class="status-dot" /> In esecuzione
+                    </span>
+                    <span v-if="jobProgress(j)" class="jl-progress-pct">{{ jobProgress(j)!.percent.toFixed(1) }}%</span>
+                  </div>
+                  <div class="jl-progress-bar">
+                    <div
+                      class="jl-progress-fill"
+                      :class="{ indeterminate: !jobProgress(j) }"
+                      :style="jobProgress(j) ? { width: `${Math.min(100, Math.max(0, jobProgress(j)!.percent))}%` } : undefined"
+                    />
+                  </div>
+                </div>
+                <span v-else class="jl-status" :class="`s-${jobStatus(j)}`">
                   <span class="status-dot" /> {{ statusLabel(jobStatus(j)) }}
                 </span>
               </td>
               <td class="jl-actions">
-                <button class="btn btn-secondary btn-sm" @click="$emit('run', j)" title="Esegui">▶</button>
+                <button class="btn btn-secondary btn-sm" @click="$emit('run', j, g)" title="Esegui">▶</button>
                 <button v-if="j.kind === 'syncoid' || j.kind === 'pve_native'" class="btn btn-secondary btn-sm" @click="$emit('show-log', j)" title="Log live">…</button>
                 <button class="btn btn-secondary btn-sm" @click="$emit('edit', j)" title="Modifica">✎</button>
                 <button class="btn btn-danger btn-sm" @click="$emit('delete', j)" title="Elimina">×</button>
@@ -241,12 +276,34 @@ function toggle(g: JobGroup) {
 }
 
 function jobStatus(j: UnifiedJob): 'success' | 'failed' | 'running' | 'idle' {
+  if (j.is_replicating) return 'running'
   const cur = (j.current_status || '').toLowerCase()
   if (['running', 'backing_up', 'restoring', 'registering'].includes(cur)) return 'running'
   const last = (j.last_status || '').toLowerCase()
+  if (last === 'running' || last === 'started') return 'running'
   if (['success', 'completed', 'ok'].includes(last)) return 'success'
   if (['error', 'failed'].includes(last)) return 'failed'
   return 'idle'
+}
+
+function jobProgress(j: UnifiedJob) {
+  return j.transfer_progress ?? j.raw?.transfer_progress ?? null
+}
+
+function jobIsLive(j: UnifiedJob) {
+  return !!j.is_replicating
+}
+
+function groupIsLive(g: JobGroup) {
+  if (g.jobs.some(j => j.group_is_running)) return true
+  return g.jobs.some(j => jobStatus(j) === 'running')
+}
+
+function groupProgress(g: JobGroup) {
+  if (!groupIsLive(g)) return null
+  const p = g.jobs[0]?.group_transfer_progress ?? g.jobs[0]?.raw?.group_transfer_progress
+  if (p && typeof p.percent === 'number') return p
+  return null
 }
 
 function groupStatus(g: JobGroup): 'success' | 'failed' | 'running' | 'idle' {
@@ -554,6 +611,49 @@ function kindShort(k: JobKind) {
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.55; }
+}
+
+.jl-progress-pct.subtle {
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.jl-progress-cell {
+  min-width: 140px;
+  max-width: 220px;
+}
+.jl-progress-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: 4px;
+}
+.jl-progress-pct {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.jl-progress-bar {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.jl-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-warning-fg), var(--color-primary));
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+.jl-progress-fill.indeterminate {
+  width: 35% !important;
+  animation: jl-indeterminate 1.2s ease-in-out infinite;
+}
+@keyframes jl-indeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
 }
 
 .jl-actions {

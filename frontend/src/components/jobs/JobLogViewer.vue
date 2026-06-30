@@ -40,6 +40,22 @@
         </div>
       </header>
 
+      <div v-if="transferProgress" class="jlv-progress-wrap">
+        <div class="jlv-progress-top">
+          <span>Avanzamento replica</span>
+          <span class="jlv-progress-pct">{{ transferProgress.percent.toFixed(1) }}%</span>
+        </div>
+        <div class="jlv-progress-bar">
+          <div
+            class="jlv-progress-fill"
+            :style="{ width: Math.min(100, transferProgress.percent) + '%' }"
+          />
+        </div>
+        <div class="jlv-progress-sub">
+          {{ transferProgress.dest_human }} scritti su {{ transferProgress.source_human }} (sorgente)
+        </div>
+      </div>
+
       <div class="jlv-output" ref="outputRef">
         <div v-if="fatalError" class="jlv-fatal">
           <Icon name="alert-triangle" :size="32" />
@@ -113,6 +129,15 @@ const props = withDefaults(
 const emit = defineEmits<{ (e: 'update:visible', v: boolean): void }>()
 const toast = useToast()
 
+interface TransferProgress {
+  percent: number
+  source_bytes: number
+  dest_bytes: number
+  source_human: string
+  dest_human: string
+  label: string
+}
+
 interface ProgressPayload {
   id: number
   name: string
@@ -124,6 +149,7 @@ interface ProgressPayload {
   last_transferred: string | null
   run_count: number
   error_count: number
+  transfer_progress?: TransferProgress | null
   log: null | {
     id: number
     status: string
@@ -152,22 +178,29 @@ let toastShown = false
 
 const output = computed(() => progress.value?.log?.output_tail || [])
 const hasOutput = computed(() => output.value.length > 0)
+const transferProgress = computed(() => progress.value?.transfer_progress ?? null)
 
 const statusLabel = computed(() => {
   if (progress.value?.is_running) return 'in esecuzione'
+  const logStatus = (progress.value?.log?.status || '').toLowerCase()
+  if (logStatus === 'started') return 'in esecuzione'
   const s = (progress.value?.current_status || progress.value?.last_status || 'idle').toLowerCase()
   return ({
     success: 'successo',
     failed: 'fallito',
     running: 'in esecuzione',
+    started: 'in esecuzione',
     idle: 'in attesa',
   } as Record<string, string>)[s] || s
 })
 const statusTone = computed<'success' | 'danger' | 'warning' | 'info' | 'neutral'>(() => {
   if (progress.value?.is_running) return 'warning'
+  const logStatus = (progress.value?.log?.status || '').toLowerCase()
+  if (logStatus === 'started') return 'warning'
   const s = (progress.value?.current_status || progress.value?.last_status || '').toLowerCase()
   if (s === 'success') return 'success'
   if (s === 'failed' || s === 'error') return 'danger'
+  if (s === 'running' || s === 'started') return 'warning'
   return 'neutral'
 })
 
@@ -435,6 +468,42 @@ function formatTime(iso: string) {
 .btn-icon:hover {
   color: var(--color-text-primary);
   background: var(--color-bg-hover);
+}
+
+.jlv-progress-wrap {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-body);
+}
+.jlv-progress-top {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+  margin-bottom: 6px;
+}
+.jlv-progress-pct {
+  font-family: var(--font-mono);
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+.jlv-progress-bar {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.jlv-progress-fill {
+  height: 100%;
+  background: var(--color-info, #3b82f6);
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+.jlv-progress-sub {
+  margin-top: 6px;
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  color: var(--color-text-secondary);
 }
 
 .jlv-output {

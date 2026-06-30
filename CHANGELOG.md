@@ -7,6 +7,17 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ### Correzioni
 - Fix run manuale sync job: `BackgroundTasks` non eseguiva `execute_sync_job_task` (coroutine non awaited); il lock scheduler veniva rilasciato subito e in UI non partiva alcun log (`backend/routers/sync_jobs.py`).
+- Fix stato UI job sync: `SyncJobResponse` ora espone `current_status`; lista replica e log viewer trattano `last_status=running` / log `started` come *in esecuzione* (`backend/routers/sync_jobs.py`, `frontend/src/components/jobs/JobsList.vue`, `JobLogViewer.vue`, `Replication.vue`).
+- Fix falso *fallito* su sync: se syncoid/zfs receive e' ancora attivo sui nodi (timeout SSH, receive gia' in corso), lo stato resta *running* con monitor in background invece di `failed` (`backend/services/syncoid_service.py`, `backend/routers/sync_jobs.py`).
+- Avanzamento replica syncoid: polling ogni 30s confronto `refer` sorgente vs `used` destinazione (ZFS), percentuale in `/progress`, log e barra nel viewer job (`backend/services/syncoid_service.py`, `backend/routers/sync_jobs.py`, `frontend/src/components/jobs/JobLogViewer.vue`).
+- Fix falso *Fallito* dopo restart backend: i SyncJob non vengono più marcati `failed` allo startup se syncoid/receive e' ancora attivo sui nodi; riconciliazione async + monitor riavviato (`backend/services/scheduler.py`, `backend/routers/sync_jobs.py`).
+- Fix job bloccati al 100%: `is_replication_active` non matcha più il comando diagnostico `pgrep` (falso positivo); chiusura automatica quando i processi sono terminati e reconcile periodico ogni 2 min (`backend/services/syncoid_service.py`, `backend/routers/sync_jobs.py`, `backend/services/scheduler.py`).
+- Fix registrazione VM post-replica: eseguita anche al completamento via monitor; storage Proxmox derivato per sottocartella (`ZFS-LARGE/replica` → storage `ZFS-LARGE-replica`); registrazione differita fino al sync di tutti i dischi del gruppo VM (`backend/services/proxmox_service.py`, `backend/routers/sync_jobs.py`).
+- Fix rilevamento storage ZFS esistente: lettura da `/etc/pve/storage.cfg` al posto di `pvesm config` (non disponibile su alcune versioni PVE); gestione errore "already defined" in creazione storage (`backend/services/proxmox_service.py`).
+- Replica multi-disco: esecuzione **sequenziale automatica** di tutti i dischi del gruppo VM (run manuale, schedulato e al completamento di ogni disco); progresso **cumulativo** sulla riga VM (`backend/routers/sync_jobs.py`, `backend/services/scheduler.py`, `frontend/src/components/jobs/JobsList.vue`, `frontend/src/stores/replication.ts`, `frontend/src/views/Replication.vue`).
+- Fix stato UI gruppo multi-disco: solo la riga VM e il disco attivo mostrano *In esecuzione*; dischi completati o mai avviati conservano il proprio stato (`backend/routers/sync_jobs.py`, `frontend/src/stores/replication.ts`, `frontend/src/components/jobs/JobsList.vue`).
+- Fix replica iniziale su dataset placeholder vuoto: rimozione automatica del dataset dest senza snapshot (<64MB) prima di syncoid, con retry (`backend/services/syncoid_service.py`).
+- Lista job replica: barra avanzamento percentuale in colonna stato quando la replica e' attiva; API `GET /sync-jobs/` espone `is_replicating` e `transfer_progress` (`backend/routers/sync_jobs.py`, `frontend/src/components/jobs/JobsList.vue`, `frontend/src/stores/replication.ts`).
 ## [3.17.4] - 2026-05-04
 
 ### Modifiche — Layout deterministico per install/update

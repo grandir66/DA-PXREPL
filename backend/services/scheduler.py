@@ -49,6 +49,8 @@ class SchedulerService:
 
         self._running = True
         self._task = asyncio.create_task(self._scheduler_loop())
+        self._last_sync_reconcile: Optional[datetime] = None
+        asyncio.create_task(self._reconcile_sync_jobs_on_startup())
         logger.info("Scheduler avviato")
 
         # Carica configurazione orario riepilogo
@@ -62,16 +64,8 @@ class SchedulerService:
         db = SessionLocal()
         try:
             stale_msg = "reset allo startup (backend riavviato durante esecuzione)"
-            # SyncJob: ha last_status; current_status puo' esistere se
-            # aggiunto in versioni recenti (verificato dinamicamente).
-            for sj in db.query(SyncJob).filter(SyncJob.last_status == "running").all():
-                sj.last_status = "failed"
-                sj.last_error = stale_msg
-                if hasattr(sj, "current_status"):
-                    try:
-                        setattr(sj, "current_status", "idle")
-                    except Exception:
-                        pass
+            # SyncJob: NON resettare qui — syncoid puo' continuare sui nodi
+            # remoti dopo restart del manager. Riconciliazione async dedicata.
             # RecoveryJob / BackupJob hanno current_status enumerato.
             for rj in db.query(RecoveryJob).filter(
                 RecoveryJob.current_status.in_(["backing_up", "restoring", "registering", "running"])
@@ -95,6 +89,25 @@ class SchedulerService:
                 pass
         finally:
             db.close()
+
+    async def _reconcile_sync_jobs_on_startup(self) -> None:
+        """Allinea stato DB con syncoid/receive realmente attivi sui nodi."""
+        from routers.sync_jobs import reconcile_sync_jobs_after_restart
+        await reconcile_sync_jobs_after_restart()
+
+    async def _reconcile_stuck_sync_jobs(self) -> None:
+        """Ogni ~2 min chiude job al 100% senza processi attivi o riavvia monitor."""
+        now = datetime.utcnow()
+        last = getattr(self, "_last_sync_reconcile", None)
+        if last and (now - last).total_seconds() < 120:
+            return
+        self._last_sync_reconcile = now
+        try:
+            from routers.sync_jobs import _reconcile_running_sync_jobs_once, _reconcile_pending_vm_registrations
+            await _reconcile_running_sync_jobs_once()
+            await _reconcile_pending_vm_registrations()
+        except Exception as e:
+            logger.warning(f"Reconcile sync jobs periodico fallito: {e}")
 
     def _try_lock(self, key: str) -> bool:
         """Acquisisce il lock di esecuzione per un job. Ritorna False se
@@ -182,6 +195,7 @@ class SchedulerService:
                 await self._check_host_info_updates()
                 await self._refresh_vm_cache()
                 await self._daily_log_cleanup()
+                await self._reconcile_stuck_sync_jobs()
                 await asyncio.sleep(60)  # Check ogni minuto
             except Exception as e:
                 logger.error(f"Errore nello scheduler: {e}")
@@ -314,8 +328,43 @@ class SchedulerService:
                 SyncJob.schedule != ""
             ).all()
             
+            seen_vm_groups: set[str] = set()
             for job in sync_jobs:
                 try:
+                    if job.vm_group_id:
+                        if job.vm_group_id in seen_vm_groups:
+                            continue
+                        seen_vm_groups.add(job.vm_group_id)
+                        group_key = f"vmgroup_{job.vm_group_id}"
+                        if group_key not in self._jobs:
+                            cron = croniter(job.schedule, job.last_run or now)
+                            self._jobs[group_key] = cron.get_next(datetime)
+                        next_run = self._jobs[group_key]
+                        if now >= next_run:
+                            if self._try_lock(group_key):
+                                logger.info(
+                                    f"Esecuzione VM group schedulato: {job.vm_group_id} "
+                                    f"(es. {job.name})"
+                                )
+                                asyncio.create_task(
+                                    self._guarded_execute(
+                                        group_key,
+                                        self._execute_vm_group_sync,
+                                        job.vm_group_id,
+                                    )
+                                )
+                            else:
+                                logger.info(
+                                    f"VM group {job.vm_group_id} ancora in esecuzione: skip"
+                                )
+                            cron = croniter(job.schedule, now)
+                            self._jobs[group_key] = cron.get_next(datetime)
+                            for sj in sync_jobs:
+                                if sj.vm_group_id == job.vm_group_id:
+                                    sk = f"sync_{sj.id}"
+                                    self._jobs[sk] = self._jobs[group_key]
+                        continue
+
                     job_key = f"sync_{job.id}"
                     if job_key not in self._jobs:
                         cron = croniter(job.schedule, job.last_run or now)
@@ -527,6 +576,11 @@ class SchedulerService:
                 db.commit()
         finally:
             db.close()
+
+    async def _execute_vm_group_sync(self, vm_group_id: str):
+        """Esegue in sequenza tutti i dischi di un gruppo VM."""
+        from routers.sync_jobs import execute_vm_group_sync_task
+        await execute_vm_group_sync_task(vm_group_id)
     
     async def _execute_host_backup_job(self, job_id: int):
         """Esegue un job di host backup schedulato"""
@@ -715,6 +769,7 @@ class SchedulerService:
             # 3) VMID destinazione: dest_vm_id se impostato, altrimenti
             #    quello sorgente.
             target_vmid = job.dest_vm_id or job.vm_id
+            dest_zfs_pool = "/".join(job.dest_dataset.split("/")[:-1]) if job.dest_dataset and "/" in job.dest_dataset else job.dest_dataset
 
             # 4) Registra (passando TUTTI i parametri)
             success, msg, warnings = await proxmox_service.register_vm(
@@ -724,6 +779,7 @@ class SchedulerService:
                 config_content=config,
                 source_storage=getattr(job, "source_storage", None),
                 dest_storage=getattr(job, "dest_storage", None),
+                dest_zfs_pool=dest_zfs_pool,
                 vm_name_suffix=getattr(job, "dest_vm_name_suffix", None),
                 new_name=getattr(job, "dest_vm_name", None),
                 force_cpu_host=bool(getattr(job, "force_cpu_host", True)),
