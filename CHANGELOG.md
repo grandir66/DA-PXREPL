@@ -5,6 +5,8 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+### Correzioni
+- Fix run manuale sync job: `BackgroundTasks` non eseguiva `execute_sync_job_task` (coroutine non awaited); il lock scheduler veniva rilasciato subito e in UI non partiva alcun log (`backend/routers/sync_jobs.py`).
 ## [3.17.4] - 2026-05-04
 
 ### Modifiche — Layout deterministico per install/update

@@ -505,6 +505,14 @@ async def execute_sync_job_task(job_id: int, triggered_by_user_id: int = None):
         db_session.close()
 
 
+async def _run_sync_job_background(job_id: int, job_key: str, triggered_by_user_id: int = None):
+    """Avvia execute_sync_job_task in background e rilascia sempre il lock scheduler."""
+    try:
+        await execute_sync_job_task(job_id, triggered_by_user_id)
+    finally:
+        scheduler_service.mark_done(job_key)
+
+
 # ============== Schemas ==============
 
 class SyncJobCreate(BaseModel):
@@ -1279,15 +1287,7 @@ async def run_vm_group_jobs(
             skipped_reasons.append(f"job {job.id} gia' in esecuzione")
             continue
 
-        def _make_task(jid: int, key: str):
-            def _wrapped():
-                try:
-                    return execute_sync_job_task(jid, user.id)
-                finally:
-                    scheduler_service.mark_done(key)
-            return _wrapped
-
-        background_tasks.add_task(_make_task(job.id, job_key))
+        background_tasks.add_task(_run_sync_job_background, job.id, job_key, user.id)
         started += 1
 
     if started == 0:
@@ -1507,13 +1507,7 @@ async def run_sync_job(
     if not scheduler_service.mark_running(job_key):
         raise HTTPException(status_code=409, detail="Job già in esecuzione")
 
-    def _wrapped_task():
-        try:
-            return execute_sync_job_task(job_id, user.id)
-        finally:
-            scheduler_service.mark_done(job_key)
-
-    background_tasks.add_task(_wrapped_task)
+    background_tasks.add_task(_run_sync_job_background, job_id, job_key, user.id)
     
     log_audit(
         db, user.id, "sync_job_started", "sync_job",
