@@ -868,8 +868,6 @@ const loadMonitorData = async () => {
     // If analysis data is stale (>60s) or missing, fetch it
     // Or just always fetch for now on refresh
     try {
-        // OLD: const res = await loadBalancerService.analyzeCluster();
-        // NEW: Use lightweight independent monitor
         const nodeId = await getFirstPVENodeId();
         if(!nodeId) return;
 

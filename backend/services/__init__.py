@@ -1,8 +1,3 @@
-"""Services package"""
+"""Services package — import espliciti: from services.<modulo> import …"""
+
 from services.ssh_service import ssh_service
-from services.sanoid_service import sanoid_service
-from services.syncoid_service import syncoid_service
-from services.btrfs_service import btrfs_service
-from services.proxmox_service import proxmox_service
-from services.pbs_service import pbs_service
-from services.scheduler import scheduler_service

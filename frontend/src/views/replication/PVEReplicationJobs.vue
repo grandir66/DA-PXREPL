@@ -65,7 +65,7 @@
 <script setup lang="ts">
 import { useToast, errorMessage } from '../../stores/toast';
 import { ref, onMounted } from 'vue';
-import { confirmDangerous, confirmDelete } from '../../stores/confirm';
+import { confirmDangerous } from '../../stores/confirm';
 import { pveReplicationService, type PVEReplicationJob } from '../../services/pveReplication';
 
 const toast = useToast()

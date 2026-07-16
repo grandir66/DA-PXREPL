@@ -17,23 +17,9 @@ export interface PVEReplicationJob {
     next_sync: string | null;
 }
 
-export interface PVEReplicationCreate {
-    vmid: number;
-    target: string;
-    schedule?: string;
-    rate?: number;
-    comment?: string;
-    enabled?: boolean;
-}
-
 export const pveReplicationService = {
     async getJobs(): Promise<PVEReplicationJob[]> {
         const response = await apiClient.get('/pve-replication/');
-        return response.data;
-    },
-
-    async createJob(data: PVEReplicationCreate): Promise<{ message: string; id: string }> {
-        const response = await apiClient.post('/pve-replication/', data);
         return response.data;
     },
 

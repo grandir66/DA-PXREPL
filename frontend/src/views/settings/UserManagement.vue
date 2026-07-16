@@ -97,7 +97,7 @@
 import { useToast, errorMessage } from '../../stores/toast';
 import { ref, onMounted, reactive } from 'vue';
 import Icon from '../../components/ui/Icon.vue';
-import { confirmDangerous, confirmDelete } from '../../stores/confirm';
+import { confirmDangerous } from '../../stores/confirm';
 import authService from '../../services/auth';
 
 const toast = useToast()

@@ -32,14 +32,6 @@ export default {
         return apiClient.get<JobLog[]>('/logs/', { params });
     },
 
-    getLog(id: number) {
-        return apiClient.get<JobLog>(`/logs/${id}`);
-    },
-
-    getJobHistory(jobId: number | string, limit: number = 50) {
-        return apiClient.get<JobLog[]>(`/logs/job/${jobId}/history`, { params: { limit } });
-    },
-
     clearLogs(days: number = 30) {
         return apiClient.delete('/logs/cleanup', { params: { days } });
     },

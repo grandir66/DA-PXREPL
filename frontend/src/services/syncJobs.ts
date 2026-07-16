@@ -40,14 +40,6 @@ export default {
     return apiClient.get<SyncJob[]>('/sync-jobs')
   },
 
-  getJob(id: number | string) {
-    return apiClient.get<SyncJob>(`/sync-jobs/${id}`)
-  },
-
-  createJob(job: Record<string, unknown>) {
-    return apiClient.post('/sync-jobs', job)
-  },
-
   updateJob(id: number | string, job: Record<string, unknown>) {
     return apiClient.put(`/sync-jobs/${id}`, job)
   },

@@ -32,8 +32,4 @@ export default {
   testConnections(nodeIds?: number[]) {
     return apiClient.post<SSHTestResult[]>('/ssh-keys/test', { node_ids: nodeIds ?? null })
   },
-
-  setupMesh() {
-    return apiClient.post('/ssh-keys/setup-mesh', {})
-  },
 }

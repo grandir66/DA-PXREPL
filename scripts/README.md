@@ -14,6 +14,6 @@ Layout del repository **dapx-unified** (unico progetto attivo; il vecchio `dapx-
 - `catchup_vm_groups.py` / `run_catchup.sh` — recupero manuale gruppi VM
 - `cleanup_production_layout.sh` — archivia file legacy non tracciati su CT
 - `db_maintenance.py` — pulizia log DB
-- `deploy_beta.sh` — deploy branch beta
+- `cleanup_production_layout.sh` — archivia file legacy non tracciati su CT
 
 I vecchi script di debug one-off sono stati rimossi; usare i log di sistema e le API diagnostiche dei nodi.

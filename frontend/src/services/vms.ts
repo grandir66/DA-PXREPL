@@ -137,9 +137,4 @@ export default {
     getNodeVMs(nodeId: number | string) {
         return apiClient.get<VM[]>(`/nodes/${nodeId}/vms`);
     },
-
-    // Get next available VMID on a node
-    getNextVmid(nodeId: number | string) {
-        return apiClient.get<{ next_vmid: number }>(`/vms/node/${nodeId}/next-vmid`);
-    }
 }

@@ -415,7 +415,6 @@ import { useReplicationStore, type JobKind, type UnifiedJob } from '../../stores
 import vmsService, { type VM } from '../../services/vms'
 import apiClient from '../../services/api'
 import syncJobsService from '../../services/syncJobs'
-import backupJobsService from '../../services/backupJobs'
 import recoveryJobsService from '../../services/recoveryJobs'
 import type { ScheduleConfig } from '../../services/schedule'
 import StoragePicker from './StoragePicker.vue'

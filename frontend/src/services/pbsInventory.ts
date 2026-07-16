@@ -35,12 +35,6 @@ export interface PBSVmVersionsResponse {
   count: number
 }
 
-export interface PBSBackupListResponse {
-  datastore: string
-  backups: PBSBackupEntry[]
-  count: number
-}
-
 export interface DirectRestoreRequest {
   pbs_node_id: number
   backup_id: string
@@ -69,13 +63,6 @@ export default {
   listVmVersions(pbsNodeId: number | string, vmId: number, params?: InventoryParams) {
     return apiClient.get<PBSVmVersionsResponse>(
       `/recovery-jobs/pbs-nodes/${pbsNodeId}/backups/vms/${vmId}`,
-      { params }
-    )
-  },
-
-  listBackups(pbsNodeId: number | string, params?: InventoryParams) {
-    return apiClient.get<PBSBackupListResponse>(
-      `/recovery-jobs/pbs-nodes/${pbsNodeId}/backups`,
       { params }
     )
   },

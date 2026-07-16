@@ -32,10 +32,6 @@ export default {
     return apiClient.get<BackupJob[]>('/backup-jobs')
   },
 
-  createJob(job: Record<string, unknown>) {
-    return apiClient.post('/backup-jobs', job)
-  },
-
   updateJob(id: number | string, job: Record<string, unknown>) {
     return apiClient.put(`/backup-jobs/${id}`, job)
   },
@@ -46,9 +42,5 @@ export default {
 
   runJob(id: number | string) {
     return apiClient.post(`/backup-jobs/${id}/run`)
-  },
-
-  listJobBackups(id: number | string) {
-    return apiClient.get<{ backups: Record<string, unknown>[] }>(`/backup-jobs/${id}/backups`)
   },
 }

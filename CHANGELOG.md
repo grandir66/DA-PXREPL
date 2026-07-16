@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+### Rimozioni (pulizia codice morto)
+- **Frontend services**: rimossi metodi API mai chiamati (loadBalancer, syncJobs, backupJobs, logs, updates, pbsInventory, auth, sshKeys, vms, pveReplication).
+- **Asset Vite** `frontend/src/assets/vue.svg`, script obsoleto `deploy_beta.sh`, commenti/import morti.
+- **`services/__init__.py`**: eliminati re-export inutilizzati (resta solo `ssh_service`).
+
 ### Aggiunte
 - **Layout repository**: `scripts/README.md`, `scripts/dev/run_dev.py`; rimossi progetti/script obsoleti annidati.
 - **Stato live sync**: modulo `sync_job_live_state.py` estratto da `sync_jobs.py`.

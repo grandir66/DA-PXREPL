@@ -50,10 +50,6 @@ export default {
         return apiClient.post<User>('/auth/users', data);
     },
 
-    updateUser(id: number | string, data: any) {
-        return apiClient.put<User>(`/auth/users/${id}`, data);
-    },
-
     deleteUser(id: number | string) {
         return apiClient.delete(`/auth/users/${id}`);
     },
