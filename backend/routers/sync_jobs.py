@@ -1894,7 +1894,9 @@ async def create_sync_job(
     
     # Aggiorna scheduler
     if db_job.schedule:
-        scheduler_service.update_job_schedule(db_job.id, db_job.schedule)
+        scheduler_service.update_job_schedule(
+            db_job.id, db_job.schedule, db_job.vm_group_id, db_job.last_run
+        )
     
     return db_job
 
@@ -2072,7 +2074,9 @@ async def create_vm_replica_jobs(
         db.commit()
         db.refresh(db_job)
         if _vm_cron:
-            scheduler_service.update_job_schedule(db_job.id, _vm_cron)
+            scheduler_service.update_job_schedule(
+                db_job.id, _vm_cron, vm_group_id, db_job.last_run
+            )
         return {
             "vm_group_id": vm_group_id,
             "vm_id": vm_data.vm_id,
@@ -2165,10 +2169,11 @@ async def create_vm_replica_jobs(
         ip_address=request.client.host if request.client else None
     )
     
-    # Aggiorna scheduler per tutti i job con schedule
+    # Aggiorna scheduler per il gruppo VM (una sola chiave vmgroup_)
     if vm_data.schedule:
-        for job in db.query(SyncJob).filter(SyncJob.vm_group_id == vm_group_id).all():
-            scheduler_service.update_job_schedule(job.id, job.schedule)
+        scheduler_service.update_vm_group_schedule(
+            vm_group_id, vm_data.schedule
+        )
     
     return {
         "success": True,
@@ -2265,9 +2270,10 @@ async def delete_vm_group_jobs(
         raise HTTPException(status_code=404, detail="Gruppo non trovato")
     
     deleted = 0
+    scheduler_service.remove_vm_group_schedule(vm_group_id)
     for job in jobs:
         if check_job_access(user, job, db):
-            scheduler_service.remove_job(job.id)
+            scheduler_service.remove_job(job.id, job.vm_group_id)
             db.delete(job)
             deleted += 1
     
@@ -2418,9 +2424,21 @@ async def update_sync_job(
 
     # Aggiorna scheduler
     if job.is_active and job.schedule:
-        scheduler_service.update_job_schedule(job.id, job.schedule)
+        scheduler_service.update_job_schedule(
+            job.id, job.schedule, job.vm_group_id, job.last_run
+        )
     else:
-        scheduler_service.remove_job(job.id)
+        scheduler_service.remove_job(job.id, job.vm_group_id)
+        if job.vm_group_id:
+            siblings_active = db.query(SyncJob).filter(
+                SyncJob.vm_group_id == job.vm_group_id,
+                SyncJob.id != job.id,
+                SyncJob.is_active == True,  # noqa: E712
+                SyncJob.schedule.isnot(None),
+                SyncJob.schedule != "",
+            ).count()
+            if siblings_active == 0:
+                scheduler_service.remove_vm_group_schedule(job.vm_group_id)
 
     return job
 
@@ -2441,9 +2459,16 @@ async def delete_sync_job(
         raise HTTPException(status_code=403, detail="Accesso negato")
     
     job_name = job.name
-    scheduler_service.remove_job(job_id)
+    vm_group_id = job.vm_group_id
+    scheduler_service.remove_job(job_id, vm_group_id)
     
     db.delete(job)
+    db.flush()
+    
+    if vm_group_id:
+        remaining = db.query(SyncJob).filter(SyncJob.vm_group_id == vm_group_id).count()
+        if remaining == 0:
+            scheduler_service.remove_vm_group_schedule(vm_group_id)
     
     log_audit(
         db, user.id, "sync_job_deleted", "sync_job",
@@ -2715,9 +2740,21 @@ async def toggle_sync_job(
     db.commit()
     
     if job.is_active and job.schedule:
-        scheduler_service.update_job_schedule(job.id, job.schedule)
+        scheduler_service.update_job_schedule(
+            job.id, job.schedule, job.vm_group_id, job.last_run
+        )
     else:
-        scheduler_service.remove_job(job.id)
+        scheduler_service.remove_job(job.id, job.vm_group_id)
+        if job.vm_group_id:
+            siblings_active = db.query(SyncJob).filter(
+                SyncJob.vm_group_id == job.vm_group_id,
+                SyncJob.id != job.id,
+                SyncJob.is_active == True,  # noqa: E712
+                SyncJob.schedule.isnot(None),
+                SyncJob.schedule != "",
+            ).count()
+            if siblings_active == 0:
+                scheduler_service.remove_vm_group_schedule(job.vm_group_id)
     
     return {"is_active": job.is_active}
 

@@ -8,6 +8,8 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 ### Correzioni
 - **Replica schedulata non rieseguita**: `execute_vm_group_sync_task` saltava i dischi con `last_status=success`, quindi dopo la prima run riuscita lo scheduler non lanciava più syncoid. Run schedulata/manuale ora usa `force_rerun=True` (`backend/routers/sync_jobs.py`, `backend/services/scheduler.py`).
 - **Burst di job al restart di mezzanotte**: logrotate faceva `systemctl reload` (restart del servizio); init cron usava `last_run` vecchio e sparava tutti i gruppi arretrati. Nuovo `compute_initial_next_run()` + logrotate con `copytruncate` senza reload (`install.sh`, `backend/services/scheduler.py`).
+- **Scheduler in-memory con chiavi errate**: `update_job_schedule`/`remove_job` usavano `job_id` intero invece di `sync_{id}` / `vmgroup_{uuid}` — modifiche schedule da UI non applicate fino al restart (`backend/services/scheduler.py`, `backend/routers/sync_jobs.py`).
+- **`update.sh` ignorava commit nuovi a parità di version.json**: ora rileva `HEAD` ≠ `origin/main` e procede con l'aggiornamento codice (`update.sh`).
 
 - Audit massivo bug UI/API: auth su cluster e SSH keys; fix pulizia log (`DELETE /logs/cleanup`); fix delete host backup; route logs riordinate; log di sistema allineati a `dapx-unified` (`backend/routers/clusters.py`, `ssh_keys.py`, `logs.py`, `nodes.py`, `settings.py`, `frontend/src/services/logs.ts`, `HostBackupView.vue`, `Logs.vue`, `MainLayout.vue`).
 - Rimozione viste legacy duplicate: redirect `/sync-jobs`, `/backup-jobs`, `/recovery-jobs` → `/replication`; eliminati componenti orfani (`frontend/src/router/index.ts`, viste `jobs/*` e `replication/*` obsolete).

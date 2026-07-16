@@ -841,18 +841,50 @@ class SchedulerService:
         
         return config
     
-    def update_job_schedule(self, job_id: int, schedule: str):
-        """Aggiorna lo schedule di un job"""
+    def _sync_job_scheduler_key(self, job_id: int, vm_group_id: Optional[str] = None) -> str:
+        if vm_group_id:
+            return f"vmgroup_{vm_group_id}"
+        return f"sync_{job_id}"
+
+    def update_vm_group_schedule(
+        self,
+        vm_group_id: str,
+        schedule: str,
+        last_run: Optional[datetime] = None,
+    ) -> None:
+        """Aggiorna lo schedule in-memory di un gruppo VM."""
+        key = f"vmgroup_{vm_group_id}"
         if schedule:
-            cron = croniter(schedule, datetime.utcnow())
-            self._jobs[job_id] = cron.get_next(datetime)
-        elif job_id in self._jobs:
-            del self._jobs[job_id]
-    
-    def remove_job(self, job_id: int):
-        """Rimuove un job dallo scheduler"""
-        if job_id in self._jobs:
-            del self._jobs[job_id]
+            self._jobs[key] = compute_initial_next_run(schedule, last_run, datetime.utcnow())
+        elif key in self._jobs:
+            del self._jobs[key]
+
+    def remove_vm_group_schedule(self, vm_group_id: str) -> None:
+        self._jobs.pop(f"vmgroup_{vm_group_id}", None)
+
+    def update_job_schedule(
+        self,
+        job_id: int,
+        schedule: str,
+        vm_group_id: Optional[str] = None,
+        last_run: Optional[datetime] = None,
+    ) -> None:
+        """Aggiorna lo schedule in-memory di un SyncJob (o del suo gruppo VM)."""
+        if vm_group_id:
+            self.update_vm_group_schedule(vm_group_id, schedule, last_run)
+            return
+        key = self._sync_job_scheduler_key(job_id)
+        if schedule:
+            self._jobs[key] = compute_initial_next_run(schedule, last_run, datetime.utcnow())
+        elif key in self._jobs:
+            del self._jobs[key]
+
+    def remove_job(self, job_id: int, vm_group_id: Optional[str] = None) -> None:
+        """Rimuove le chiavi scheduler di un singolo job disco."""
+        self._jobs.pop(f"sync_{job_id}", None)
+        if vm_group_id:
+            # La chiave vmgroup_ resta finché non si chiama remove_vm_group_schedule.
+            pass
 
 
 # Singleton
