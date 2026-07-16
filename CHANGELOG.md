@@ -7,6 +7,7 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ### Fix
 - **VM → Backup PBS**: elenco backup dalla view Virtual Machines allineato all'inventario PBS (API + pvesh); corretto bug `storage_id` nel fallback e formato timestamp per la UI.
+- **Tabella VM**: rimossa colonna "Backup PBS" sempre in *Checking…* (conteggio non caricato per performance); backup accessibili dal pulsante **Backup PBS** nella riga.
 
 ### Refactor
 - **Rimozione Load Balancer (ProxLB)**: funzionalità obsoleta (Proxmox integra il bilanciamento nativo). Eliminati view, API, `proxlb_lib`, modalità `DAPX_MODE=lb`; backup cluster spostato su `/api/ha/cluster/backup-config`; redirect `/load-balancer` → Cluster & HA.

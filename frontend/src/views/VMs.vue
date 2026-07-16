@@ -47,7 +47,6 @@
  Stato <span v-if="sortKey === 'status'">{{ sortDesc ? '↓' : '↑' }}</span>
  </th>
  <th width="180">Allocazioni</th>
- <th width="140">Backup PBS</th>
  <th width="420" class="text-right">Azioni</th>
  </tr>
  </thead>
@@ -87,15 +86,6 @@
  <span class="font-mono text-primary" v-if="vm.maxdisk">{{ formatSize(vm.maxdisk || 0) }} HD</span>
  </div>
  </td>
- <td>
- <!-- Legacy: Backup PBS Count -->
- <div class="pbs-backup-cell">
- <span v-if="vm.backupCount !== undefined" class="badge badge-purple">
- 📦 {{ vm.backupCount }} backup
- </span>
- <span v-else class="text-xs text-secondary animate-pulse">Checking...</span>
- </div>
- </td>
  <td class="text-right">
  <div class="flex justify-end gap-2">
  <button class="btn btn-sm btn-outline" @click="openVMInfoModal(vm)" title="Dettagli VM">
@@ -129,7 +119,7 @@
  </td>
  </tr>
  <tr v-if="filteredVMs.length === 0 && !loading">
- <td colspan="7" class="empty-state-cell text-center py-8 text-secondary">Nessuna VM trovata</td>
+ <td colspan="6" class="empty-state-cell text-center py-8 text-secondary">Nessuna VM trovata</td>
  </tr>
  </tbody>
  </table>
@@ -745,28 +735,7 @@ const loadVMs = async (forceRefresh: boolean = false) => {
  console.error('Error loading VMs', e);
  } finally {
  loading.value = false;
- // Backup counts are NOT auto-fetched for performance
- // User can click on a VM to see backup count on-demand
  }
-};
-
-const fetchBackupCounts = async () => {
- // Filter VMs that need backup count fetching
- const vmsToFetch = vms.value.filter(vm => 
- (vm.status === 'running' || vm.status === 'stopped') && vm.node_id
- );
- 
- // Fetch all backup counts in parallel for better performance
- const promises = vmsToFetch.map(async (vm) => {
- try {
- const res = await vmsService.getBackups(vm.node_id!, vm.vmid);
- vm.backupCount = res.data ? res.data.length : 0;
- } catch (e) { 
- vm.backupCount = 0; 
- }
- });
- 
- await Promise.allSettled(promises);
 };
 
 const manageState = async (vm: VM, action: any) => {
