@@ -19,5 +19,5 @@ cur = conn.execute(
 conn.commit()
 print(f"reset {cur.rowcount} failed job(s) in group {VM_GROUP_ID}")
 
-asyncio.run(execute_vm_group_sync_task(VM_GROUP_ID))
+asyncio.run(execute_vm_group_sync_task(VM_GROUP_ID, force_rerun=True))
 print("group sync task finished")

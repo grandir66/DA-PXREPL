@@ -754,11 +754,8 @@ $LOG_DIR/*.log {
     compress
     delaycompress
     notifempty
+    copytruncate
     create 640 $SERVICE_USER $SERVICE_USER
-    sharedscripts
-    postrotate
-        systemctl reload dapx-unified > /dev/null 2>&1 || true
-    endscript
 }
 LOGROTATE_CONF
 

@@ -1312,8 +1312,14 @@ async def _wait_sync_job_terminal(job_id: int, job_key: str, poll_sec: int = 15,
 async def execute_vm_group_sync_task(
     vm_group_id: str,
     triggered_by_user_id: int = None,
+    force_rerun: bool = False,
 ) -> None:
-    """Replica sequenziale di tutti i dischi di un gruppo VM (salta quelli già success)."""
+    """Replica sequenziale di tutti i dischi di un gruppo VM.
+
+    force_rerun=False: catena multi-disco — salta dischi già success nel ciclo corrente.
+    force_rerun=True: run schedulata/manuale — riesegue syncoid anche se l'ultimo run
+    è andato a buon fine (replica incrementale).
+    """
     from database import SessionLocal, SyncJob
 
     db = SessionLocal()
@@ -1340,11 +1346,12 @@ async def execute_vm_group_sync_task(
         finally:
             db.close()
 
-        if status == "success":
-            continue
-        if status == "failed":
-            logger.warning(f"VM group {vm_group_id}: interrotto — job {job_id} fallito")
-            break
+        if not force_rerun:
+            if status == "success":
+                continue
+            if status == "failed":
+                logger.warning(f"VM group {vm_group_id}: interrotto — job {job_id} fallito")
+                break
 
         job_key = f"sync_{job_id}"
         if scheduler_service.is_running(job_key):
@@ -1390,9 +1397,12 @@ async def _run_vm_group_background(
     vm_group_id: str,
     group_key: str,
     triggered_by_user_id: int = None,
+    force_rerun: bool = False,
 ) -> None:
     try:
-        await execute_vm_group_sync_task(vm_group_id, triggered_by_user_id)
+        await execute_vm_group_sync_task(
+            vm_group_id, triggered_by_user_id, force_rerun=force_rerun
+        )
     finally:
         scheduler_service.mark_done(group_key)
 
@@ -2208,7 +2218,7 @@ async def run_vm_group_jobs(
     user: User = Depends(require_operator),
     db: Session = Depends(get_db)
 ):
-    """Esegue in sequenza tutti i dischi del gruppo VM (salta quelli già replicati)."""
+    """Esegue in sequenza tutti i dischi del gruppo VM (replica completa del gruppo)."""
     jobs = db.query(SyncJob).filter(SyncJob.vm_group_id == vm_group_id).all()
 
     if not jobs:
@@ -2222,7 +2232,9 @@ async def run_vm_group_jobs(
     if not scheduler_service.mark_running(group_key):
         raise HTTPException(status_code=409, detail="Replica VM già in esecuzione")
 
-    background_tasks.add_task(_run_vm_group_background, vm_group_id, group_key, user.id)
+    background_tasks.add_task(
+        _run_vm_group_background, vm_group_id, group_key, user.id, True
+    )
 
     log_audit(
         db, user.id, "vm_group_started", "sync_job",
@@ -2471,7 +2483,7 @@ async def run_sync_job(
         if not scheduler_service.mark_running(group_key):
             raise HTTPException(status_code=409, detail="Replica VM già in esecuzione")
         background_tasks.add_task(
-            _run_vm_group_background, job.vm_group_id, group_key, user.id
+            _run_vm_group_background, job.vm_group_id, group_key, user.id, True
         )
         log_audit(
             db, user.id, "sync_job_started", "sync_job",

@@ -20,6 +20,29 @@ from services.cache_service import cache_service
 
 logger = logging.getLogger(__name__)
 
+# Finestra (secondi) dopo l'inizio di uno slot cron in cui un restart può
+# ancora innescare la run di quello slot (evita backlog di settimane).
+_CRON_SLOT_GRACE_SEC = 120
+
+
+def compute_initial_next_run(
+    schedule: str,
+    last_run: Optional[datetime],
+    now: datetime,
+) -> datetime:
+    """Calcola la prossima esecuzione senza sparare tutti i cron arretrati al restart.
+
+    - Se siamo entro _CRON_SLOT_GRACE_SEC dall'inizio dello slot corrente e
+      last_run è anterior allo slot → due now (run nello slot appena iniziato).
+    - Altrimenti → prossimo slot futuro da now (niente catch-up multi-giorno/settimana).
+    """
+    itr = croniter(schedule, now)
+    next_future = itr.get_next(datetime)
+    prev_slot = itr.get_prev(datetime)
+    if (last_run is None or last_run < prev_slot) and (now - prev_slot).total_seconds() <= _CRON_SLOT_GRACE_SEC:
+        return prev_slot
+    return next_future
+
 
 class SchedulerService:
     """Servizio per scheduling dei job di sincronizzazione"""
@@ -337,8 +360,9 @@ class SchedulerService:
                         seen_vm_groups.add(job.vm_group_id)
                         group_key = f"vmgroup_{job.vm_group_id}"
                         if group_key not in self._jobs:
-                            cron = croniter(job.schedule, job.last_run or now)
-                            self._jobs[group_key] = cron.get_next(datetime)
+                            self._jobs[group_key] = compute_initial_next_run(
+                                job.schedule, job.last_run, now
+                            )
                         next_run = self._jobs[group_key]
                         if now >= next_run:
                             if self._try_lock(group_key):
@@ -367,8 +391,9 @@ class SchedulerService:
 
                     job_key = f"sync_{job.id}"
                     if job_key not in self._jobs:
-                        cron = croniter(job.schedule, job.last_run or now)
-                        self._jobs[job_key] = cron.get_next(datetime)
+                        self._jobs[job_key] = compute_initial_next_run(
+                            job.schedule, job.last_run, now
+                        )
                     
                     next_run = self._jobs[job_key]
                     
@@ -395,8 +420,9 @@ class SchedulerService:
                 try:
                     job_key = f"host_backup_{job.id}"
                     if job_key not in self._jobs:
-                        cron = croniter(job.schedule, job.last_run or now)
-                        self._jobs[job_key] = cron.get_next(datetime)
+                        self._jobs[job_key] = compute_initial_next_run(
+                            job.schedule, job.last_run, now
+                        )
                     
                     next_run = self._jobs[job_key]
                     
@@ -423,8 +449,9 @@ class SchedulerService:
                 try:
                     job_key = f"migration_{job.id}"
                     if job_key not in self._jobs:
-                        cron = croniter(job.schedule, job.last_run or now)
-                        self._jobs[job_key] = cron.get_next(datetime)
+                        self._jobs[job_key] = compute_initial_next_run(
+                            job.schedule, job.last_run, now
+                        )
                     
                     next_run = self._jobs[job_key]
                     
@@ -580,7 +607,7 @@ class SchedulerService:
     async def _execute_vm_group_sync(self, vm_group_id: str):
         """Esegue in sequenza tutti i dischi di un gruppo VM."""
         from routers.sync_jobs import execute_vm_group_sync_task
-        await execute_vm_group_sync_task(vm_group_id)
+        await execute_vm_group_sync_task(vm_group_id, force_rerun=True)
     
     async def _execute_host_backup_job(self, job_id: int):
         """Esegue un job di host backup schedulato"""
