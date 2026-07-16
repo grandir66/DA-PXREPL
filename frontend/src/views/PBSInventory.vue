@@ -11,8 +11,8 @@
       <div class="content">
         <strong>Esplora i backup sul PBS</strong>
         <p>
-          Ogni macchina è raggruppata con la catena delle date di backup disponibili.
-          Scegli la data e avvia il restore verso un nodo PVE.
+          Seleziona una macchina per aprire la catena delle date di backup disponibili,
+          poi scegli la data e avvia il restore verso un nodo PVE.
         </p>
       </div>
     </div>
@@ -104,9 +104,22 @@
           </div>
 
           <div v-else class="vm-groups">
-            <section v-for="group in vmGroups" :key="group.vmid" class="vm-group">
-              <header class="vm-group-head">
-                <div>
+            <section
+              v-for="group in vmGroups"
+              :key="group.vmid"
+              class="vm-group"
+              :class="{ expanded: isVmExpanded(group.vmid) }"
+            >
+              <button
+                type="button"
+                class="vm-group-head"
+                :aria-expanded="isVmExpanded(group.vmid)"
+                @click="toggleVm(group.vmid)"
+              >
+                <span class="vm-group-chevron" aria-hidden="true">
+                  {{ isVmExpanded(group.vmid) ? '▾' : '▸' }}
+                </span>
+                <div class="vm-group-summary">
                   <div class="vm-group-title">{{ group.vm_name }}</div>
                   <div class="vm-group-meta">
                     {{ group.vm_type === 'lxc' ? 'LXC' : 'QEMU' }}
@@ -114,9 +127,13 @@
                     · {{ group.versions.length }} backup
                   </div>
                 </div>
-              </header>
+                <div v-if="!isVmExpanded(group.vmid)" class="vm-group-latest">
+                  <span class="text-secondary text-sm">Ultimo:</span>
+                  <span class="date-label">{{ formatBackupTime(group.versions[0]?.backup_time) }}</span>
+                </div>
+              </button>
 
-              <ol class="date-chain">
+              <ol v-if="isVmExpanded(group.vmid)" class="date-chain">
                 <li
                   v-for="(ver, idx) in group.versions"
                   :key="backupKey(ver)"
@@ -224,6 +241,7 @@ const datastoreLabel = ref('')
 const loading = ref(false)
 const error = ref('')
 const search = ref('')
+const expandedVmids = ref<Set<number>>(new Set())
 
 const filters = reactive({
   pbsNodeId: null as number | null,
@@ -320,7 +338,19 @@ function onPbsChange() {
     filters.datastore = pbs.pbs_datastore
   }
   backups.value = []
+  expandedVmids.value = new Set()
   error.value = ''
+}
+
+function isVmExpanded(vmid: number): boolean {
+  return expandedVmids.value.has(vmid)
+}
+
+function toggleVm(vmid: number) {
+  const next = new Set(expandedVmids.value)
+  if (next.has(vmid)) next.delete(vmid)
+  else next.add(vmid)
+  expandedVmids.value = next
 }
 
 async function loadBackups() {
@@ -338,6 +368,7 @@ async function loadBackups() {
     backups.value = res.data.backups || []
     datastoreLabel.value = res.data.datastore || filters.datastore || ''
     backups.value.sort((a, b) => (b.backup_time || 0) - (a.backup_time || 0))
+    expandedVmids.value = new Set()
   } catch (e) {
     error.value = errorMessage(e)
     backups.value = []
@@ -447,9 +478,49 @@ async function executeRestore() {
 }
 
 .vm-group-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
   padding: 0.75rem 1rem;
   background: rgba(255, 255, 255, 0.03);
+  border: none;
   border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.06));
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+}
+
+.vm-group-head:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.vm-group.expanded .vm-group-head {
+  border-bottom-color: var(--border-color, rgba(255, 255, 255, 0.06));
+}
+
+.vm-group:not(.expanded) .vm-group-head {
+  border-bottom: none;
+}
+
+.vm-group-chevron {
+  flex: 0 0 1rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary, #9ca3af);
+}
+
+.vm-group-summary {
+  flex: 1;
+  min-width: 0;
+}
+
+.vm-group-latest {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
 }
 
 .vm-group-title {
