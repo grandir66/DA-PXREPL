@@ -5,6 +5,9 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+### Refactor
+- **sync_jobs split**: estratti `sync_job_schemas.py`, `sync_job_execution.py`, `sync_job_reconciliation.py`; router ridotto (~2900 → ~1500 righe).
+
 ### Rimozioni (pulizia codice morto)
 - **Frontend services**: rimossi metodi API mai chiamati (loadBalancer, syncJobs, backupJobs, logs, updates, pbsInventory, auth, sshKeys, vms, pveReplication).
 - **Asset Vite** `frontend/src/assets/vue.svg`, script obsoleto `deploy_beta.sh`, commenti/import morti.

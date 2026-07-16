@@ -61,7 +61,8 @@ async def execute_vm_group_sync_task(
 ) -> None:
     """Replica sequenziale di tutti i dischi di un gruppo VM."""
     from database import SessionLocal
-    from routers.sync_jobs import execute_sync_job_task, reconcile_pending_vm_registrations
+    from services.sync_job_execution import execute_sync_job_task
+    from services.sync_job_reconciliation import reconcile_pending_vm_registrations
 
     db = SessionLocal()
     try:
@@ -183,7 +184,7 @@ async def continue_vm_group_chain(
         if any((j.last_status or "").lower() == "running" for j in jobs):
             return
         if all((j.last_status or "").lower() == "success" for j in jobs):
-            from routers.sync_jobs import reconcile_pending_vm_registrations
+            from services.sync_job_reconciliation import reconcile_pending_vm_registrations
 
             await reconcile_pending_vm_registrations()
             return

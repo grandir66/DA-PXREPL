@@ -113,7 +113,7 @@ class SchedulerService:
 
     async def _reconcile_sync_jobs_on_startup(self) -> None:
         """Allinea stato DB con syncoid/receive realmente attivi sui nodi."""
-        from routers.sync_jobs import reconcile_sync_jobs_after_restart
+        from services.sync_job_reconciliation import reconcile_sync_jobs_after_restart
         await reconcile_sync_jobs_after_restart()
 
     async def _reconcile_stuck_sync_jobs(self) -> None:
@@ -124,7 +124,7 @@ class SchedulerService:
             return
         self._last_sync_reconcile = now
         try:
-            from routers.sync_jobs import (
+            from services.sync_job_reconciliation import (
                 _reconcile_running_sync_jobs_once,
                 reconcile_pending_vm_registrations,
             )
@@ -395,7 +395,7 @@ class SchedulerService:
     
     async def _guarded_execute_sync_job(self, job_key: str, job_id: int) -> None:
         """Esegue un SyncJob standalone; mantiene il lock se la replica continua in background."""
-        from routers.sync_jobs import execute_sync_job_task
+        from services.sync_job_execution import execute_sync_job_task
 
         keep_lock = False
         try:
