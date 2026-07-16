@@ -945,8 +945,47 @@ async def create_zfs_snapshot_now(
     return {"message": "Snapshot manuale creato", "snapshot_name": snapshot_name, "details": results}
 
 
+async def _list_pbs_storages_on_pve(pve_node: Node) -> list[str]:
+    """Elenco storage PBS attivi sul nodo PVE."""
+    result = await ssh_service.execute(
+        hostname=pve_node.hostname,
+        command="pvesm status 2>/dev/null",
+        port=pve_node.ssh_port,
+        username=pve_node.ssh_user,
+        key_path=pve_node.ssh_key_path,
+    )
+    if not result.success or not result.stdout:
+        return []
+    storages: list[str] = []
+    for line in result.stdout.strip().split("\n")[1:]:
+        parts = line.split()
+        if len(parts) >= 3 and parts[1] == "pbs" and parts[2] == "active":
+            storages.append(parts[0])
+    return storages
 
-    
+
+def _vm_backup_from_inventory_entry(entry: dict, storage_id: Optional[str] = None) -> dict:
+    """Adatta un entry inventario PBS al formato atteso dalla UI Virtual Machines."""
+    btime_ms = int(entry.get("backup_time") or 0)
+    if btime_ms > 1_000_000_000_000:
+        btime_sec = btime_ms // 1000
+    else:
+        btime_sec = btime_ms or int(entry.get("backup-time") or 0)
+
+    volid = entry.get("volid") or entry.get("restore_path") or entry.get("backup-id") or entry.get("backup_id")
+    vm_type = entry.get("vm_type") or entry.get("backup-type") or "qemu"
+
+    return {
+        "volid": volid,
+        "backup-time": btime_sec,
+        "backup-type": "lxc" if vm_type in ("lxc", "ct") else "vm",
+        "size": entry.get("size", 0),
+        "storage_id": storage_id or entry.get("storage_id"),
+        "pbs_node": entry.get("pbs_node"),
+        "restore_path": entry.get("restore_path") or entry.get("backup_id") or entry.get("backup-id"),
+    }
+
+
 @router.get("/node/{node_id}/vm/{vmid}/backups")
 async def get_vm_backups(
     node_id: int,
@@ -955,95 +994,59 @@ async def get_vm_backups(
     db: Session = Depends(get_db)
 ):
     """
-    Ottiene lista backup dal PBS configurato sul nodo.
-    Cerca storage tipo 'pbs' sul nodo e interroga il PBS.
-    Note: Se ci sono più storage PBS, li controlla tutti o richiede specifica?
-    Per semplicità, cerchiamo tutti gli storage PBS attivi e aggreghiamo i backup per questo VMID.
+    Elenco backup PBS per una VM/CT.
+
+    Usa la stessa logica dell'inventario PBS (API + pvesh) così da includere
+    backup nativi Proxmox, manuali e creati da dapx.
     """
     node = db.query(Node).filter(Node.id == node_id).first()
     if not node:
         raise HTTPException(status_code=404, detail="Nodo non trovato")
-    
+
     if not check_node_access(user, node):
         raise HTTPException(status_code=403, detail="Accesso negato")
 
-    # 1. Trova storage PBS sul nodo
-    cmd = "pvesh get /storage --output-format json 2>/dev/null"
-    result = await ssh_service.execute(node.hostname, cmd, node.ssh_port, node.ssh_user, node.ssh_key_path)
-    
-    all_backups = []
-    
-    if result.success and result.stdout.strip():
-        try:
-            storages = json.loads(result.stdout)
-            pbs_storages = [
-                s for s in storages 
-                if s.get("type") == "pbs" and s.get("active") == 1
-            ]
-            
-            from services.pbs_service import pbs_service
-            
-            # 2. Per ogni storage PBS, lista i backup
-            for storage in pbs_storages:
-                storage_id = storage.get("storage")
-                # Lista backup via pvesh o proxmox-backup-client (usiamo pvesh per semplicità su storage configurato)
-                # pvesh get /nodes/{node}/storage/{storage}/content --content backup --vmid {vmid}
-                
-                cmd_bak = f"pvesh get /nodes/{node.name}/storage/{storage_id}/content --content backup --vmid {vmid} --output-format json 2>/dev/null"
-                res_bak = await ssh_service.execute(node.hostname, cmd_bak, node.ssh_port, node.ssh_user, node.ssh_key_path)
-                
-                if res_bak.success and res_bak.stdout.strip():
-                    try:
-                        backups = json.loads(res_bak.stdout)
-                        for b in backups:
-                            b["storage_id"] = storage_id # Aggiungi info storage
-                            all_backups.append(b)
-                    except json.JSONDecodeError:
-                        pass
-        except json.JSONDecodeError:
-            pass
-        except Exception:
-             pass
+    pbs_storages = await _list_pbs_storages_on_pve(node)
+    all_backups: list[dict] = []
+    seen: set[str] = set()
 
-    # 3. Fallback: Se non abbiamo trovato nulla, proviamo a interrogare direttamente i nodi PBS configurati nel DB
-    if not all_backups:
-        pbs_nodes = db.query(Node).filter(Node.node_type == NodeType.PBS.value, Node.is_active == True).all()
-        for pbs_node in pbs_nodes:
+    pbs_nodes = db.query(Node).filter(
+        Node.node_type == NodeType.PBS.value,
+        Node.is_active == True,
+    ).all()
+
+    storage_candidates = pbs_storages or [None]
+
+    for pbs_node in pbs_nodes:
+        if not check_node_access(user, pbs_node):
+            continue
+        datastore = pbs_node.pbs_datastore or "datastore1"
+        for pbs_storage in storage_candidates:
             try:
-                # Determina datastore (default 'backup' o configurato)
-                datastore = pbs_node.pbs_datastore or "backup"
-                
-                # Utilizza pbs_service.list_backups per interrogare il PBS
-                # Questo usa proxmox-backup-client gestendo auth e parsing json
-                # Utilizza pbs_service.list_backups_api per interrogare il PBS via HTTP API
-                # Questo evita problemi con SSH e certificati CLI
-                snaps = await pbs_service.list_backups_api(
-                    pbs_hostname=pbs_node.hostname,
+                entries = await pbs_service.list_inventory_backups(
+                    pbs_node=pbs_node,
                     datastore=datastore,
-                    pbs_user=pbs_node.pbs_username or "root@pam",
-                    pbs_password=pbs_node.pbs_password,
                     vm_id=vmid,
-                    pbs_fingerprint=pbs_node.pbs_fingerprint,
+                    pve_node=node,
+                    pbs_storage=pbs_storage,
                 )
-                
-                for snap in snaps:
-                     if "volid" not in snap:
-                         from services.pbs_service import normalize_pbs_api_snapshot
-                         norm = normalize_pbs_api_snapshot(snap, storage_id)
-                         all_backups.append({
-                             **norm,
-                             "storage_id": storage_id,
-                             "pbs_node": pbs_node.name,
-                             "backup-time": norm.get("backup_time", 0) // 1000,
-                         })
-                     else:
-                         snap["storage_id"] = storage_id
-                         snap["pbs_node"] = pbs_node.name
-                         all_backups.append(snap)
-                             
             except Exception as e:
-                logger.warning(f"Error querying PBS node {pbs_node.name}: {e}")
+                logger.warning(
+                    f"Errore listing backup PBS per VM {vmid} su {pbs_node.name}"
+                    f"{f' storage {pbs_storage}' if pbs_storage else ''}: {e}"
+                )
+                continue
 
+            for entry in entries:
+                key = entry.get("restore_path") or entry.get("backup_id") or entry.get("volid")
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                row = _vm_backup_from_inventory_entry(entry, pbs_storage)
+                row["pbs_node"] = pbs_node.name
+                all_backups.append(row)
+
+    all_backups.sort(key=lambda x: x.get("backup-time", 0), reverse=True)
     return all_backups
 
 @router.post("/node/{node_id}/vm/{vmid}/restore")

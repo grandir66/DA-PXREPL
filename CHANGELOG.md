@@ -5,6 +5,9 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+### Fix
+- **VM → Backup PBS**: elenco backup dalla view Virtual Machines allineato all'inventario PBS (API + pvesh); corretto bug `storage_id` nel fallback e formato timestamp per la UI.
+
 ### Refactor
 - **Rimozione Load Balancer (ProxLB)**: funzionalità obsoleta (Proxmox integra il bilanciamento nativo). Eliminati view, API, `proxlb_lib`, modalità `DAPX_MODE=lb`; backup cluster spostato su `/api/ha/cluster/backup-config`; redirect `/load-balancer` → Cluster & HA.
 - **Cluster.vue → apiClient**: nuovo `clusters.ts`, esteso `ha.ts` (monitor, topology, HA/cluster ops); rimossi `fetch`/`axios` diretti dalla view.
