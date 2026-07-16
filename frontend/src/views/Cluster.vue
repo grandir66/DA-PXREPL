@@ -654,14 +654,15 @@
 <script setup lang="ts">
 import { useToast, errorMessage } from '../stores/toast';
 import { ref, reactive, onMounted, computed, watch } from 'vue';
-import { confirmDangerous, confirmDelete } from '../stores/confirm';
+import { confirmDangerous } from '../stores/confirm';
 import Icon from '../components/ui/Icon.vue';
 import PageHeader from '../components/ui/PageHeader.vue';
 import { useRouter } from 'vue-router';
 import { useHAStore } from '../stores/ha_store';
 import haService from '../services/ha';
+import clustersService, { type ProxmoxCluster } from '../services/clusters';
+import nodesService from '../services/nodes';
 import loadBalancerService from '../services/loadBalancer';
-import axios from 'axios';
 
 const toast = useToast()
 
@@ -671,19 +672,6 @@ const activeTab = ref('monitor'); // Start on Monitor
 const loading = computed(() => store.loading);
 
 // --- Cluster Management State ---
-interface ProxmoxCluster {
-    id: number;
-    name: string;
-    hosts: string;
-    api_user?: string;
-    verify_ssl: boolean;
-    is_default: boolean;
-    is_initialized: boolean;
-    cluster_name?: string;
-    node_count?: number;
-    quorum_ok?: boolean;
-}
-
 const clusters = ref<ProxmoxCluster[]>([]);
 const selectedClusterId = ref<number | null>(null);
 const isEditingCluster = ref(false);
@@ -765,16 +753,10 @@ const loadTopology = async () => {
     loadingTopology.value = true;
     try {
         const nodeId = await getFirstPVENodeId();
-        if(!nodeId) return;
-        
-        const token = localStorage.getItem('access_token');
-        const res = await fetch(`/api/ha/node/${nodeId}/topology`, { 
-            headers: { 'Authorization': `Bearer ${token}` } 
-        });
-        
-        if (res.ok) {
-            topologyData.value = await res.json();
-        }
+        if (!nodeId) return;
+
+        const res = await haService.getTopology(nodeId);
+        topologyData.value = res.data;
     } catch (e) {
         console.error("Topology load failed", e);
     } finally {
@@ -783,9 +765,11 @@ const loadTopology = async () => {
 };
 
 watch(activeTab, (val) => {
-    if (val === 'topology' && (!topologyData.value || clusters.value.length > 0)) { // Reload if switching
+    if (val === 'topology' && (!topologyData.value || clusters.value.length > 0)) {
         loadTopology();
     }
+    if (val === 'config') loadClusterConfig();
+    if (val === 'monitor') loadMonitorData();
 });
 
 // Helper to get guests for a bridge on a specific node
@@ -865,33 +849,22 @@ const getBondSlaves = (nodeInterfaces: any[], portName: string): string[] | null
 
 // Implementation
 const loadMonitorData = async () => {
-    // If analysis data is stale (>60s) or missing, fetch it
-    // Or just always fetch for now on refresh
     try {
         const nodeId = await getFirstPVENodeId();
-        if(!nodeId) return;
+        if (!nodeId) return;
 
-        const token = localStorage.getItem('access_token');
-        const res = await fetch(`/api/ha/node/${nodeId}/monitor`, { 
-            headers: { 'Authorization': `Bearer ${token}` } 
-        });
-        
-        if(!res.ok) throw new Error("Monitor API failed");
-        
-        const data = await res.json();
-        
-        // Format matches what store expects enough to render?
-        // Store expects { nodes: {...}, guests: {...}, ... }
-        // Our new API returns exactly that structure.
-        store.setAnalysisResult(data);
-    } catch(e) { console.error('Error loading monitor data', e); }
+        const res = await haService.getMonitor(nodeId);
+        store.setAnalysisResult(res.data);
+    } catch (e) {
+        console.error('Error loading monitor data', e);
+    }
 };
 
 // --- Cluster Management Functions ---
 
 const fetchClusters = async () => {
     try {
-        const res = await axios.get('/api/clusters');
+        const res = await clustersService.list();
         clusters.value = res.data;
         
         // Auto-select logic
@@ -963,9 +936,9 @@ const saveCluster = async () => {
     
     try {
         if (editingClusterId.value) {
-            await axios.put(`/api/clusters/${editingClusterId.value}`, payload);
+            await clustersService.update(editingClusterId.value, payload);
         } else {
-            await axios.post('/api/clusters', payload);
+            await clustersService.create(payload);
         }
         await fetchClusters();
         isEditingCluster.value = false;
@@ -980,7 +953,7 @@ const saveCluster = async () => {
 const deleteCluster = async (id: number) => {
     if (!await confirmDangerous("Sei sicuro di voler eliminare questa configurazione cluster?\n\nI nodi Proxmox e le sincronizzazioni NON verranno toccati.\nVerrà rimossa solo la connessione per il monitoraggio e HA.")) return;
     try {
-        await axios.delete(`/api/clusters/${id}`);
+        await clustersService.delete(id);
         await fetchClusters();
     } catch (e) {
         console.error("Failed to delete cluster", e);
@@ -1006,11 +979,6 @@ onMounted(async () => {
     store.startBackgroundRefresh();
 });
 
-watch(activeTab, (val) => {
-    if(val === 'config') loadClusterConfig();
-    if(val === 'monitor') loadMonitorData();
-});
-
 // Helper to get node ID — preferisce membro cluster pvecm
 const getFirstPVENodeId = async () => {
     try {
@@ -1019,11 +987,10 @@ const getFirstPVENodeId = async () => {
     } catch (e) {
         toast.error('Errore rilevamento cluster', errorMessage(e));
     }
-    const token = localStorage.getItem('access_token');
     try {
-        const nodesRes = await fetch('/api/nodes/', { headers: { Authorization: `Bearer ${token}` } });
-        const nodes = await nodesRes.json();
-        const pve = nodes.find((n: { node_type?: string }) => n.node_type === 'pve' || !n.node_type);
+        const nodesRes = await nodesService.getNodes();
+        const nodes = nodesRes.data;
+        const pve = nodes.find((n) => n.node_type === 'pve' || !n.node_type);
         if (pve) return pve.id;
         if (nodes.length > 0) return nodes[0].id;
     } catch {
@@ -1034,18 +1001,16 @@ const getFirstPVENodeId = async () => {
 
 // --- CONFIG ACTIONS ---
 const loadClusterConfig = async () => {
-    // This would fetch from /api/load-balancer/config basically
-    // For now we mock or use existing
     try {
-        const token = localStorage.getItem('access_token');
-        const res = await fetch('/api/load-balancer/config', { headers: { 'Authorization': `Bearer ${token}` } });
-        const data = await res.json();
-        if(data.proxmox_api) {
+        const res = await loadBalancerService.getConfig();
+        const data = res.data;
+        if (data.proxmox_api) {
             clusterConfig.hosts = data.proxmox_api.hosts || '';
             clusterConfig.user = data.proxmox_api.user || '';
-            // Pass not returned
         }
-    } catch(e) {}
+    } catch {
+        /* ignore */
+    }
 };
 
 
@@ -1055,17 +1020,11 @@ const addNodeToCluster = async () => {
    if(!await confirmDangerous(`Add ${newNodeIP.value} to cluster?`)) return;
    const nodeId = await getFirstPVENodeId();
    if (!nodeId) return;
-   
-   // Reuse logic
-   const token = localStorage.getItem('access_token');
+
    try {
-       const res = await fetch(`/api/ha/node/${nodeId}/cluster/nodes`, {
-           method: 'POST',
-           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-           body: JSON.stringify({ new_node_ip: newNodeIP.value })
-       });
-       const d = await res.json();
-       if(d.success) { toast.success('Nodo aggiunto'); refreshAll(); }
+       const res = await haService.addClusterNode(nodeId, newNodeIP.value);
+       const d = res.data;
+       if (d.success) { toast.success('Nodo aggiunto'); refreshAll(); }
        else toast.error('Errore', d.message);
    } catch(e) { toast.error('Errore', errorMessage(e)); }
 };
@@ -1082,10 +1041,7 @@ const removeFromHA = async (res: any) => {
     const nodeId = await getFirstPVENodeId();
     if (!nodeId) return;
     try {
-        const token = localStorage.getItem('access_token');
-        await fetch(`/api/ha/node/${nodeId}/resources/${res.sid}?vm_type=${res.type}`, {
-            method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` }
-        });
+        await haService.removeResource(nodeId, res.sid, res.type);
         refreshAll();
     } catch(e) { toast.error('Errore', errorMessage(e)); }
 };
@@ -1095,10 +1051,7 @@ const deleteHAGroup = async (groupName: string) => {
      const nodeId = await getFirstPVENodeId();
      if (!nodeId) return;
      try {
-         const token = localStorage.getItem('access_token');
-         await fetch(`/api/ha/node/${nodeId}/groups/${groupName}`, {
-             method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` }
-         });
+         await haService.deleteGroup(nodeId, groupName);
          refreshAll();
      } catch(e) { toast.error('Errore', errorMessage(e)); }
 };
@@ -1118,21 +1071,19 @@ const selectAllGuests = () => toggleSelectAllGuests();
 
 const addSelectedGuestsToHA = async () => {
     const nodeId = await getFirstPVENodeId();
-    const token = localStorage.getItem('access_token');
-    
-    for(const vmid of selectedGuestsForHA.value) {
+    if (!nodeId) return;
+
+    for (const vmid of selectedGuestsForHA.value) {
         const guest = store.availableGuests.find(g => g.vmid === vmid);
-        if(!guest) continue;
-        
-        await fetch(`/api/ha/node/${nodeId}/resources`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({
-                vmid, vm_type: guest.type,
-                group: newHAResource.group || null,
-                state: newHAResource.state,
-                max_restart: 1, max_relocate: 1
-            })
+        if (!guest) continue;
+
+        await haService.addResource(nodeId, {
+            vmid,
+            vm_type: guest.type,
+            group: newHAResource.group || null,
+            state: newHAResource.state,
+            max_restart: 1,
+            max_relocate: 1,
         });
     }
     selectedGuestsForHA.value = [];
@@ -1148,18 +1099,15 @@ const toggleNodeForGroup = (name: string) => {
 const createHAGroupFromSelection = async () => {
     if(!newHAGroup.name) return;
     const nodeId = await getFirstPVENodeId();
-    const token = localStorage.getItem('access_token');
-    
-    const nodes = selectedNodesForGroup.value.map(n => n.name); // Simple list for now, ignoring priority for brevity or implementing simple
-    
-    await fetch(`/api/ha/node/${nodeId}/groups`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({
-            name: newHAGroup.name,
-            nodes: nodes,
-            restricted: false, nofailback: false
-        })
+    if (!nodeId) return;
+
+    const nodes = selectedNodesForGroup.value.map(n => n.name);
+
+    await haService.createGroup(nodeId, {
+        name: newHAGroup.name,
+        nodes,
+        restricted: false,
+        nofailback: false,
     });
     newHAGroup.name = '';
     selectedNodesForGroup.value = [];
@@ -1168,15 +1116,9 @@ const createHAGroupFromSelection = async () => {
 
 // --- DANGEROUS OPS ---
 const triggerClusterBackup = async () => {
-    // Phase 4: Call backend backup endpoint
-    // For now, check if implementation exists in backend. 
-    // Since we are writing frontend code first, we assume endpoint will look like this
-    // or we print a console log
-    console.log("Triggering auto-backup...");
     try {
-        const token = localStorage.getItem('access_token');
-        await fetch('/api/load-balancer/cluster/backup-config', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
-    } catch(e) {
+        await loadBalancerService.backupClusterConfig();
+    } catch (e) {
         console.warn("Backup endpoint error", e);
     }
 };
@@ -1184,39 +1126,31 @@ const triggerClusterBackup = async () => {
 const removeNodeFromCluster = async (name: string) => {
     if(!await confirmDangerous(`DANGER: Remove ${name}? Node must be OFFLINE.`)) return;
     if(!await confirmDangerous(`Are you really sure? This can break quorum.`)) return;
-    
+
     await triggerClusterBackup();
 
     const nodeId = await getFirstPVENodeId();
-    const token = localStorage.getItem('access_token');
+    if (!nodeId) return;
     try {
-        const res = await fetch(`/api/ha/node/${nodeId}/cluster/nodes/${name}`, {
-             method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const d = await res.json();
-        if(d.success) { toast.success('Rimosso'); refreshAll(); }
+        const res = await haService.removeClusterNode(nodeId, name);
+        const d = res.data;
+        if (d.success) { toast.success('Rimosso'); refreshAll(); }
         else toast.error('Errore', d.message);
     } catch(e) { toast.error('Errore', errorMessage(e)); }
 };
 
 const cleanNodeReferences = async (name: string) => {
     if(!await confirmDangerous(`Clean references for ${name}?`)) return;
-    
+
     await triggerClusterBackup();
 
     const nodeId = await getFirstPVENodeId();
-    const token = localStorage.getItem('access_token');
+    if (!nodeId) return;
     try {
-        const res = await fetch(`/api/ha/node/${nodeId}/cluster/nodes/${name}/clean`, {
-             method: 'POST', headers: { 'Authorization': `Bearer ${token}` }
-        });
+        await haService.cleanClusterNode(nodeId, name);
         toast.success('Pulizia completata');
     } catch(e) { toast.error('Errore', errorMessage(e)); }
 };
-
-watch(activeTab, (val) => {
-    if(val === 'config') loadClusterConfig();
-});
 // --- HELPER FUNCTIONS ---
 
 const formatBytes = (bytes: number) => {

@@ -19,4 +19,8 @@ export default {
     async updateConfig(config: any) {
         return axios.post('/load-balancer/config', config);
     },
+
+    async backupClusterConfig() {
+        return axios.post('/load-balancer/cluster/backup-config');
+    },
 }
