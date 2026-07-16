@@ -1033,15 +1033,19 @@ async def get_vm_backups(
                 )
                 
                 for snap in snaps:
-                     # Normalizzazione per frontend
-                     # snapshot da list_backups ha già formato dict. Aggiungiamo metadati mancanti.
                      if "volid" not in snap:
-                         snap["volid"] = f"{datastore}:{snap.get('backup-type')}/{snap.get('backup-id')}/{snap.get('backup-time')}"
-                     
-                     snap["vmid"] = vmid
-                     snap["storage_id"] = datastore 
-                     snap["pbs_node"] = pbs_node.name
-                     all_backups.append(snap)
+                         from services.pbs_service import normalize_pbs_api_snapshot
+                         norm = normalize_pbs_api_snapshot(snap, storage_id)
+                         all_backups.append({
+                             **norm,
+                             "storage_id": storage_id,
+                             "pbs_node": pbs_node.name,
+                             "backup-time": norm.get("backup_time", 0) // 1000,
+                         })
+                     else:
+                         snap["storage_id"] = storage_id
+                         snap["pbs_node"] = pbs_node.name
+                         all_backups.append(snap)
                              
             except Exception as e:
                 logger.warning(f"Error querying PBS node {pbs_node.name}: {e}")

@@ -59,6 +59,12 @@
             placeholder="Tutte"
           />
         </div>
+        <div class="form-group filter-checkbox">
+          <label class="checkbox-label">
+            <input v-model="latestOnly" type="checkbox" />
+            Solo ultima versione per VM
+          </label>
+        </div>
         <div class="form-group filter-actions">
           <label>&nbsp;</label>
           <button class="btn btn-primary" :disabled="!filters.pbsNodeId || loading" @click="loadBackups">
@@ -76,7 +82,10 @@
             — datastore {{ datastoreLabel }}
           </span>
         </h3>
-        <span class="badge badge-purple">{{ filteredBackups.length }} / {{ backups.length }}</span>
+        <span class="badge badge-purple">{{ displayedBackups.length }} versioni</span>
+        <span v-if="filters.vmId && !latestOnly" class="text-secondary text-sm ml-2">
+          (tutte le versioni VM {{ filters.vmId }})
+        </span>
       </div>
 
       <div class="card-body">
@@ -108,7 +117,7 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="bak in filteredBackups" :key="backupKey(bak)">
+                <tr v-for="bak in displayedBackups" :key="backupKey(bak)">
                   <td>
                     <div class="font-bold">
                       {{ bak.vm_name || ('VM #' + (bak.vmid ?? '?')) }}
@@ -118,7 +127,10 @@
                       · VMID {{ bak.vmid ?? '—' }}
                     </div>
                   </td>
-                  <td>{{ formatBackupTime(bak.backup_time) }}</td>
+                  <td>
+                    <div class="font-bold">{{ formatBackupTime(bak.backup_time) }}</div>
+                    <div v-if="isLatestForVm(bak)" class="text-xs text-success">Ultima versione</div>
+                  </td>
                   <td>{{ formatSize(bak.size) }}</td>
                   <td class="font-mono text-xs break-all">{{ backupId(bak) }}</td>
                   <td class="text-right">
@@ -212,6 +224,7 @@ const datastoreLabel = ref('')
 const loading = ref(false)
 const error = ref('')
 const search = ref('')
+const latestOnly = ref(false)
 
 const filters = reactive({
   pbsNodeId: null as number | null,
@@ -237,14 +250,46 @@ const selectedPbs = computed(() =>
 
 const filteredBackups = computed(() => {
   const q = search.value.trim().toLowerCase()
-  if (!q) return backups.value
-  return backups.value.filter(b => {
-    const id = backupId(b).toLowerCase()
-    const name = (b.vm_name || '').toLowerCase()
-    const vmid = String(b.vmid ?? '')
-    return id.includes(q) || name.includes(q) || vmid.includes(q)
-  })
+  let list = backups.value
+  if (q) {
+    list = list.filter(b => {
+      const id = backupId(b).toLowerCase()
+      const name = (b.vm_name || '').toLowerCase()
+      const vmid = String(b.vmid ?? '')
+      return id.includes(q) || name.includes(q) || vmid.includes(q)
+    })
+  }
+  return list
 })
+
+const displayedBackups = computed(() => {
+  if (!latestOnly.value) return filteredBackups.value
+  const latestByVm = new Map<number, PBSBackupEntry>()
+  for (const b of filteredBackups.value) {
+    const vid = b.vmid
+    if (vid == null) continue
+    const prev = latestByVm.get(vid)
+    if (!prev || (b.backup_time || 0) > (prev.backup_time || 0)) {
+      latestByVm.set(vid, b)
+    }
+  }
+  return [...latestByVm.values()].sort((a, b) => (b.backup_time || 0) - (a.backup_time || 0))
+})
+
+const latestVmIds = computed(() => {
+  const m = new Map<number, number>()
+  for (const b of backups.value) {
+    if (b.vmid == null) continue
+    const t = b.backup_time || 0
+    if (!m.has(b.vmid) || t > (m.get(b.vmid) || 0)) m.set(b.vmid, t)
+  }
+  return m
+})
+
+function isLatestForVm(b: PBSBackupEntry): boolean {
+  if (b.vmid == null) return false
+  return (latestVmIds.value.get(b.vmid) || 0) === (b.backup_time || 0)
+}
 
 onMounted(async () => {
   await loadNodes()
@@ -301,7 +346,7 @@ async function loadBackups() {
 }
 
 function backupId(b: PBSBackupEntry): string {
-  return b.backup_id || b['backup-id'] || b.volid || ''
+  return b.restore_path || b.backup_id || b['backup-id'] || b.volid || ''
 }
 
 function backupKey(b: PBSBackupEntry): string {
@@ -374,6 +419,20 @@ async function executeRestore() {
 </script>
 
 <style scoped>
+.filter-checkbox {
+  display: flex;
+  align-items: flex-end;
+}
+
+.filter-checkbox .checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding-bottom: 0.35rem;
+  font-size: 0.875rem;
+}
+
 .filters-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));

@@ -3,6 +3,7 @@ import apiClient from './api'
 export interface PBSBackupEntry {
   'backup-id'?: string
   backup_id?: string
+  restore_path?: string
   vmid?: number
   vm_name?: string
   vm_type?: string

@@ -53,6 +53,79 @@ def _check_int(value, label: str, lo: int = 100, hi: int = 999_999_999) -> int:
     return n
 
 
+def pbs_snapshot_restore_path(backup_type: str, backup_id, backup_time: int) -> str:
+    """Da campi API PBS → path restore `vm/100/2024-01-01T00:00:00Z`."""
+    prefix = "ct" if backup_type in ("ct", "lxc") else "vm"
+    bid_raw = str(backup_id or "")
+    if "/" in bid_raw:
+        # già vm/100/2024-... o ct/101/...
+        if re.fullmatch(r"(?:vm|ct)/\d+/[0-9TZ:.\-]+", bid_raw):
+            return bid_raw
+        bid_raw = bid_raw.rstrip("/").split("/")[-2 if bid_raw.endswith("/") else -1]
+    ts = int(backup_time or 0)
+    iso = datetime.utcfromtimestamp(ts).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return f"{prefix}/{bid_raw}/{iso}"
+
+
+def normalize_pbs_api_snapshot(snap: Dict, pbs_storage: Optional[str] = None) -> Dict:
+    """Normalizza uno snapshot PBS API in entry inventario con path restore univoco."""
+    btype = snap.get("backup-type") or snap.get("subtype") or "vm"
+    bid = snap.get("backup-id")
+    btime = snap.get("backup-time") or snap.get("backup_time") or 0
+    restore_path = pbs_snapshot_restore_path(btype, bid, btime)
+    vmid = None
+    if bid is not None and str(bid).isdigit():
+        vmid = int(bid)
+    else:
+        m = re.search(r"(?:vm|ct)/(\d+)/", restore_path)
+        if m:
+            vmid = int(m.group(1))
+    vm_type = "lxc" if btype in ("ct", "lxc") or "/ct/" in restore_path else "qemu"
+    volid = snap.get("volid")
+    if not volid and pbs_storage:
+        volid = f"{pbs_storage}:backup/{restore_path}"
+    name = snap.get("comment") or snap.get("notes") or snap.get("vm_name")
+    return {
+        "backup-id": restore_path,
+        "backup_id": restore_path,
+        "restore_path": restore_path,
+        "volid": volid or restore_path,
+        "vmid": vmid if vmid is not None else snap.get("vmid"),
+        "vm_name": name or (f"{'CT' if vm_type == 'lxc' else 'VM'} #{vmid}" if vmid else ""),
+        "vm_type": vm_type,
+        "backup_time": int(btime) * 1000 if btime else 0,
+        "size": snap.get("size", 0),
+    }
+
+
+def normalize_pvesh_backup_entry(entry: Dict, pbs_storage: Optional[str] = None) -> Dict:
+    """Normalizza riga pvesh storage content in entry inventario."""
+    volid = entry.get("volid", "") or ""
+    restore_path = volid
+    if ":backup/" in volid:
+        restore_path = volid.split(":backup/", 1)[1]
+    elif volid.startswith("backup/"):
+        restore_path = volid[len("backup/"):]
+    vm_type = "lxc" if "/ct/" in restore_path or entry.get("subtype") == "lxc" else "qemu"
+    vmid = entry.get("vmid")
+    if vmid is None:
+        m = re.search(r"(?:vm|ct)/(\d+)/", restore_path)
+        if m:
+            vmid = int(m.group(1))
+    ctime = entry.get("ctime", 0) or 0
+    return {
+        "backup-id": restore_path,
+        "backup_id": restore_path,
+        "restore_path": restore_path,
+        "volid": volid or (f"{pbs_storage}:backup/{restore_path}" if pbs_storage else restore_path),
+        "vmid": vmid,
+        "vm_name": entry.get("notes") or entry.get("comment") or (f"{'CT' if vm_type == 'lxc' else 'VM'} #{vmid}" if vmid else ""),
+        "vm_type": vm_type,
+        "backup_time": int(ctime) * 1000 if ctime else 0,
+        "size": entry.get("size", 0),
+    }
+
+
 class PBSService:
     """Servizio per integrazione con Proxmox Backup Server"""
     
@@ -219,10 +292,11 @@ class PBSService:
                         
                         results = []
                         for snap in snapshots:
-                            if vm_id:
-                                if str(snap.get('backup-id')) != str(vm_id):
+                            if vm_id is not None:
+                                snap_vmid = snap.get("backup-id")
+                                if str(snap_vmid) != str(vm_id):
                                     continue
-                            results.append(snap)
+                            results.append(normalize_pbs_api_snapshot(snap))
                         return results
                     else:
                         logger.error(f"PBS List snapshots failed: {resp.status} - {await resp.text()}")
@@ -259,20 +333,86 @@ class PBSService:
                     datastore=datastore,
                     pbs_user=pbs_node.pbs_username or "root@pam",
                     pbs_password=pbs_node.pbs_password,
-                    vm_id=vm_id
+                    vm_id=vm_id,
+                    pbs_fingerprint=pbs_node.pbs_fingerprint,
                 )
             except Exception as e:
                 logger.warning(f"API list backups failed, trying SSH fallback: {e}")
-        
-        # Fallback to SSH (legacy)
-        return await self.list_backups(
+
+        raw = await self.list_backups(
             pbs_hostname=pbs_node.hostname,
             datastore=datastore,
             pbs_user=pbs_node.pbs_username or "root@pam",
             pbs_password=pbs_node.pbs_password,
             pbs_fingerprint=pbs_node.pbs_fingerprint,
-            vm_id=vm_id
+            vm_id=vm_id,
         )
+        return [normalize_pbs_api_snapshot(b) for b in raw]
+
+    async def list_inventory_backups(
+        self,
+        pbs_node: Any,
+        datastore: str,
+        vm_id: Optional[int] = None,
+        pve_node: Any = None,
+        pbs_storage: Optional[str] = None,
+    ) -> List[Dict]:
+        """Elenco completo versioni backup PBS (API preferita, supplemento pvesh)."""
+        results: List[Dict] = []
+        seen: set = set()
+
+        def _add(entry: Dict) -> None:
+            path = entry.get("restore_path") or entry.get("backup_id") or entry.get("backup-id")
+            if not path or path in seen:
+                return
+            if vm_id is not None and entry.get("vmid") != vm_id:
+                return
+            seen.add(path)
+            results.append(entry)
+
+        if pbs_node.pbs_password:
+            try:
+                api_items = await self.list_backups_api(
+                    pbs_hostname=pbs_node.hostname,
+                    datastore=datastore,
+                    pbs_user=pbs_node.pbs_username or "root@pam",
+                    pbs_password=pbs_node.pbs_password,
+                    vm_id=vm_id,
+                    pbs_fingerprint=pbs_node.pbs_fingerprint,
+                )
+                for item in api_items:
+                    _add(item)
+            except Exception as e:
+                logger.warning(f"PBS API inventory fallita: {e}")
+
+        if pve_node and pbs_storage:
+            from services.ssh_service import ssh_service
+
+            cmd = (
+                f"pvesh get /nodes/{pve_node.name}/storage/{pbs_storage}/content "
+                f"--content backup --output-format json 2>/dev/null"
+            )
+            if vm_id is not None:
+                cmd = (
+                    f"pvesh get /nodes/{pve_node.name}/storage/{pbs_storage}/content "
+                    f"--content backup --vmid {int(vm_id)} --output-format json 2>/dev/null"
+                )
+            result = await ssh_service.execute(
+                hostname=pve_node.hostname,
+                command=cmd,
+                port=pve_node.ssh_port,
+                username=pve_node.ssh_user,
+                key_path=pve_node.ssh_key_path,
+            )
+            if result.success and result.stdout.strip():
+                try:
+                    for row in json.loads(result.stdout):
+                        _add(normalize_pvesh_backup_entry(row, pbs_storage))
+                except json.JSONDecodeError as e:
+                    logger.warning(f"pvesh inventory parse error: {e}")
+
+        results.sort(key=lambda x: x.get("backup_time", 0), reverse=True)
+        return results
 
     async def check_pbs_available(
         self,
@@ -446,15 +586,13 @@ class PBSService:
             try:
                 all_backups = json.loads(result.stdout)
                 # Filter by VM ID if specified
-                if vm_id:
+                if vm_id is not None:
                     for backup in all_backups:
-                        # Check if backup-id matches vm_id (as string)
-                        # JSON output separates 'backup-type' (vm/ct) and 'backup-id' (100)
                         bid = str(backup.get("backup-id", ""))
-                        if bid == str(vm_id):
-                            backups.append(backup)
+                        if bid == str(vm_id) or f"/{vm_id}/" in bid:
+                            backups.append(normalize_pbs_api_snapshot(backup))
                 else:
-                    backups = all_backups
+                    backups = [normalize_pbs_api_snapshot(b) for b in all_backups]
             except json.JSONDecodeError:
                 logger.warning(f"Failed to parse backup list: {result.stdout}")
         

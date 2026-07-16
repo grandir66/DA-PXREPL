@@ -977,13 +977,9 @@ async def list_pbs_backups(
     assert_node_access(user, node)
     
     ds = datastore or node.pbs_datastore or "datastore1"
-    backups = []
-    result = None
-    
-    # Metodo preferito: Usa pvesh tramite nodo PVE (include notes con nome VM)
     pve_node = None
     storage_name = pbs_storage
-    
+
     if pve_node_id:
         pve_node = db.query(Node).filter(
             Node.id == pve_node_id,
@@ -992,133 +988,39 @@ async def list_pbs_backups(
         if pve_node:
             assert_node_access(user, pve_node)
     else:
-        # Cerca un nodo PVE qualsiasi
         pve_node = db.query(Node).filter(
             Node.node_type == NodeType.PVE.value
         ).first()
-    
-    if pve_node:
-        # Se non specificato, cerca lo storage PBS sul nodo
-        if not storage_name:
-            # Lista storage e trova quello PBS
-            storage_result = await ssh_service.execute(
-                hostname=pve_node.hostname,
-                command="pvesm status 2>/dev/null",
-                port=pve_node.ssh_port,
-                username=pve_node.ssh_user,
-                key_path=pve_node.ssh_key_path
-            )
-            if storage_result.success and storage_result.stdout:
-                # Parse output testuale: Name Type Status Total Used Available %
-                lines = storage_result.stdout.strip().split('\n')
-                for line in lines[1:]:  # Skip header
-                    parts = line.split()
-                    if len(parts) >= 3:
-                        st_name = parts[0]
-                        st_type = parts[1]
-                        st_status = parts[2]
-                        if st_type == "pbs" and st_status == "active":
-                            storage_name = st_name
-                            logger.info(f"Trovato storage PBS: {storage_name}")
-                            break
-        
-        if storage_name:
-                # Usa pvesh per listare i backup
-                # Il nome del nodo PVE è il nome configurato nel DB (es: DA-PX-03)
-                pve_name = pve_node.name
-                cmd = f"pvesh get /nodes/{pve_name}/storage/{storage_name}/content --output-format json 2>/dev/null"
-                logger.info(f"Esecuzione comando: {cmd}")
-                
-                result = await ssh_service.execute(
-                    hostname=pve_node.hostname,
-                    command=cmd,
-                    port=pve_node.ssh_port,
-                    username=pve_node.ssh_user,
-                    key_path=pve_node.ssh_key_path
-                )
-                
-                if result.success and result.stdout.strip():
-                    try:
-                        all_backups = json.loads(result.stdout)
-                        
-                        for backup in all_backups:
-                            # Converti formato PVE a formato standard
-                            volid = backup.get("volid", "")
-                            vmid = backup.get("vmid")
-                            ctime = backup.get("ctime", 0)
-                            # Converti timestamp Unix (secondi) a millisecondi per JavaScript
-                            ctime_ms = ctime * 1000 if ctime else 0
-                            size = backup.get("size", 0)
-                            
-                            # Estrai tipo e backup_id dal volid
-                            # Formato: PBS-BACK:backup/ct/101/2025-11-19T22:26:27Z
-                            vm_type = "qemu"
-                            backup_id = volid
-                            subtype = backup.get("subtype", "")
-                            if "/ct/" in volid or subtype == "lxc":
-                                vm_type = "lxc"
-                            
-                            # Usa notes di PBS come nome VM (contiene il nome originale)
-                            vm_name = backup.get("notes", "") or f"VM #{vmid}"
-                            
-                            # Filtra per VM ID se specificato
-                            if vm_id and vmid != vm_id:
-                                continue
-                            
-                            backups.append({
-                                "backup-id": backup_id,
-                                "backup_id": backup_id,
-                                "vmid": vmid,
-                                "vm_name": vm_name,
-                                "vm_type": vm_type,
-                                "backup_time": ctime_ms,
-                                "size": size,
-                                "volid": volid
-                            })
-                        logger.info(f"Trovati {len(backups)} backup via pvesh")
-                    except json.JSONDecodeError as e:
-                        logger.warning(f"Failed to parse pvesh backup list: {e}")
-                else:
-                    logger.warning(f"pvesh fallito: success={result.success if result else 'None'}, stdout={result.stdout[:200] if result and result.stdout else 'empty'}")
-    
-    # Fallback: usa proxmox-backup-client se non abbiamo trovato backup via pvesh
-    if not backups and node.pbs_password:
-        logger.info(f"Fallback a proxmox-backup-client per PBS {node.name}")
-        raw_backups = await pbs_service.list_backups(
-            pbs_hostname=node.hostname,
-            datastore=ds,
-            pbs_user=node.pbs_username or f"{node.ssh_user}@pam",
-            pbs_password=node.pbs_password,
-            pbs_fingerprint=node.pbs_fingerprint,
-            vm_id=vm_id,
-            from_node_hostname=node.hostname,
-            from_node_port=node.ssh_port,
-            from_node_user=node.ssh_user,
-            from_node_key=node.ssh_key_path
+
+    if pve_node and not storage_name:
+        storage_result = await ssh_service.execute(
+            hostname=pve_node.hostname,
+            command="pvesm status 2>/dev/null",
+            port=pve_node.ssh_port,
+            username=pve_node.ssh_user,
+            key_path=pve_node.ssh_key_path
         )
-        # Converti formato proxmox-backup-client (senza notes)
-        for backup in raw_backups:
-            backup_id = backup.get("backup-id", "")
-            vmid_match = None
-            vm_type = "qemu"
-            import re
-            match = re.search(r'(vm|ct)/(\d+)/', backup_id)
-            if match:
-                vm_type = "lxc" if match.group(1) == "ct" else "qemu"
-                vmid_match = int(match.group(2))
-            
-            backups.append({
-                "backup-id": backup_id,
-                "backup_id": backup_id,
-                "vmid": vmid_match,
-                "vm_name": f"{'CT' if vm_type == 'lxc' else 'VM'} #{vmid_match}",
-                "vm_type": vm_type,
-                "backup_time": backup.get("backup-time", 0) * 1000,
-                "size": backup.get("size", 0),
-                "volid": backup_id
-            })
-        logger.info(f"Trovati {len(backups)} backup via proxmox-backup-client")
-    
+        if storage_result.success and storage_result.stdout:
+            for line in storage_result.stdout.strip().split('\n')[1:]:
+                parts = line.split()
+                if len(parts) >= 3 and parts[1] == "pbs" and parts[2] == "active":
+                    storage_name = parts[0]
+                    logger.info(f"Trovato storage PBS: {storage_name}")
+                    break
+
+    try:
+        from services.pbs_service import pbs_service
+        backups = await pbs_service.list_inventory_backups(
+            pbs_node=node,
+            datastore=ds,
+            vm_id=vm_id,
+            pve_node=pve_node,
+            pbs_storage=storage_name,
+        )
+    except Exception as e:
+        logger.error(f"Errore listing backups PBS: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
     return {
         "datastore": ds,
         "backups": backups,
