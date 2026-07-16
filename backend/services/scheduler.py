@@ -11,8 +11,6 @@ from croniter import croniter
 from sqlalchemy.orm import Session
 
 from database import SessionLocal, SyncJob, JobLog, Node, NotificationConfig, SystemConfig, HostBackupJob, MigrationJob
-from services.syncoid_service import syncoid_service
-from services.proxmox_service import proxmox_service
 from services.notification_service import notification_service
 from services.host_backup_service import host_backup_service
 from services.host_info_service import host_info_service
@@ -338,6 +336,19 @@ class SchedulerService:
         finally:
             db.close()
     
+    async def _guarded_execute_sync_job(self, job_key: str, job_id: int) -> None:
+        """Esegue un SyncJob standalone; mantiene il lock se la replica continua in background."""
+        from routers.sync_jobs import execute_sync_job_task
+
+        keep_lock = False
+        try:
+            keep_lock = await execute_sync_job_task(job_id)
+        except Exception as e:
+            logger.error(f"SyncJob {job_id} fallito: {e}", exc_info=True)
+        finally:
+            if not keep_lock:
+                self._unlock(job_key)
+
     async def _check_and_run_jobs(self):
         """Verifica e esegue i job schedulati"""
         db = SessionLocal()
@@ -359,13 +370,29 @@ class SchedulerService:
                             continue
                         seen_vm_groups.add(job.vm_group_id)
                         group_key = f"vmgroup_{job.vm_group_id}"
+                        group_members = [
+                            sj for sj in sync_jobs if sj.vm_group_id == job.vm_group_id
+                        ]
+                        group_last_run = max(
+                            (sj.last_run for sj in group_members if sj.last_run),
+                            default=None,
+                        )
                         if group_key not in self._jobs:
                             self._jobs[group_key] = compute_initial_next_run(
-                                job.schedule, job.last_run, now
+                                job.schedule, group_last_run, now
                             )
                         next_run = self._jobs[group_key]
                         if now >= next_run:
-                            if self._try_lock(group_key):
+                            disk_busy = any(
+                                (sj.last_status or "").lower() in ("running", "started")
+                                for sj in group_members
+                            )
+                            if disk_busy:
+                                logger.info(
+                                    f"VM group {job.vm_group_id}: disco in running, "
+                                    f"slot cron rinviato"
+                                )
+                            elif self._try_lock(group_key):
                                 logger.info(
                                     f"Esecuzione VM group schedulato: {job.vm_group_id} "
                                     f"(es. {job.name})"
@@ -377,16 +404,14 @@ class SchedulerService:
                                         job.vm_group_id,
                                     )
                                 )
+                                cron = croniter(job.schedule, now)
+                                self._jobs[group_key] = cron.get_next(datetime)
+                                for sj in group_members:
+                                    self._jobs[f"sync_{sj.id}"] = self._jobs[group_key]
                             else:
                                 logger.info(
                                     f"VM group {job.vm_group_id} ancora in esecuzione: skip"
                                 )
-                            cron = croniter(job.schedule, now)
-                            self._jobs[group_key] = cron.get_next(datetime)
-                            for sj in sync_jobs:
-                                if sj.vm_group_id == job.vm_group_id:
-                                    sk = f"sync_{sj.id}"
-                                    self._jobs[sk] = self._jobs[group_key]
                         continue
 
                     job_key = f"sync_{job.id}"
@@ -394,18 +419,32 @@ class SchedulerService:
                         self._jobs[job_key] = compute_initial_next_run(
                             job.schedule, job.last_run, now
                         )
-                    
+
                     next_run = self._jobs[job_key]
-                    
+
                     if now >= next_run:
-                        if self._try_lock(job_key):
-                            logger.info(f"Esecuzione SyncJob schedulato: {job.name} (ID: {job.id})")
-                            asyncio.create_task(self._guarded_execute(job_key, self._execute_job, job.id))
+                        disk_busy = (job.last_status or "").lower() in (
+                            "running",
+                            "started",
+                        )
+                        if disk_busy:
+                            logger.info(
+                                f"SyncJob {job.id} in running su DB, slot cron rinviato"
+                            )
+                        elif self._try_lock(job_key):
+                            logger.info(
+                                f"Esecuzione SyncJob schedulato: {job.name} (ID: {job.id})"
+                            )
+                            asyncio.create_task(
+                                self._guarded_execute_sync_job(job_key, job.id)
+                            )
+                            cron = croniter(job.schedule, now)
+                            self._jobs[job_key] = cron.get_next(datetime)
                         else:
-                            logger.info(f"SyncJob {job.id} ancora in esecuzione: skip fire schedulato")
-                        cron = croniter(job.schedule, now)
-                        self._jobs[job_key] = cron.get_next(datetime)
-                        
+                            logger.info(
+                                f"SyncJob {job.id} ancora in esecuzione: skip fire schedulato"
+                            )
+
                 except Exception as e:
                     logger.error(f"Errore scheduling SyncJob {job.id}: {e}")
             
@@ -430,10 +469,10 @@ class SchedulerService:
                         if self._try_lock(job_key):
                             logger.info(f"Esecuzione HostBackupJob schedulato: {job.name} (ID: {job.id})")
                             asyncio.create_task(self._guarded_execute(job_key, self._execute_host_backup_job, job.id))
+                            cron = croniter(job.schedule, now)
+                            self._jobs[job_key] = cron.get_next(datetime)
                         else:
                             logger.info(f"HostBackupJob {job.id} ancora in esecuzione: skip fire schedulato")
-                        cron = croniter(job.schedule, now)
-                        self._jobs[job_key] = cron.get_next(datetime)
                         
                 except Exception as e:
                     logger.error(f"Errore scheduling HostBackupJob {job.id}: {e}")
@@ -459,10 +498,10 @@ class SchedulerService:
                         if self._try_lock(job_key):
                             logger.info(f"Esecuzione MigrationJob schedulato: {job.name} (ID: {job.id})")
                             asyncio.create_task(self._guarded_execute(job_key, self._execute_migration_job, job.id))
+                            cron = croniter(job.schedule, now)
+                            self._jobs[job_key] = cron.get_next(datetime)
                         else:
                             logger.info(f"MigrationJob {job.id} ancora in esecuzione: skip fire schedulato")
-                        cron = croniter(job.schedule, now)
-                        self._jobs[job_key] = cron.get_next(datetime)
                         
                 except Exception as e:
                     logger.error(f"Errore scheduling MigrationJob {job.id}: {e}")
@@ -470,140 +509,6 @@ class SchedulerService:
         finally:
             db.close()
     
-    async def _execute_job(self, job_id: int):
-        """Esegue un job di sincronizzazione"""
-        db = SessionLocal()
-        log_entry = None
-        
-        try:
-            job = db.query(SyncJob).filter(SyncJob.id == job_id).first()
-            if not job:
-                logger.error(f"Job {job_id} non trovato")
-                return
-            
-            source_node = db.query(Node).filter(Node.id == job.source_node_id).first()
-            dest_node = db.query(Node).filter(Node.id == job.dest_node_id).first()
-            
-            if not source_node or not dest_node:
-                logger.error(f"Nodi non trovati per job {job_id}")
-                return
-            
-            # Crea log entry
-            log_entry = JobLog(
-                job_type="sync",
-                job_id=job_id,
-                node_name=f"{source_node.name} -> {dest_node.name}",
-                dataset=f"{job.source_dataset} -> {job.dest_dataset}",
-                status="started",
-                message=f"Sincronizzazione avviata"
-            )
-            db.add(log_entry)
-            db.commit()
-            
-            # Aggiorna stato job
-            job.last_status = "running"
-            if hasattr(job, "current_status"):
-                try:
-                    job.current_status = "running"
-                except Exception:
-                    pass
-            # last_run impostato all'avvio (non a fine) cosi' un crash
-            # non fa rifire il cron immediatamente al riavvio.
-            job.last_run = datetime.utcnow()
-            db.commit()
-            
-            # Determina da dove eseguire (sorgente)
-            executor_host = source_node.hostname
-            
-            # Esegui sync
-            result = await syncoid_service.run_sync(
-                executor_host=executor_host,
-                source_host=None,  # Locale all'executor
-                source_dataset=job.source_dataset,
-                dest_host=dest_node.hostname,
-                dest_dataset=job.dest_dataset,
-                dest_user=dest_node.ssh_user,
-                dest_port=dest_node.ssh_port,
-                dest_key=dest_node.ssh_key_path,
-                executor_port=source_node.ssh_port,
-                executor_user=source_node.ssh_user,
-                executor_key=source_node.ssh_key_path,
-                recursive=job.recursive,
-                compress=job.compress or "lz4",
-                mbuffer_size=job.mbuffer_size or "128M",
-                no_sync_snap=job.no_sync_snap,
-                force_delete=job.force_delete,
-                extra_args=job.extra_args or ""
-            )
-            
-            # Aggiorna job (NB: last_run e' gia' stato settato in apertura)
-            job.last_duration = result["duration"]
-            job.last_transferred = result.get("transferred")
-            job.run_count += 1
-
-            if result["success"]:
-                job.last_status = "success"
-                if hasattr(job, "current_status"):
-                    try:
-                        job.current_status = "success"
-                    except Exception:
-                        pass
-                log_entry.status = "success"
-                log_entry.message = "Sincronizzazione completata"
-
-                # Registra VM se richiesto
-                if job.register_vm and job.vm_id:
-                    await self._register_vm_after_sync(db, job, source_node, dest_node, log_entry)
-            else:
-                job.last_status = "failed"
-                if hasattr(job, "current_status"):
-                    try:
-                        job.current_status = "failed"
-                    except Exception:
-                        pass
-                job.error_count += 1
-                log_entry.status = "failed"
-                log_entry.message = "Sincronizzazione fallita"
-                log_entry.error = result.get("error", "")
-            
-            log_entry.output = result.get("output", "")
-            log_entry.duration = result["duration"]
-            log_entry.transferred = result.get("transferred")
-            log_entry.completed_at = datetime.utcnow()
-            
-            db.commit()
-            
-            # Invia notifica job completato
-            # Rispetta notify_mode del job: daily, always, failure, never
-            try:
-                await notification_service.send_job_notification(
-                    job_name=job.name,
-                    status="success" if result["success"] else "failed",
-                    source=f"{source_node.name}:{job.source_dataset}",
-                    destination=f"{dest_node.name}:{job.dest_dataset}",
-                    duration=result["duration"],
-                    error=result.get("error") if not result["success"] else None,
-                    details=f"Trasferito: {result.get('transferred', 'N/A')}" if result["success"] else None,
-                    job_id=job_id,
-                    is_scheduled=True,
-                    notify_mode=job.notify_mode or "daily",
-                    job_type="sync",
-                    source_node_name=source_node.name,
-                    dest_node_name=dest_node.name
-                )
-            except Exception as notify_err:
-                logger.warning(f"Errore invio notifica per job {job_id}: {notify_err}")
-            
-        except Exception as e:
-            logger.error(f"Errore esecuzione job {job_id}: {e}")
-            if log_entry:
-                log_entry.status = "failed"
-                log_entry.error = str(e)
-                log_entry.completed_at = datetime.utcnow()
-                db.commit()
-        finally:
-            db.close()
-
     async def _execute_vm_group_sync(self, vm_group_id: str):
         """Esegue in sequenza tutti i dischi di un gruppo VM."""
         from routers.sync_jobs import execute_vm_group_sync_task
@@ -747,99 +652,6 @@ class SchedulerService:
         
         # Usa la funzione già definita nel router
         await execute_migration_job_task(job_id, triggered_by=None)
-    
-    async def _register_vm_after_sync(
-        self,
-        db: Session,
-        job: SyncJob,
-        source_node: Node,
-        dest_node: Node,
-        log_entry: JobLog
-    ):
-        """Registra una VM sul nodo destinazione dopo la sync.
-
-        BUG FIX (3.16.5):
-          - prima il VMID passato a register_vm era SEMPRE quello sorgente
-            (`job.vm_id`), ignorando `job.dest_vm_id`. Risultato: la VM
-            replicata veniva registrata con il VMID sorgente — l'utente
-            si trovava la VM con vmid duplicato e quella scelta nel
-            wizard non veniva mai creata.
-          - inoltre TUTTI i parametri di registrazione (storage, bridge,
-            VLAN, nome, force-cpu) venivano persi perche' a register_vm
-            venivano passati solo hostname/vmid/vm_type/config_content.
-        """
-        try:
-            # 1) Config sorgente
-            success, config = await proxmox_service.get_vm_config_file(
-                hostname=source_node.hostname,
-                vmid=job.vm_id,
-                vm_type=job.vm_type or "qemu",
-                port=source_node.ssh_port,
-                username=source_node.ssh_user,
-                key_path=source_node.ssh_key_path,
-            )
-            if not success:
-                log_entry.message += " | Registrazione VM fallita: impossibile ottenere config"
-                return
-
-            # 2) Bridge esistenti sul dest (per warning)
-            try:
-                dest_bridges = await proxmox_service.get_node_bridges(
-                    hostname=dest_node.hostname,
-                    port=dest_node.ssh_port,
-                    username=dest_node.ssh_user,
-                    key_path=dest_node.ssh_key_path,
-                )
-            except Exception:
-                dest_bridges = None
-
-            # 3) VMID destinazione: dest_vm_id se impostato, altrimenti
-            #    quello sorgente.
-            target_vmid = job.dest_vm_id or job.vm_id
-            dest_zfs_pool = "/".join(job.dest_dataset.split("/")[:-1]) if job.dest_dataset and "/" in job.dest_dataset else job.dest_dataset
-
-            # 4) Registra (passando TUTTI i parametri)
-            success, msg, warnings = await proxmox_service.register_vm(
-                hostname=dest_node.hostname,
-                vmid=target_vmid,
-                vm_type=job.vm_type or "qemu",
-                config_content=config,
-                source_storage=getattr(job, "source_storage", None),
-                dest_storage=getattr(job, "dest_storage", None),
-                dest_zfs_pool=dest_zfs_pool,
-                vm_name_suffix=getattr(job, "dest_vm_name_suffix", None),
-                new_name=getattr(job, "dest_vm_name", None),
-                force_cpu_host=bool(getattr(job, "force_cpu_host", True)),
-                dest_node_bridges=dest_bridges,
-                dest_bridge=getattr(job, "dest_bridge", None),
-                dest_vlan=getattr(job, "dest_vlan", None),
-                port=dest_node.ssh_port,
-                username=dest_node.ssh_user,
-                key_path=dest_node.ssh_key_path,
-            )
-
-            if success:
-                log_entry.message += f" | VM {target_vmid} registrata su {dest_node.name}"
-                if warnings:
-                    log_entry.message += f" [Avvisi: {'; '.join(warnings)}]"
-            else:
-                log_entry.message += f" | Registrazione VM fallita: {msg}"
-
-        except Exception as e:
-            log_entry.message += f" | Errore registrazione VM: {e}"
-    
-    def _adapt_vm_config(self, config: str, source_dataset: str, dest_dataset: str) -> str:
-        """
-        Adatta la configurazione VM per il nodo destinazione
-        
-        Sostituisce i riferimenti allo storage sorgente con quello destinazione
-        """
-        # Estrai il nome dello storage dal dataset
-        # es: rpool/data -> local-zfs (dipende dalla config Proxmox)
-        # Per ora ritorniamo la config così com'è
-        # In produzione servirebbe una mappatura storage sorgente -> destinazione
-        
-        return config
     
     def _sync_job_scheduler_key(self, job_id: int, vm_group_id: Optional[str] = None) -> str:
         if vm_group_id:

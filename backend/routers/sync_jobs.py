@@ -182,6 +182,7 @@ def _vm_group_sync_complete(db, job: SyncJob) -> bool:
     siblings = db.query(SyncJob).filter(
         SyncJob.vm_group_id == job.vm_group_id,
         SyncJob.dest_node_id == job.dest_node_id,
+        SyncJob.is_active == True,  # noqa: E712
     ).all()
     if not siblings:
         return (job.last_status or "").lower() == "success"
@@ -1352,6 +1353,20 @@ async def execute_vm_group_sync_task(
             if status == "failed":
                 logger.warning(f"VM group {vm_group_id}: interrotto — job {job_id} fallito")
                 break
+        elif status in ("running", "started"):
+            job_key = f"sync_{job_id}"
+            final = await _wait_sync_job_terminal(job_id, job_key)
+            if final == "failed":
+                logger.warning(
+                    f"VM group {vm_group_id}: job {job_id} fallito dopo attesa"
+                )
+                break
+            if final != "success":
+                logger.warning(
+                    f"VM group {vm_group_id}: job {job_id} non completato ({final}), skip"
+                )
+                continue
+            # force_rerun: disco appena completato → riesegui replica incrementale
 
         job_key = f"sync_{job_id}"
         if scheduler_service.is_running(job_key):

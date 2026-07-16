@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Pulizia DB operativa: job_log orfani e stati running bloccati."""
+import argparse
 import sqlite3
 import sys
 from pathlib import Path
@@ -8,12 +9,36 @@ DB = Path("/var/lib/dapx-unified/dapx.db")
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Manutenzione DB dapx-unified")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Resetta stati running anche se ci sono job attivi (per crash recovery)",
+    )
+    args = parser.parse_args()
+
     if not DB.exists():
         print(f"DB non trovato: {DB}", file=sys.stderr)
         return 1
 
     conn = sqlite3.connect(DB)
     cur = conn.cursor()
+
+    active = cur.execute(
+        """
+        SELECT id, name, last_status
+        FROM sync_jobs
+        WHERE last_status IN ('running', 'started')
+        """
+    ).fetchall()
+    if active and not args.force:
+        print(
+            "Job attivi in DB (usa --force per resettare):",
+            active,
+            file=sys.stderr,
+        )
+        conn.close()
+        return 2
 
     orphan_logs = cur.execute(
         """

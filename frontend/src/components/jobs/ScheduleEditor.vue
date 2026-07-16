@@ -49,7 +49,7 @@
         class="se-row"
         v-if="['daily', 'weekly', 'monthly', 'every_n_days'].includes(model.kind)"
       >
-        <label class="se-label">Orario</label>
+        <label class="se-label">Orario (UTC)</label>
         <input
           type="time"
           class="form-input se-input-sm"

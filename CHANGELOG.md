@@ -10,6 +10,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 - **Burst di job al restart di mezzanotte**: logrotate faceva `systemctl reload` (restart del servizio); init cron usava `last_run` vecchio e sparava tutti i gruppi arretrati. Nuovo `compute_initial_next_run()` + logrotate con `copytruncate` senza reload (`install.sh`, `backend/services/scheduler.py`).
 - **Scheduler in-memory con chiavi errate**: `update_job_schedule`/`remove_job` usavano `job_id` intero invece di `sync_{id}` / `vmgroup_{uuid}` — modifiche schedule da UI non applicate fino al restart (`backend/services/scheduler.py`, `backend/routers/sync_jobs.py`).
 - **`update.sh` ignorava commit nuovi a parità di version.json**: ora rileva `HEAD` ≠ `origin/main` e procede con l'aggiornamento codice (`update.sh`).
+- **Doppia replica con `force_rerun`**: run schedulata non attendeva dischi già `running`/`started` — rischio syncoid duplicato (`backend/routers/sync_jobs.py`).
+- **Slot cron persi se job lungo**: lo scheduler avanzava `next_run` anche quando il fire veniva saltato (lock o disco busy) (`backend/services/scheduler.py`).
+- **SyncJob standalone legacy**: `_execute_job` non gestiva `still_running` da syncoid — job marcati failed con replica ancora attiva; ora usa `execute_sync_job_task` (`backend/services/scheduler.py`).
+- **Registrazione VM bloccata da dischi disattivati**: `_vm_group_sync_complete` contava sibling `is_active=false` (`backend/routers/sync_jobs.py`).
+- **`db_maintenance.py` durante catch-up**: reset cieco di job `running` — ora richiede `--force` se ci sono job attivi (`scripts/db_maintenance.py`).
 
 - Audit massivo bug UI/API: auth su cluster e SSH keys; fix pulizia log (`DELETE /logs/cleanup`); fix delete host backup; route logs riordinate; log di sistema allineati a `dapx-unified` (`backend/routers/clusters.py`, `ssh_keys.py`, `logs.py`, `nodes.py`, `settings.py`, `frontend/src/services/logs.ts`, `HostBackupView.vue`, `Logs.vue`, `MainLayout.vue`).
 - Rimozione viste legacy duplicate: redirect `/sync-jobs`, `/backup-jobs`, `/recovery-jobs` → `/replication`; eliminati componenti orfani (`frontend/src/router/index.ts`, viste `jobs/*` e `replication/*` obsolete).

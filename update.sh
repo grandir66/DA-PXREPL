@@ -168,13 +168,20 @@ compare_versions "$CURRENT_VERSION" "$REMOTE_VERSION" || COMP_RESULT=$?
 
 # Anche a parità di version.json, origin/main può avere commit più recenti.
 GIT_UPDATE_NEEDED=0
+GIT_FETCH_OK=1
 if [ -d ".git" ]; then
-    git fetch origin "$BRANCH" 2>/dev/null || true
+    if ! git fetch origin "$BRANCH" 2>/dev/null; then
+        GIT_FETCH_OK=0
+        log_warn "git fetch fallito: confronto SHA remoto non affidabile"
+    fi
     LOCAL_SHA=$(git rev-parse HEAD 2>/dev/null || echo "")
     REMOTE_SHA=$(git rev-parse "origin/$BRANCH" 2>/dev/null || echo "")
     if [ -n "$LOCAL_SHA" ] && [ -n "$REMOTE_SHA" ] && [ "$LOCAL_SHA" != "$REMOTE_SHA" ]; then
         GIT_UPDATE_NEEDED=1
         log_info "Commit locale (${LOCAL_SHA:0:7}) diverso da origin/$BRANCH (${REMOTE_SHA:0:7})"
+    elif [ "$GIT_FETCH_OK" -eq 0 ]; then
+        GIT_UPDATE_NEEDED=1
+        log_warn "Procedo con aggiornamento conservativo (fetch non riuscito)"
     fi
 fi
 
@@ -207,13 +214,25 @@ elif [ $COMP_RESULT -eq 0 ] && [ $GIT_UPDATE_NEEDED -eq 1 ]; then
     fi
 elif [ $COMP_RESULT -eq 1 ]; then
     log_warn "La versione locale ($CURRENT_VERSION) è più recente di quella remota ($REMOTE_VERSION)"
-    if [ "$ASSUME_YES" -eq 1 ]; then
-        log_info "Salto downgrade (modalita' non interattiva)"
-        exit 0
-    fi
-    read -p "Vuoi fare downgrade? [y/N]: " downgrade
-    if [[ ! "$downgrade" =~ ^[Yy]$ ]]; then
-        exit 0
+    if [ $GIT_UPDATE_NEEDED -eq 1 ]; then
+        echo -e "${YELLOW}  Nuovi commit su Git disponibili nonostante version.json locale più recente${NC}"
+        if [ "$ASSUME_YES" -eq 1 ]; then
+            log_info "Procedo con aggiornamento codice (modalita' non interattiva)"
+        else
+            read -p "Procedere con l'aggiornamento del codice? [Y/n]: " proceed
+            if [[ "$proceed" =~ ^[Nn]$ ]]; then
+                exit 0
+            fi
+        fi
+    else
+        if [ "$ASSUME_YES" -eq 1 ]; then
+            log_info "Salto downgrade (modalita' non interattiva)"
+            exit 0
+        fi
+        read -p "Vuoi fare downgrade? [y/N]: " downgrade
+        if [[ ! "$downgrade" =~ ^[Yy]$ ]]; then
+            exit 0
+        fi
     fi
 else
     echo -e "${YELLOW}════════════════════════════════════════════════════════${NC}"
