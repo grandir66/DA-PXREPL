@@ -11,8 +11,8 @@
       <div class="content">
         <strong>Esplora i backup sul PBS</strong>
         <p>
-          Elenco letto dal datastore PBS o dallo storage PBS configurato sui nodi PVE.
-          Puoi avviare un restore verso un nodo PVE senza creare un job di replica.
+          Ogni macchina è raggruppata con la catena delle date di backup disponibili.
+          Scegli la data e avvia il restore verso un nodo PVE.
         </p>
       </div>
     </div>
@@ -59,12 +59,6 @@
             placeholder="Tutte"
           />
         </div>
-        <div class="form-group filter-checkbox">
-          <label class="checkbox-label">
-            <input v-model="latestOnly" type="checkbox" />
-            Solo ultima versione per VM
-          </label>
-        </div>
         <div class="form-group filter-actions">
           <label>&nbsp;</label>
           <button class="btn btn-primary" :disabled="!filters.pbsNodeId || loading" @click="loadBackups">
@@ -82,9 +76,8 @@
             — datastore {{ datastoreLabel }}
           </span>
         </h3>
-        <span class="badge badge-purple">{{ displayedBackups.length }} versioni</span>
-        <span v-if="filters.vmId && !latestOnly" class="text-secondary text-sm ml-2">
-          (tutte le versioni VM {{ filters.vmId }})
+        <span class="badge badge-purple">
+          {{ vmGroups.length }} VM · {{ totalVersions }} date
         </span>
       </div>
 
@@ -102,45 +95,45 @@
             <input
               v-model="search"
               class="form-input"
-              placeholder="Cerca per VMID, nome, backup-id…"
+              placeholder="Cerca per VMID o nome macchina…"
             />
           </div>
-          <div class="table-wrap">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>VM / CT</th>
-                  <th>Data backup</th>
-                  <th>Dimensione</th>
-                  <th>Backup ID</th>
-                  <th class="text-right">Azioni</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="bak in displayedBackups" :key="backupKey(bak)">
-                  <td>
-                    <div class="font-bold">
-                      {{ bak.vm_name || ('VM #' + (bak.vmid ?? '?')) }}
-                    </div>
-                    <div class="text-xs text-secondary">
-                      {{ bak.vm_type === 'lxc' ? 'LXC' : 'QEMU' }}
-                      · VMID {{ bak.vmid ?? '—' }}
-                    </div>
-                  </td>
-                  <td>
-                    <div class="font-bold">{{ formatBackupTime(bak.backup_time) }}</div>
-                    <div v-if="isLatestForVm(bak)" class="text-xs text-success">Ultima versione</div>
-                  </td>
-                  <td>{{ formatSize(bak.size) }}</td>
-                  <td class="font-mono text-xs break-all">{{ backupId(bak) }}</td>
-                  <td class="text-right">
-                    <button class="btn btn-xs btn-primary" @click="openRestore(bak)">
-                      Restore
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+
+          <div v-if="vmGroups.length === 0" class="empty-state">
+            Nessuna macchina corrisponde alla ricerca.
+          </div>
+
+          <div v-else class="vm-groups">
+            <section v-for="group in vmGroups" :key="group.vmid" class="vm-group">
+              <header class="vm-group-head">
+                <div>
+                  <div class="vm-group-title">{{ group.vm_name }}</div>
+                  <div class="vm-group-meta">
+                    {{ group.vm_type === 'lxc' ? 'LXC' : 'QEMU' }}
+                    · VMID {{ group.vmid }}
+                    · {{ group.versions.length }} backup
+                  </div>
+                </div>
+              </header>
+
+              <ol class="date-chain">
+                <li
+                  v-for="(ver, idx) in group.versions"
+                  :key="backupKey(ver)"
+                  class="date-chain-item"
+                  :class="{ latest: idx === 0 }"
+                >
+                  <div class="date-chain-when">
+                    <span class="date-label">{{ formatBackupTime(ver.backup_time) }}</span>
+                    <span v-if="idx === 0" class="badge badge-success badge-xs">più recente</span>
+                  </div>
+                  <div class="date-chain-size">{{ formatSize(ver.size) }}</div>
+                  <button class="btn btn-xs btn-primary" @click="openRestore(ver)">
+                    Restore
+                  </button>
+                </li>
+              </ol>
+            </section>
           </div>
         </template>
       </div>
@@ -153,7 +146,7 @@
     >
       <div v-if="restoreBackup" class="restore-form space-y-4">
         <div class="p-3 bg-dark-soft rounded text-sm">
-          <div><strong>Backup:</strong> {{ formatBackupTime(restoreBackup.backup_time) }}</div>
+          <div><strong>Data backup:</strong> {{ formatBackupTime(restoreBackup.backup_time) }}</div>
           <div class="text-xs text-secondary break-all mt-1">{{ backupId(restoreBackup) }}</div>
         </div>
 
@@ -215,6 +208,13 @@ import pbsInventoryService, { type PBSBackupEntry } from '../services/pbsInvento
 import { useToast, errorMessage } from '../stores/toast'
 import { confirmDangerous } from '../stores/confirm'
 
+interface VmBackupGroup {
+  vmid: number
+  vm_name: string
+  vm_type: string
+  versions: PBSBackupEntry[]
+}
+
 const toast = useToast()
 
 const pbsNodes = ref<Node[]>([])
@@ -224,7 +224,6 @@ const datastoreLabel = ref('')
 const loading = ref(false)
 const error = ref('')
 const search = ref('')
-const latestOnly = ref(false)
 
 const filters = reactive({
   pbsNodeId: null as number | null,
@@ -250,46 +249,48 @@ const selectedPbs = computed(() =>
 
 const filteredBackups = computed(() => {
   const q = search.value.trim().toLowerCase()
-  let list = backups.value
-  if (q) {
-    list = list.filter(b => {
-      const id = backupId(b).toLowerCase()
-      const name = (b.vm_name || '').toLowerCase()
-      const vmid = String(b.vmid ?? '')
-      return id.includes(q) || name.includes(q) || vmid.includes(q)
-    })
-  }
-  return list
+  if (!q) return backups.value
+  return backups.value.filter(b => {
+    const name = (b.vm_name || '').toLowerCase()
+    const vmid = String(b.vmid ?? '')
+    return name.includes(q) || vmid.includes(q)
+  })
 })
 
-const displayedBackups = computed(() => {
-  if (!latestOnly.value) return filteredBackups.value
-  const latestByVm = new Map<number, PBSBackupEntry>()
+const vmGroups = computed((): VmBackupGroup[] => {
+  const map = new Map<number, VmBackupGroup>()
   for (const b of filteredBackups.value) {
-    const vid = b.vmid
-    if (vid == null) continue
-    const prev = latestByVm.get(vid)
-    if (!prev || (b.backup_time || 0) > (prev.backup_time || 0)) {
-      latestByVm.set(vid, b)
-    }
-  }
-  return [...latestByVm.values()].sort((a, b) => (b.backup_time || 0) - (a.backup_time || 0))
-})
-
-const latestVmIds = computed(() => {
-  const m = new Map<number, number>()
-  for (const b of backups.value) {
     if (b.vmid == null) continue
-    const t = b.backup_time || 0
-    if (!m.has(b.vmid) || t > (m.get(b.vmid) || 0)) m.set(b.vmid, t)
+    let group = map.get(b.vmid)
+    if (!group) {
+      group = {
+        vmid: b.vmid,
+        vm_name: b.vm_name || `VM #${b.vmid}`,
+        vm_type: b.vm_type || 'qemu',
+        versions: [],
+      }
+      map.set(b.vmid, group)
+    }
+    if (b.vm_name && group.vm_name.startsWith('VM #')) {
+      group.vm_name = b.vm_name
+    }
+    group.versions.push(b)
   }
-  return m
+
+  for (const group of map.values()) {
+    group.versions.sort((a, b) => (b.backup_time || 0) - (a.backup_time || 0))
+  }
+
+  return [...map.values()].sort((a, b) => {
+    const ta = a.versions[0]?.backup_time || 0
+    const tb = b.versions[0]?.backup_time || 0
+    return tb - ta
+  })
 })
 
-function isLatestForVm(b: PBSBackupEntry): boolean {
-  if (b.vmid == null) return false
-  return (latestVmIds.value.get(b.vmid) || 0) === (b.backup_time || 0)
-}
+const totalVersions = computed(() =>
+  vmGroups.value.reduce((n, g) => n + g.versions.length, 0)
+)
 
 onMounted(async () => {
   await loadNodes()
@@ -396,7 +397,10 @@ async function executeRestore() {
     toast.error('Backup ID mancante')
     return
   }
-  if (!await confirmDangerous(`Avviare il restore di ${restoreBackup.value.vm_name || bid}?`)) return
+  const when = formatBackupTime(restoreBackup.value.backup_time)
+  if (!await confirmDangerous(
+    `Avviare il restore di ${restoreBackup.value.vm_name || bid} del ${when}?`
+  )) return
 
   restoring.value = true
   try {
@@ -419,20 +423,6 @@ async function executeRestore() {
 </script>
 
 <style scoped>
-.filter-checkbox {
-  display: flex;
-  align-items: flex-end;
-}
-
-.filter-checkbox .checkbox-label {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin: 0;
-  padding-bottom: 0.35rem;
-  font-size: 0.875rem;
-}
-
 .filters-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -444,8 +434,78 @@ async function executeRestore() {
   width: 100%;
 }
 
-.table-wrap {
-  overflow-x: auto;
+.vm-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.vm-group {
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.vm-group-head {
+  padding: 0.75rem 1rem;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.06));
+}
+
+.vm-group-title {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.vm-group-meta {
+  font-size: 0.8rem;
+  color: var(--text-secondary, #9ca3af);
+  margin-top: 0.15rem;
+}
+
+.date-chain {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.date-chain-item {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.55rem 1rem;
+  border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.04));
+}
+
+.date-chain-item:last-child {
+  border-bottom: none;
+}
+
+.date-chain-item.latest {
+  background: rgba(34, 197, 94, 0.06);
+}
+
+.date-chain-when {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.date-label {
+  font-variant-numeric: tabular-nums;
+}
+
+.date-chain-size {
+  font-size: 0.85rem;
+  color: var(--text-secondary, #9ca3af);
+  white-space: nowrap;
+}
+
+.badge-xs {
+  font-size: 0.65rem;
+  padding: 0.1rem 0.35rem;
 }
 
 .restore-form .grid-2 {
@@ -455,6 +515,11 @@ async function executeRestore() {
 }
 
 @media (max-width: 640px) {
+  .date-chain-item {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+  }
+
   .restore-form .grid-2 {
     grid-template-columns: 1fr;
   }
