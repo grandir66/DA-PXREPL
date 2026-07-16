@@ -36,21 +36,21 @@ def main() -> int:
         print("Nessun job_log orfano.")
 
     stale_running = cur.execute(
-        "SELECT id, job_id FROM job_logs WHERE status = 'running'"
+        "SELECT id, job_id, status FROM job_logs WHERE status IN ('running', 'started')"
     ).fetchall()
     if stale_running:
-        print(f"Segno failed {len(stale_running)} job_log running: {stale_running}")
+        print(f"Segno failed {len(stale_running)} job_log in corso: {stale_running}")
         cur.execute(
             """
             UPDATE job_logs
             SET status = 'failed',
                 message = COALESCE(message, '') || ' [reset manutenzione]'
-            WHERE status = 'running'
+            WHERE status IN ('running', 'started')
             """
         )
 
     blocked = cur.execute(
-        "SELECT id, name FROM sync_jobs WHERE last_status = 'running'"
+        "SELECT id, name FROM sync_jobs WHERE last_status IN ('running', 'started')"
     ).fetchall()
     for jid, name in blocked:
         print(f"Reset sync_job {jid} ({name}) running -> failed")
