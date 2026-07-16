@@ -15,6 +15,7 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 - **SyncJob standalone legacy**: `_execute_job` non gestiva `still_running` da syncoid — job marcati failed con replica ancora attiva; ora usa `execute_sync_job_task` (`backend/services/scheduler.py`).
 - **Registrazione VM bloccata da dischi disattivati**: `_vm_group_sync_complete` contava sibling `is_active=false` (`backend/routers/sync_jobs.py`).
 - **`db_maintenance.py` durante catch-up**: reset cieco di job `running` — ora richiede `--force` se ci sono job attivi (`scripts/db_maintenance.py`).
+- **Inventario PBS**: nuova pagina per esplorare backup esistenti su PBS e avviare restore diretto (`frontend/src/views/PBSInventory.vue`, API `/recovery-jobs/pbs-nodes/{id}/backups`).
 
 - Audit massivo bug UI/API: auth su cluster e SSH keys; fix pulizia log (`DELETE /logs/cleanup`); fix delete host backup; route logs riordinate; log di sistema allineati a `dapx-unified` (`backend/routers/clusters.py`, `ssh_keys.py`, `logs.py`, `nodes.py`, `settings.py`, `frontend/src/services/logs.ts`, `HostBackupView.vue`, `Logs.vue`, `MainLayout.vue`).
 - Rimozione viste legacy duplicate: redirect `/sync-jobs`, `/backup-jobs`, `/recovery-jobs` → `/replication`; eliminati componenti orfani (`frontend/src/router/index.ts`, viste `jobs/*` e `replication/*` obsolete).

@@ -9,6 +9,9 @@
         </p>
       </div>
       <div class="repl-head-actions">
+        <router-link :to="{ name: 'pbs-inventory' }" class="btn btn-secondary mr-2">
+          Inventario PBS
+        </router-link>
         <div class="repl-new-wrap" v-click-outside="closeNewMenu">
           <button class="btn btn-primary" @click="newMenuOpen = !newMenuOpen">
             + Nuovo job

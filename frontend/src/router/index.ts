@@ -55,6 +55,12 @@ const router = createRouter({
                 { path: 'backup-jobs', redirect: { name: 'replication' } },
                 { path: 'recovery-jobs', redirect: { name: 'replication' } },
                 {
+                    path: 'pbs-inventory',
+                    name: 'pbs-inventory',
+                    meta: { requiresFullMode: true },
+                    component: () => import('../views/PBSInventory.vue')
+                },
+                {
                     path: 'host-backup',
                     name: 'host-backup',
                     meta: { requiresFullMode: true },

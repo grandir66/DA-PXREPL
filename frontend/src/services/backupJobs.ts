@@ -47,4 +47,8 @@ export default {
   runJob(id: number | string) {
     return apiClient.post(`/backup-jobs/${id}/run`)
   },
+
+  listJobBackups(id: number | string) {
+    return apiClient.get<{ backups: Record<string, unknown>[] }>(`/backup-jobs/${id}/backups`)
+  },
 }
