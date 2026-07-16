@@ -6,6 +6,7 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 ## [Unreleased]
 
 ### Refactor
+- **recovery_jobs split**: estratti `recovery_job_schemas.py`, `recovery_job_helpers.py`, `recovery_job_execution.py`, `recovery_pbs_inventory.py`; router ridotto (~1800 → ~1090 righe).
 - **sync_jobs split**: estratti `sync_job_schemas.py`, `sync_job_execution.py`, `sync_job_reconciliation.py`; router ridotto (~2900 → ~1500 righe).
 
 ### Rimozioni (pulizia codice morto)
