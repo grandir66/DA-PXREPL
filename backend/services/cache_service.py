@@ -22,8 +22,7 @@ class CacheService:
                 # Sequenziale è più sicuro per il DB session sqlite (se usato)
                 await self.refresh_node_vms(db, node)
                 
-                # Se è un nodo PBS, aggiorna datastore?
-                # TODO: Implement PBS caching if needed
+                # Cache inventario PBS: gestita in pbs_service (TTL 5 min)
                 
                 results[node.name] = "OK"
             except Exception as e:

@@ -668,6 +668,50 @@ class PBSService:
         
         return []
     
+    async def list_datastore_names(self, node: Any) -> List[str]:
+        """Elenco nomi datastore PBS (SSH preferito, fallback API)."""
+        names: List[str] = []
+
+        if node.hostname and node.ssh_user:
+            stores = await self.list_datastores(
+                hostname=node.hostname,
+                port=getattr(node, "ssh_port", 22) or 22,
+                username=node.ssh_user,
+                key_path=getattr(node, "ssh_key_path", None) or "/root/.ssh/id_rsa",
+            )
+            for item in stores:
+                for key in ("store", "name", "datastore"):
+                    val = item.get(key)
+                    if val:
+                        names.append(str(val))
+                        break
+
+        if not names and getattr(node, "pbs_password", None):
+            ticket_data = await self._get_ticket(
+                node.hostname,
+                8007,
+                node.pbs_username or "root@pam",
+                node.pbs_password,
+                getattr(node, "pbs_fingerprint", None),
+            )
+            if ticket_data:
+                api_url = f"https://{node.hostname}:8007/api2/json/admin/datastore"
+                ssl_ctx = self._get_ssl_context(False)
+                cookies = {"PBSAuthCookie": urllib.parse.quote_plus(ticket_data["ticket"])}
+                try:
+                    async with aiohttp.ClientSession(cookies=cookies) as session:
+                        async with session.get(api_url, ssl=ssl_ctx) as resp:
+                            if resp.status == 200:
+                                payload = await resp.json()
+                                for item in payload.get("data", []):
+                                    val = item.get("store") or item.get("name")
+                                    if val:
+                                        names.append(str(val))
+                except Exception as e:
+                    logger.warning(f"PBS API datastore list fallita: {e}")
+
+        return sorted(set(names))
+
     async def list_backups(
         self,
         pbs_hostname: str,

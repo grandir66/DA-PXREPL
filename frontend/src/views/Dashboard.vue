@@ -46,6 +46,9 @@
             ? `${replicationHealth.overdue_count} in ritardo`
             : 'Tutto ok' }}
         </span>
+        <RouterLink v-if="replicationHealth.overdue_count > 0" to="/replication" class="btn btn-secondary btn-sm">
+          Vai a Repliche
+        </RouterLink>
       </div>
 
       <div v-if="replicationHealth.overdue_count === 0" class="health-ok">
@@ -320,6 +323,7 @@ function formatDelay(hours?: number | null): string {
   padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--color-border);
   background: var(--color-bg-body);
+  flex-wrap: wrap;
 }
 .card-title {
   margin: 0;

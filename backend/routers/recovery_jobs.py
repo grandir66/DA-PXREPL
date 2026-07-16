@@ -921,20 +921,25 @@ async def list_pbs_nodes(
     """Lista tutti i nodi PBS configurati"""
     pbs_nodes = db.query(Node).filter(Node.node_type == NodeType.PBS.value).all()
     pbs_nodes = filter_nodes_for_user(user, pbs_nodes)
-    
-    result = []
-    for node in pbs_nodes:
-        result.append(PBSNodeInfo(
+
+    async def _node_info(node: Node) -> PBSNodeInfo:
+        datastores: List[str] = []
+        try:
+            datastores = await pbs_service.list_datastore_names(node)
+        except Exception as e:
+            logger.warning(f"Impossibile elencare datastore PBS per {node.name}: {e}")
+
+        return PBSNodeInfo(
             id=node.id,
             name=node.name,
             hostname=node.hostname,
             pbs_available=node.pbs_available,
             pbs_version=node.pbs_version,
             pbs_datastore=node.pbs_datastore,
-            datastores=[]  # TODO: fetch from PBS
-        ))
-    
-    return result
+            datastores=datastores,
+        )
+
+    return await asyncio.gather(*[_node_info(n) for n in pbs_nodes])
 
 
 @router.post("/pbs-nodes/{node_id}/test")

@@ -79,8 +79,9 @@ app = FastAPI(
 
 
 # CORS configurato correttamente
-ALLOWED_ORIGINS = os.environ.get("SANOID_MANAGER_CORS_ORIGINS", "").split(",")
-if not ALLOWED_ORIGINS or ALLOWED_ORIGINS == [""]:
+_cors_raw = os.environ.get("DAPX_CORS_ORIGINS") or os.environ.get("SANOID_MANAGER_CORS_ORIGINS", "")
+ALLOWED_ORIGINS = [o.strip() for o in _cors_raw.split(",") if o.strip()]
+if not ALLOWED_ORIGINS:
     # Default: stesso host
     ALLOWED_ORIGINS = ["http://localhost:8420", "http://127.0.0.1:8420"]
 
@@ -266,7 +267,7 @@ else:
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("SANOID_MANAGER_PORT", 8420))
+    port = int(os.environ.get("DAPX_PORT") or os.environ.get("SANOID_MANAGER_PORT", 8420))
     # Auto-disable reload if running on non-standard port (e.g. Beta)
     should_reload = port == 8420
     

@@ -11,6 +11,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 - **Inventario PBS lazy-load**: API riepilogo VM + date on-demand con cache TTL 5 min (`/pbs-nodes/{id}/backups/vms`, `/backups/vms/{vmid}`).
 
 ### Correzioni
+- **Datastore PBS in elenco nodi**: `GET /pbs-nodes/` popola `datastores` via SSH/API PBS (`pbs_service.list_datastore_names`).
+- **Statistiche log**: `total_transferred` calcolato sommando i campi `transferred` dei job log (`size_utils`, `logs.py`).
+- **Sanoid template**: `add_dataset_config` rispetta `use_template` scelto in UI VM (`sanoid_config_service`, `vms.py`).
+- **Env legacy**: fallback `DAPX_CORS_ORIGINS`, `DAPX_PORT`, `SANOID_MANAGER_DB` accanto a variabili storiche.
+- **Schedule editor**: chiarito UTC vs ora locale nelle prossime esecuzioni.
 - **Replica schedulata non rieseguita**: `execute_vm_group_sync_task` saltava i dischi con `last_status=success`, quindi dopo la prima run riuscita lo scheduler non lanciava più syncoid. Run schedulata/manuale ora usa `force_rerun=True` (`backend/routers/sync_jobs.py`, `backend/services/scheduler.py`).
 - **Burst di job al restart di mezzanotte**: logrotate faceva `systemctl reload` (restart del servizio); init cron usava `last_run` vecchio e sparava tutti i gruppi arretrati. Nuovo `compute_initial_next_run()` + logrotate con `copytruncate` senza reload (`install.sh`, `backend/services/scheduler.py`).
 - **Scheduler in-memory con chiavi errate**: `update_job_schedule`/`remove_job` usavano `job_id` intero invece di `sync_{id}` / `vmgroup_{uuid}` — modifiche schedule da UI non applicate fino al restart (`backend/services/scheduler.py`, `backend/routers/sync_jobs.py`).

@@ -14,6 +14,7 @@ import logging
 
 from database import get_db, JobLog, User, AuditLog
 from routers.auth import get_current_user, require_admin
+from services.size_utils import sum_transferred_values
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -113,6 +114,9 @@ async def get_log_stats(
     avg_duration = sum(durations) / len(durations) if durations else None
     
     success_rate = (success / total * 100) if total > 0 else 0
+
+    transferred_values = [l.transferred for l in logs if l.transferred]
+    total_transferred = sum_transferred_values(transferred_values) if transferred_values else None
     
     return LogStatsResponse(
         total=total,
@@ -121,7 +125,7 @@ async def get_log_stats(
         running=running,
         success_rate=round(success_rate, 1),
         avg_duration=round(avg_duration, 1) if avg_duration else None,
-        total_transferred=None  # TODO: calcolare
+        total_transferred=total_transferred
     )
 
 

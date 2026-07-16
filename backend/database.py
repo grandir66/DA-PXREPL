@@ -17,9 +17,11 @@ def get_default_db_path():
     """Determina il path del database in base al sistema operativo"""
     import platform
     
-    # Se specificato via env var, usa quello
+    # Se specificato via env var, usa quello (DAPX_DB preferito, legacy SANOID_MANAGER_DB)
     if os.environ.get("DAPX_DB"):
         return os.environ.get("DAPX_DB")
+    if os.environ.get("SANOID_MANAGER_DB") and os.environ.get("SANOID_MANAGER_DB") != ":memory:":
+        return os.environ.get("SANOID_MANAGER_DB")
     
     system = platform.system()
     

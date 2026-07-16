@@ -721,16 +721,10 @@ async def update_vm_sanoid_config(
     
     for ds in datasets:
         if config.enable:
-            # TODO: sanoid_config_service.add_dataset_config deve supportare 'template'
-            # Attualmente supporta parametri raw. 
-            # Se uso template, hourly/daily etc vengono sovrascritti dal template se non specificati?
-            # Da implementazione service: se passo hourly, lo scrive.
-            # Se voglio usare template, dovrei potenzialmente omettere i valori o modificare il service.
-            # Per ora passiamo i valori espliciti che sovrascrivono (policy 'production' + custom override)
-            
             success, msg = await sanoid_config_service.add_dataset_config(
                 hostname=node.hostname,
                 dataset=ds,
+                template=config.template,
                 autosnap=config.autosnap,
                 autoprune=config.autoprune,
                 hourly=config.hourly,

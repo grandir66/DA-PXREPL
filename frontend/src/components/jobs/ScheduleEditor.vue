@@ -27,10 +27,8 @@
           :value="model.minute ?? 0"
           @input="patch({ minute: clampInt(($event.target as any).value, 0, 59) })"
         />
-        <span class="se-hint">: {{ String(model.minute ?? 0).padStart(2, '0') }} di ogni ora</span>
+        <span class="se-hint">: {{ String(model.minute ?? 0).padStart(2, '0') }} di ogni ora (UTC)</span>
       </div>
-
-      <!-- every_n_hours: N -->
       <div class="se-row" v-if="model.kind === 'every_n_hours'">
         <label class="se-label">Ogni</label>
         <input
@@ -56,6 +54,7 @@
           :value="model.time || '02:00'"
           @input="patch({ time: ($event.target as any).value })"
         />
+        <span class="se-hint">Il backend valuta il cron in UTC</span>
       </div>
 
       <!-- every_n_days: N -->
@@ -132,7 +131,7 @@
         <span class="se-preview-value is-error">{{ preview.error }}</span>
       </div>
       <div class="se-next" v-if="preview.next_runs.length">
-        <span class="se-preview-label">Prossime 5 esecuzioni (UTC)</span>
+        <span class="se-preview-label">Prossime 5 esecuzioni (ora locale)</span>
         <ul>
           <li v-for="(t, i) in preview.next_runs" :key="i">{{ formatRun(t) }}</li>
         </ul>

@@ -4,6 +4,7 @@ Permette di configurare snapshot e retention per dataset specifici.
 """
 
 import logging
+import re
 from typing import Dict, Optional, List
 from services.ssh_service import ssh_service
 
@@ -18,6 +19,7 @@ class SanoidConfigService:
     def _build_dataset_config(
         self,
         dataset: str,
+        template: str = "production",
         autosnap: bool = True,
         autoprune: bool = True,
         hourly: int = 0,
@@ -27,9 +29,10 @@ class SanoidConfigService:
         yearly: int = 0
     ) -> str:
         """Costruisce la configurazione sanoid per un dataset"""
+        safe_template = re.sub(r"[^\w-]", "", template or "production") or "production"
         config = f"""
 [{dataset}]
-    use_template = production
+    use_template = {safe_template}
     autosnap = {"yes" if autosnap else "no"}
     autoprune = {"yes" if autoprune else "no"}
     hourly = {hourly}
@@ -65,6 +68,7 @@ class SanoidConfigService:
         autosnap: bool = True,
         autoprune: bool = True,
         keep_snapshots: int = 7,
+        template: str = "production",
         hourly: Optional[int] = None,
         daily: Optional[int] = None,
         weekly: Optional[int] = None,
@@ -109,6 +113,7 @@ class SanoidConfigService:
             if hourly is not None or daily is not None or weekly is not None or monthly is not None or yearly is not None:
                 new_config = self._build_dataset_config(
                     dataset=dataset,
+                    template=template,
                     autosnap=autosnap,
                     autoprune=autoprune,
                     hourly=hourly or 0,
@@ -118,13 +123,12 @@ class SanoidConfigService:
                     yearly=yearly or 0
                 )
             else:
-                # Costruisci nuova configurazione per il dataset
-                # Usa hourly per permettere snapshot multiple nello stesso giorno
                 new_config = self._build_dataset_config(
                     dataset=dataset,
+                    template=template,
                     autosnap=autosnap,
                     autoprune=autoprune,
-                    hourly=keep_snapshots,  # Mantiene N snapshot orarie
+                    hourly=keep_snapshots,
                     daily=0,
                     weekly=0,
                     monthly=0,
