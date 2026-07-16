@@ -21,6 +21,9 @@ export const useAuthStore = defineStore('auth', {
                 this.token = response.data.access_token
                 this.isAuthenticated = true
                 localStorage.setItem('access_token', this.token || '')
+                if (response.data.refresh_token) {
+                    localStorage.setItem('refresh_token', response.data.refresh_token)
+                }
 
                 // Fetch user details immediately after login
                 await this.fetchUser()
@@ -56,6 +59,7 @@ export const useAuthStore = defineStore('auth', {
             this.token = null
             this.isAuthenticated = false
             localStorage.removeItem('access_token')
+            localStorage.removeItem('refresh_token')
             localStorage.removeItem('user')
             // router push handled in component or interceptor
         }

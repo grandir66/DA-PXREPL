@@ -10,13 +10,15 @@ export interface User {
 
 export interface LoginResponse {
     access_token: string;
+    refresh_token: string;
     token_type: string;
+    expires_in: number;
     user: User;
 }
 
 export default {
     login(credentials: any) {
-        return apiClient.post('/auth/login', {
+        return apiClient.post<LoginResponse>('/auth/login', {
             username: credentials.username,
             password: credentials.password,
             realm: credentials.realm

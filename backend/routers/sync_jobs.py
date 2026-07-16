@@ -17,35 +17,23 @@ from database import get_db, Node, SyncJob, JobLog, User, SyncMethod
 from services.syncoid_service import syncoid_service
 from services.btrfs_service import btrfs_service
 from services.scheduler import scheduler_service
-from services.schedule_translator import to_cron as _sched_to_cron, from_cron as _sched_from_cron
+from services.schedule_helpers import resolve_schedule_pair
+from services.vm_group_sync_service import (
+    vm_group_key as _vm_group_key,
+    vm_group_sync_complete as _vm_group_sync_complete,
+    continue_vm_group_chain as _continue_vm_group_chain,
+    run_vm_group_background as _run_vm_group_background,
+)
 from routers.auth import get_current_user, require_operator, require_admin, log_audit
 
 logger = logging.getLogger(__name__)
 
 
 def _resolve_schedule_pair(schedule: Optional[str], schedule_config: Optional[Dict[str, Any]]):
-    """
-    Allinea schedule (cron) e schedule_config (JSON) prima di salvare.
-
-    Regole:
-      - se viene passato `schedule_config` è la fonte di verità: il cron
-        viene rigenerato (anche per kind=manual → schedule=None);
-      - se viene passato solo `schedule` (cron) si deriva una struttura
-        best-effort che può essere "advanced" se il cron non è canonico;
-      - se entrambi sono None: nessun cambio (None, None) → il caller
-        decide se è un update parziale o un default.
-    """
-    if schedule_config is not None:
-        try:
-            cron = _sched_to_cron(schedule_config)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"schedule_config non valido: {e}")
-        return cron, schedule_config
-    if schedule is not None:
-        cron = schedule.strip() or None
-        cfg = _sched_from_cron(cron) if cron else {"kind": "manual"}
-        return cron, cfg
-    return None, None
+    try:
+        return resolve_schedule_pair(schedule, schedule_config)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"schedule_config non valido: {e}")
 
 router = APIRouter()
 
@@ -173,20 +161,6 @@ def _dest_zfs_pool_for_job(job: SyncJob) -> str:
     if len(parts) >= 2:
         return "/".join(parts[:-1])
     return parts[0] if parts else ""
-
-
-def _vm_group_sync_complete(db, job: SyncJob) -> bool:
-    """True se tutti i job disco dello stesso gruppo VM sono in success."""
-    if not job.vm_group_id:
-        return (job.last_status or "").lower() == "success"
-    siblings = db.query(SyncJob).filter(
-        SyncJob.vm_group_id == job.vm_group_id,
-        SyncJob.dest_node_id == job.dest_node_id,
-        SyncJob.is_active == True,  # noqa: E712
-    ).all()
-    if not siblings:
-        return (job.last_status or "").lower() == "success"
-    return all((s.last_status or "").lower() == "success" for s in siblings)
 
 
 _vm_register_inflight: set[str] = set()
@@ -529,7 +503,7 @@ async def _reconcile_running_sync_jobs_once() -> None:
         db.close()
 
 
-async def _reconcile_pending_vm_registrations() -> None:
+async def reconcile_pending_vm_registrations() -> None:
     """Registra VM mancanti per job già in success (es. completati via monitor)."""
     from database import SessionLocal, SyncJob, Node, JobLog
     from services.ssh_service import ssh_service
@@ -1287,177 +1261,6 @@ class SyncJobResponseWithNodes(SyncJobResponse):
     group_is_running: bool = False
 
 
-def _vm_group_key(vm_group_id: str) -> str:
-    return f"vmgroup_{vm_group_id}"
-
-
-async def _wait_sync_job_terminal(job_id: int, job_key: str, poll_sec: int = 15, max_iter: int = 1440) -> str:
-    """Attende che un job sync termini (success/failed). max_iter ~6h @ 15s."""
-    from database import SessionLocal, SyncJob
-
-    for _ in range(max_iter):
-        db = SessionLocal()
-        try:
-            job = db.query(SyncJob).filter(SyncJob.id == job_id).first()
-            st = (job.last_status or "").lower() if job else ""
-        finally:
-            db.close()
-        if st in ("success", "failed"):
-            return st
-        if not scheduler_service.is_running(job_key) and st not in ("running", "started", ""):
-            return st or "unknown"
-        await asyncio.sleep(poll_sec)
-    return "timeout"
-
-
-async def execute_vm_group_sync_task(
-    vm_group_id: str,
-    triggered_by_user_id: int = None,
-    force_rerun: bool = False,
-) -> None:
-    """Replica sequenziale di tutti i dischi di un gruppo VM.
-
-    force_rerun=False: catena multi-disco — salta dischi già success nel ciclo corrente.
-    force_rerun=True: run schedulata/manuale — riesegue syncoid anche se l'ultimo run
-    è andato a buon fine (replica incrementale).
-    """
-    from database import SessionLocal, SyncJob
-
-    db = SessionLocal()
-    try:
-        jobs = (
-            db.query(SyncJob)
-            .filter(SyncJob.vm_group_id == vm_group_id, SyncJob.is_active == True)  # noqa: E712
-            .order_by(SyncJob.id)
-            .all()
-        )
-        job_ids = [j.id for j in jobs]
-    finally:
-        db.close()
-
-    logger.info(f"VM group {vm_group_id}: avvio replica sequenziale ({len(job_ids)} dischi)")
-
-    for job_id in job_ids:
-        db = SessionLocal()
-        try:
-            job = db.query(SyncJob).filter(SyncJob.id == job_id).first()
-            if not job:
-                continue
-            status = (job.last_status or "").lower()
-        finally:
-            db.close()
-
-        if not force_rerun:
-            if status == "success":
-                continue
-            if status == "failed":
-                logger.warning(f"VM group {vm_group_id}: interrotto — job {job_id} fallito")
-                break
-        elif status in ("running", "started"):
-            job_key = f"sync_{job_id}"
-            final = await _wait_sync_job_terminal(job_id, job_key)
-            if final == "failed":
-                logger.warning(
-                    f"VM group {vm_group_id}: job {job_id} fallito dopo attesa"
-                )
-                break
-            if final != "success":
-                logger.warning(
-                    f"VM group {vm_group_id}: job {job_id} non completato ({final}), skip"
-                )
-                continue
-            # force_rerun: disco appena completato → riesegui replica incrementale
-
-        job_key = f"sync_{job_id}"
-        if scheduler_service.is_running(job_key):
-            final = await _wait_sync_job_terminal(job_id, job_key)
-            if final == "success":
-                continue
-            if final == "failed":
-                break
-            continue
-
-        if not scheduler_service.mark_running(job_key):
-            final = await _wait_sync_job_terminal(job_id, job_key)
-            if final == "failed":
-                break
-            continue
-
-        keep_lock = False
-        try:
-            keep_lock = await execute_sync_job_task(job_id, triggered_by_user_id)
-        except Exception as e:
-            logger.error(f"VM group {vm_group_id} job {job_id}: {e}", exc_info=True)
-            scheduler_service.mark_done(job_key)
-            break
-
-        if keep_lock:
-            final = await _wait_sync_job_terminal(job_id, job_key)
-            if final == "failed":
-                break
-        else:
-            scheduler_service.mark_done(job_key)
-            db = SessionLocal()
-            try:
-                job = db.query(SyncJob).filter(SyncJob.id == job_id).first()
-                if (job.last_status or "").lower() == "failed":
-                    break
-            finally:
-                db.close()
-
-    await _reconcile_pending_vm_registrations()
-
-
-async def _run_vm_group_background(
-    vm_group_id: str,
-    group_key: str,
-    triggered_by_user_id: int = None,
-    force_rerun: bool = False,
-) -> None:
-    try:
-        await execute_vm_group_sync_task(
-            vm_group_id, triggered_by_user_id, force_rerun=force_rerun
-        )
-    finally:
-        scheduler_service.mark_done(group_key)
-
-
-async def _continue_vm_group_chain(vm_group_id: str, triggered_by_user_id: int = None) -> None:
-    """Avvia il disco successivo se un job del gruppo è appena terminato."""
-    group_key = _vm_group_key(vm_group_id)
-    if scheduler_service.is_running(group_key):
-        return
-
-    from database import SessionLocal, SyncJob
-
-    db = SessionLocal()
-    try:
-        jobs = (
-            db.query(SyncJob)
-            .filter(SyncJob.vm_group_id == vm_group_id, SyncJob.is_active == True)  # noqa: E712
-            .order_by(SyncJob.id)
-            .all()
-        )
-        if not jobs:
-            return
-        if any((j.last_status or "").lower() == "running" for j in jobs):
-            return
-        if all((j.last_status or "").lower() == "success" for j in jobs):
-            await _reconcile_pending_vm_registrations()
-            return
-        if any((j.last_status or "").lower() == "failed" for j in jobs):
-            return
-        pending = [j for j in jobs if (j.last_status or "").lower() != "success"]
-        if not pending:
-            return
-    finally:
-        db.close()
-
-    if not scheduler_service.mark_running(group_key):
-        return
-    asyncio.create_task(_run_vm_group_background(vm_group_id, group_key, triggered_by_user_id))
-
-
 async def _compute_vm_group_progress(
     group_jobs: List[SyncJob],
     live_by_id: Dict[int, Dict[str, Any]],
@@ -1638,7 +1441,7 @@ async def reconcile_sync_jobs_after_restart() -> None:
         db.close()
 
     await _reconcile_running_sync_jobs_once()
-    await _reconcile_pending_vm_registrations()
+    await reconcile_pending_vm_registrations()
 
 
 def check_job_access(user: User, job: SyncJob, db: Session) -> bool:

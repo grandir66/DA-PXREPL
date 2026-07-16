@@ -511,7 +511,7 @@ class SchedulerService:
     
     async def _execute_vm_group_sync(self, vm_group_id: str):
         """Esegue in sequenza tutti i dischi di un gruppo VM."""
-        from routers.sync_jobs import execute_vm_group_sync_task
+        from services.vm_group_sync_service import execute_vm_group_sync_task
         await execute_vm_group_sync_task(vm_group_id, force_rerun=True)
     
     async def _execute_host_backup_job(self, job_id: int):

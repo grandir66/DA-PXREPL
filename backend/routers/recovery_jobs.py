@@ -18,22 +18,7 @@ from database import (
     NodeType, RecoveryJobStatus, VirtualMachine
 )
 from services.pbs_service import pbs_service
-from services.schedule_translator import to_cron as _sched_to_cron, from_cron as _sched_from_cron
-
-
-def _resolve_schedule_pair(schedule: Optional[str], schedule_config: Optional[Dict[str, Any]]):
-    """Allinea cron e schedule_config (vedi sync_jobs._resolve_schedule_pair)."""
-    if schedule_config is not None:
-        try:
-            cron = _sched_to_cron(schedule_config)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"schedule_config non valido: {e}")
-        return cron, schedule_config
-    if schedule is not None:
-        cron = schedule.strip() or None
-        cfg = _sched_from_cron(cron) if cron else {"kind": "manual"}
-        return cron, cfg
-    return None, None
+from services.schedule_helpers import resolve_schedule_pair
 from services.proxmox_service import proxmox_service
 from services.ssh_service import ssh_service
 from routers.auth import get_current_user, require_operator, require_admin, log_audit
@@ -42,6 +27,13 @@ from routers.deps import assert_node_access, check_node_access, filter_nodes_for
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _resolve_schedule_pair(schedule: Optional[str], schedule_config: Optional[Dict[str, Any]]):
+    try:
+        return resolve_schedule_pair(schedule, schedule_config)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"schedule_config non valido: {e}")
 
 
 # Helper

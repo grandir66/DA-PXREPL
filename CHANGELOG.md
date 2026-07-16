@@ -16,6 +16,12 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 - **Sanoid template**: `add_dataset_config` rispetta `use_template` scelto in UI VM (`sanoid_config_service`, `vms.py`).
 - **Env legacy**: fallback `DAPX_CORS_ORIGINS`, `DAPX_PORT`, `SANOID_MANAGER_DB` accanto a variabili storiche.
 - **Schedule editor**: chiarito UTC vs ora locale nelle prossime esecuzioni.
+
+### Miglioramenti
+- **Refresh token JWT**: rinnovo automatico su 401 con coda richieste parallele (`frontend/src/services/api.ts`).
+- **ESLint + Prettier**: configurazione frontend con script `npm run lint` / `format`.
+- **Refactor sync VM group**: logica catena multi-disco in `services/vm_group_sync_service.py`; schedule condiviso in `schedule_helpers.py`.
+- **CI GitHub Actions**: workflow pytest + build + lint (file in `.github/workflows/ci.yml`).
 - **Replica schedulata non rieseguita**: `execute_vm_group_sync_task` saltava i dischi con `last_status=success`, quindi dopo la prima run riuscita lo scheduler non lanciava più syncoid. Run schedulata/manuale ora usa `force_rerun=True` (`backend/routers/sync_jobs.py`, `backend/services/scheduler.py`).
 - **Burst di job al restart di mezzanotte**: logrotate faceva `systemctl reload` (restart del servizio); init cron usava `last_run` vecchio e sparava tutti i gruppi arretrati. Nuovo `compute_initial_next_run()` + logrotate con `copytruncate` senza reload (`install.sh`, `backend/services/scheduler.py`).
 - **Scheduler in-memory con chiavi errate**: `update_job_schedule`/`remove_job` usavano `job_id` intero invece di `sync_{id}` / `vmgroup_{uuid}` — modifiche schedule da UI non applicate fino al restart (`backend/services/scheduler.py`, `backend/routers/sync_jobs.py`).
