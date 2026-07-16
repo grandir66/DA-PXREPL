@@ -5,7 +5,6 @@
         <img src="/images/domarc-logo.png" alt="Domarc" class="brand-logo" />
         <div class="brand-text">
           <span class="brand-name">DA-PXREPL</span>
-          <span class="brand-tag" v-if="systemMode === 'lb'">load-balancer</span>
         </div>
       </div>
 
@@ -20,7 +19,7 @@
             <Icon name="server" :size="16" />
             <span>Nodi</span>
           </router-link>
-          <router-link v-if="systemMode === 'full'" :to="{ name: 'vms' }" class="nav-item" active-class="active">
+          <router-link :to="{ name: 'vms' }" class="nav-item" active-class="active">
             <Icon name="monitor" :size="16" />
             <span>Virtual Machines</span>
           </router-link>
@@ -32,13 +31,9 @@
             <Icon name="cluster" :size="16" />
             <span>Cluster &amp; HA</span>
           </router-link>
-          <router-link v-if="systemMode === 'full' && authStore.isAdmin" :to="{ name: 'load-balancer' }" class="nav-item" active-class="active">
-            <Icon name="scale" :size="16" />
-            <span>Load Balancer</span>
-          </router-link>
         </div>
 
-        <div class="nav-group" v-if="systemMode === 'full'">
+        <div class="nav-group">
           <div class="nav-group-title">Repliche &amp; Backup</div>
           <router-link :to="{ name: 'replication' }" class="nav-item" active-class="active">
             <Icon name="archive" :size="16" />
@@ -117,18 +112,15 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import nodesService from '../services/nodes'
-import api from '../services/api'
 import Icon from '../components/ui/Icon.vue'
 import ToastContainer from '../components/ui/ToastContainer.vue'
 import ConfirmDialog from '../components/ui/ConfirmDialog.vue'
 import { useToast, errorMessage } from '../stores/toast'
-import { setAppMode } from '../utils/appMode'
 
 const authStore = useAuthStore()
 const router = useRouter()
 const toast = useToast()
 const refreshing = ref(false)
-const systemMode = ref<'full' | 'lb'>('full')
 
 async function refreshData() {
   if (refreshing.value) return
@@ -143,25 +135,12 @@ async function refreshData() {
   }
 }
 
-async function fetchSystemMode() {
-  try {
-    const res = await api.get('/health')
-    const mode = res.data?.mode === 'lb' ? 'lb' : 'full'
-    systemMode.value = mode
-    setAppMode(mode)
-  } catch {
-    systemMode.value = 'full'
-    setAppMode('full')
-  }
-}
-
 function logout() {
   authStore.logout()
   router.push('/login')
 }
 
 onMounted(async () => {
-  fetchSystemMode()
   if (authStore.isAuthenticated && !authStore.user?.role) {
     await authStore.fetchUser()
   }

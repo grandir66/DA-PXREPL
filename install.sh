@@ -134,6 +134,12 @@ confirm() {
 
 select_mode() {
     log_step "Selezione modalità installazione"
+
+    if [[ -n "$DAPX_MODE" && "$DAPX_MODE" == "lb" ]]; then
+        log_warn "Modalità 'lb' (Load Balancer) non più supportata; uso 'full'"
+        INSTALL_MODE="full"
+        return 0
+    fi
     
     # Check enviroment variable first (for non-interactive)
     if [[ -n "$DAPX_MODE" ]]; then
@@ -148,21 +154,8 @@ select_mode() {
         return 0
     fi
 
-    echo -e "Seleziona la modalità di funzionamento:"
-    echo -e "  1) ${BOLD}Full${NC} (Default) - Backup, Replica & Load Balancer"
-    echo -e "  2) ${BOLD}Load Balancer Only${NC} - Autenticazione, Host & Load Balancer (No Backup/Replica)"
-    
-    read -p "Seleziona [1-2]: " choice
-    case "$choice" in
-        2)
-            INSTALL_MODE="lb"
-            log_info "Modalità selezionata: Load Balancer Only"
-            ;;
-        *)
-            INSTALL_MODE="full"
-            log_info "Modalità selezionata: Full"
-            ;;
-    esac
+    INSTALL_MODE="full"
+    log_info "Modalità selezionata: Full (Backup, Replica & Cluster/HA)"
 }
 
 check_root() {

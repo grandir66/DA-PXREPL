@@ -15,7 +15,7 @@ import logging
 
 from database import engine, Base, get_db, init_default_config, SessionLocal
 from routers import nodes, snapshots, sync_jobs, vms, logs, settings, auth, ssh_keys
-from routers import recovery_jobs, backup_jobs, host_info, host_backup, migration_jobs, updates, pve_replication_jobs, load_balancer
+from routers import recovery_jobs, backup_jobs, host_info, host_backup, migration_jobs, updates, pve_replication_jobs
 from routers import ha, clusters
 from routers import schedule as schedule_router
 from services.scheduler import SchedulerService
@@ -114,6 +114,8 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # Router API
 dapx_mode = os.environ.get("DAPX_MODE", "full")
+if dapx_mode == "lb":
+    dapx_mode = "full"
 
 # Core Routers (available in all modes)
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
@@ -123,7 +125,6 @@ app.include_router(logs.router, prefix="/api/logs", tags=["Logs"])
 app.include_router(ssh_keys.router, prefix="/api", tags=["SSH Keys"])
 app.include_router(host_info.router, prefix="/api", tags=["Host Info & Dashboard"])
 app.include_router(updates.router, tags=["Updates"])
-app.include_router(load_balancer.router, tags=["Load Balancer"])
 app.include_router(ha.router, prefix="/api/ha", tags=["High Availability & Cluster"])
 app.include_router(clusters.router, tags=["Clusters"])
 
@@ -158,7 +159,7 @@ async def health_check():
         "auth_enabled": True,
         "mode": dapx_mode,
         "checks": {},
-        "features": ["zfs", "btrfs", "pbs", "load_balancer"] if dapx_mode == "full" else ["load_balancer"],
+        "features": ["zfs", "btrfs", "pbs", "ha", "cluster"] if dapx_mode == "full" else [],
         "ts": _dt.utcnow().isoformat() + "Z",
     }
     healthy = True

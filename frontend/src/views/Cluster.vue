@@ -489,8 +489,6 @@
 
       <!-- HA MANAGER TAB -->
       <div v-if="activeTab === 'ha'" class="ha-panel">
-         <!-- Same content as HA Manager tab in LoadBalancer.vue -->
-         
          <!-- HA Resources -->
          <div class="card mb-4">
             <h4>HA Managed Resources</h4>
@@ -662,7 +660,6 @@ import { useHAStore } from '../stores/ha_store';
 import haService from '../services/ha';
 import clustersService, { type ProxmoxCluster } from '../services/clusters';
 import nodesService from '../services/nodes';
-import loadBalancerService from '../services/loadBalancer';
 
 const toast = useToast()
 
@@ -768,7 +765,6 @@ watch(activeTab, (val) => {
     if (val === 'topology' && (!topologyData.value || clusters.value.length > 0)) {
         loadTopology();
     }
-    if (val === 'config') loadClusterConfig();
     if (val === 'monitor') loadMonitorData();
 });
 
@@ -1000,22 +996,13 @@ const getFirstPVENodeId = async () => {
 };
 
 // --- CONFIG ACTIONS ---
-const loadClusterConfig = async () => {
+const triggerClusterBackup = async () => {
     try {
-        const res = await loadBalancerService.getConfig();
-        const data = res.data;
-        if (data.proxmox_api) {
-            clusterConfig.hosts = data.proxmox_api.hosts || '';
-            clusterConfig.user = data.proxmox_api.user || '';
-        }
-    } catch {
-        /* ignore */
+        await haService.backupClusterConfig();
+    } catch (e) {
+        console.warn("Backup endpoint error", e);
     }
 };
-
-
-
-// --- CLUSTER MGMT ACTIONS ---
 const addNodeToCluster = async () => {
    if(!await confirmDangerous(`Add ${newNodeIP.value} to cluster?`)) return;
    const nodeId = await getFirstPVENodeId();
@@ -1115,14 +1102,6 @@ const createHAGroupFromSelection = async () => {
 };
 
 // --- DANGEROUS OPS ---
-const triggerClusterBackup = async () => {
-    try {
-        await loadBalancerService.backupClusterConfig();
-    } catch (e) {
-        console.warn("Backup endpoint error", e);
-    }
-};
-
 const removeNodeFromCluster = async (name: string) => {
     if(!await confirmDangerous(`DANGER: Remove ${name}? Node must be OFFLINE.`)) return;
     if(!await confirmDangerous(`Are you really sure? This can break quorum.`)) return;

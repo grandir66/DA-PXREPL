@@ -2,6 +2,8 @@
 Router per gestione HA (High Availability) Proxmox
 """
 
+import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -10,7 +12,8 @@ from pydantic import BaseModel
 from database import get_db, Node, User
 from services.ha_service import ha_service
 from services.cluster_service import cluster_service
-from routers.auth import get_current_user, require_operator, log_audit
+from services.ssh_service import ssh_service
+from routers.auth import get_current_user, require_operator, require_admin, log_audit
 from routers.deps import assert_node_access
 
 router = APIRouter()
@@ -39,6 +42,52 @@ async def get_cluster_entry(
     query = filter_nodes_for_user(db, user, query)
     nodes = query.all()
     return await cluster_service.resolve_cluster_entry_node(nodes, use_cache=False)
+
+
+@router.post("/cluster/backup-config")
+async def backup_cluster_config(
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Backup configurazione cluster PVE (/etc/pve, /etc/corosync) sul nodo entry point."""
+    from routers.nodes import filter_nodes_for_user
+
+    query = db.query(Node).filter(Node.is_active == True)
+    query = filter_nodes_for_user(db, user, query)
+    nodes = query.all()
+    entry = await cluster_service.resolve_cluster_entry_node(nodes, use_cache=False)
+    node_id = entry.get("entry_node_id")
+    if not node_id:
+        raise HTTPException(status_code=400, detail="Nessun nodo PVE disponibile per backup cluster")
+
+    node = db.query(Node).filter(Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Nodo entry point non trovato")
+
+    backup_path = (
+        f"/var/lib/pve-cluster-backup/cluster-backup-"
+        f"{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}.tar.gz"
+    )
+    cmd = f"mkdir -p /var/lib/pve-cluster-backup && tar -czf {backup_path} /etc/pve /etc/corosync 2>/dev/null"
+
+    result = await ssh_service.execute(
+        hostname=node.hostname,
+        command=cmd,
+        port=node.ssh_port,
+        username=node.ssh_user,
+        key_path=node.ssh_key_path,
+        timeout=30,
+    )
+    if result.success:
+        return {
+            "success": True,
+            "message": f"Backup creato su {node.name}",
+            "path": backup_path,
+            "node": node.hostname,
+        }
+
+    detail = (result.stderr or result.stdout or "Backup cluster fallito").strip()
+    raise HTTPException(status_code=500, detail=detail)
 
 
 # ============== Schemas ==============

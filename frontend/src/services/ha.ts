@@ -81,4 +81,8 @@ export default {
   createGroup(nodeId: number, data: HAGroupPayload) {
     return apiClient.post<HaActionResponse>(`/ha/node/${nodeId}/groups`, data)
   },
+
+  backupClusterConfig() {
+    return apiClient.post('/ha/cluster/backup-config')
+  },
 }

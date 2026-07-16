@@ -6,6 +6,7 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 ## [Unreleased]
 
 ### Refactor
+- **Rimozione Load Balancer (ProxLB)**: funzionalità obsoleta (Proxmox integra il bilanciamento nativo). Eliminati view, API, `proxlb_lib`, modalità `DAPX_MODE=lb`; backup cluster spostato su `/api/ha/cluster/backup-config`; redirect `/load-balancer` → Cluster & HA.
 - **Cluster.vue → apiClient**: nuovo `clusters.ts`, esteso `ha.ts` (monitor, topology, HA/cluster ops); rimossi `fetch`/`axios` diretti dalla view.
 - **recovery_jobs split**: estratti `recovery_job_schemas.py`, `recovery_job_helpers.py`, `recovery_job_execution.py`, `recovery_pbs_inventory.py`; router ridotto (~1800 → ~1090 righe).
 - **sync_jobs split**: estratti `sync_job_schemas.py`, `sync_job_execution.py`, `sync_job_reconciliation.py`; router ridotto (~2900 → ~1500 righe).

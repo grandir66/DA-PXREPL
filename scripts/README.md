@@ -7,7 +7,6 @@ Layout del repository **dapx-unified** (unico progetto attivo; il vecchio `dapx-
 | `scripts/` | Manutenzione, catch-up, deploy beta, cleanup CT produzione |
 | `scripts/dev/` | Sviluppo locale (`run_dev.py`) |
 | `backend/scripts/` | **Runtime API** — invocati dal backend (cert SSL, diagnostica nodi, verify DB). Non spostare senza aggiornare i router. |
-| `backend/services/proxlb_lib/` | Libreria vendored ProxLB per load balancer (non repo annidato) |
 
 ## Script principali
 
