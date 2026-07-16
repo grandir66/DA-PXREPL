@@ -33,13 +33,13 @@ async def main() -> int:
         print("Nessun gruppo VM attivo.")
         return 0
 
-    print(f"Catch-up: {len(groups)} gruppi VM")
+    print(f"Catch-up: {len(groups)} gruppi VM", flush=True)
     for gid in groups:
-        print(f"--- {gid} ---")
+        print(f"--- {gid} ---", flush=True)
         await execute_vm_group_sync_task(gid, force_rerun=True)
-        print(f"--- {gid} done ---")
+        print(f"--- {gid} done ---", flush=True)
 
-    print("Catch-up completato.")
+    print("Catch-up completato.", flush=True)
     return 0
 
 
