@@ -12,7 +12,7 @@ class TestSyncJobsAPI:
     def test_list_sync_jobs(self, client, admin_token, sample_sync_job):
         """Test listing sync jobs"""
         response = client.get(
-            "/api/sync-jobs/",
+            "/api/sync-jobs",
             headers={"Authorization": f"Bearer {admin_token}"}
         )
         
@@ -23,7 +23,7 @@ class TestSyncJobsAPI:
     
     def test_list_sync_jobs_unauthenticated(self, client):
         """Test listing jobs without auth"""
-        response = client.get("/api/sync-jobs/")
+        response = client.get("/api/sync-jobs")
         
         assert response.status_code == 401
     
@@ -37,7 +37,7 @@ class TestSyncJobsAPI:
         db.commit()
         
         response = client.post(
-            "/api/sync-jobs/",
+            "/api/sync-jobs",
             headers={"Authorization": f"Bearer {admin_token}"},
             json={
                 "name": "new-sync-job",
@@ -58,7 +58,7 @@ class TestSyncJobsAPI:
     def test_create_sync_job_invalid_source(self, client, admin_token, sample_node):
         """Test creating job with invalid source node"""
         response = client.post(
-            "/api/sync-jobs/",
+            "/api/sync-jobs",
             headers={"Authorization": f"Bearer {admin_token}"},
             json={
                 "name": "invalid-job",
@@ -80,7 +80,7 @@ class TestSyncJobsAPI:
         db.commit()
         
         response = client.post(
-            "/api/sync-jobs/",
+            "/api/sync-jobs",
             headers={"Authorization": f"Bearer {viewer_token}"},
             json={
                 "name": "forbidden-job",

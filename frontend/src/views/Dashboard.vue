@@ -26,6 +26,54 @@
       </div>
     </section>
 
+    <section
+      v-if="replicationHealth"
+      class="card"
+      :class="{ 'card-alert': replicationHealth.overdue_count > 0 }"
+    >
+      <div class="card-head">
+        <div>
+          <h2 class="card-title">Salute replica</h2>
+          <p class="card-sub">
+            Job schedulati in ritardo rispetto all'ultimo slot cron (UTC).
+          </p>
+        </div>
+        <span
+          class="health-badge"
+          :class="replicationHealth.overdue_count > 0 ? 'health-badge-warn' : 'health-badge-ok'"
+        >
+          {{ replicationHealth.overdue_count > 0
+            ? `${replicationHealth.overdue_count} in ritardo`
+            : 'Tutto ok' }}
+        </span>
+      </div>
+
+      <div v-if="replicationHealth.overdue_count === 0" class="health-ok">
+        {{ replicationHealth.healthy_count }} job schedulati aggiornati.
+      </div>
+      <table v-else class="health-table">
+        <thead>
+          <tr>
+            <th>Job / VM</th>
+            <th>Ultima run</th>
+            <th>Ritardo</th>
+            <th>Stato</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="job in overdueJobs" :key="job.id">
+            <td>
+              <strong>{{ job.vm_name || job.name }}</strong>
+              <div v-if="job.vm_id" class="health-sub">VMID {{ job.vm_id }}</div>
+            </td>
+            <td>{{ formatLastRun(job.last_run) }}</td>
+            <td>{{ formatDelay(job.hours_since_last_run) }}</td>
+            <td><span class="badge badge-warning">{{ job.reason === 'never_ran' ? 'Mai eseguito' : 'Run mancata' }}</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
     <section class="card">
       <div class="card-head">
         <div>
@@ -92,7 +140,11 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import dashboardService, { type JobStats, type NodeMetrics } from '../services/dashboard'
+import dashboardService, {
+  type JobStats,
+  type NodeMetrics,
+  type ReplicationHealth,
+} from '../services/dashboard'
 import { useToast, errorMessage } from '../stores/toast'
 import PageHeader from '../components/ui/PageHeader.vue'
 import Icon from '../components/ui/Icon.vue'
@@ -105,6 +157,11 @@ const loading = ref(false)
 const loadingMetrics = ref(false)
 const jobStats = ref<JobStats | null>(null)
 const nodesMetrics = ref<NodeMetrics[]>([])
+const replicationHealth = ref<ReplicationHealth | null>(null)
+
+const overdueJobs = computed(() =>
+  (replicationHealth.value?.jobs || []).filter(j => j.overdue)
+)
 
 interface Kpi {
   id: string
@@ -132,9 +189,18 @@ onMounted(refreshData)
 async function refreshData() {
   loading.value = true
   try {
-    await Promise.all([loadJobStats(), loadNodesMetrics()])
+    await Promise.all([loadJobStats(), loadNodesMetrics(), loadReplicationHealth()])
   } finally {
     loading.value = false
+  }
+}
+
+async function loadReplicationHealth() {
+  try {
+    const r = await dashboardService.getReplicationHealth()
+    replicationHealth.value = r.data
+  } catch (e) {
+    toast.error('Impossibile caricare salute replica', errorMessage(e))
   }
 }
 
@@ -167,6 +233,18 @@ function barStyle(val: number, danger = 80, warning = 60) {
     width: `${Math.min(100, Math.max(0, val))}%`,
     background: color,
   }
+}
+
+function formatLastRun(iso?: string | null): string {
+  if (!iso) return 'Mai'
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString()
+}
+
+function formatDelay(hours?: number | null): string {
+  if (hours == null) return '—'
+  if (hours < 24) return `${hours.toFixed(1)} h`
+  return `${(hours / 24).toFixed(1)} gg`
 }
 </script>
 
@@ -253,6 +331,61 @@ function barStyle(val: number, danger = 80, warning = 60) {
   margin: 2px 0 0;
   font-size: 0.78rem;
   color: var(--color-text-secondary);
+}
+
+.card-alert {
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.health-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.health-badge-ok {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--color-success-fg, #4ade80);
+}
+.health-badge-warn {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--color-warning-fg, #fbbf24);
+}
+
+.health-ok {
+  padding: var(--space-3) var(--space-4);
+  font-size: 0.86rem;
+  color: var(--color-text-secondary);
+}
+
+.health-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+.health-table th {
+  text-align: left;
+  padding: 10px var(--space-4);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-body);
+  border-bottom: 1px solid var(--color-border);
+}
+.health-table td {
+  padding: 10px var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: middle;
+}
+.health-table tr:last-child td {
+  border-bottom: 0;
+}
+.health-sub {
+  font-size: 0.72rem;
+  color: var(--color-text-secondary);
+  margin-top: 2px;
 }
 
 .metrics-table {

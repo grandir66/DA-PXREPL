@@ -860,6 +860,59 @@ async def create_recovery_job(
 
 # ============== PBS Node Endpoints ==============
 
+async def _resolve_pbs_inventory_context(
+    db: Session,
+    user: User,
+    node_id: int,
+    datastore: Optional[str] = None,
+    pve_node_id: Optional[int] = None,
+    pbs_storage: Optional[str] = None,
+):
+    """Risolve nodo PBS, datastore, nodo PVE e storage per inventario."""
+    node = db.query(Node).filter(
+        Node.id == node_id,
+        Node.node_type == NodeType.PBS.value
+    ).first()
+
+    if not node:
+        raise HTTPException(status_code=404, detail="Nodo PBS non trovato")
+    assert_node_access(user, node)
+
+    ds = datastore or node.pbs_datastore or "datastore1"
+    pve_node = None
+    storage_name = pbs_storage
+
+    if pve_node_id:
+        pve_node = db.query(Node).filter(
+            Node.id == pve_node_id,
+            Node.node_type == NodeType.PVE.value
+        ).first()
+        if pve_node:
+            assert_node_access(user, pve_node)
+    else:
+        pve_node = db.query(Node).filter(
+            Node.node_type == NodeType.PVE.value
+        ).first()
+
+    if pve_node and not storage_name:
+        storage_result = await ssh_service.execute(
+            hostname=pve_node.hostname,
+            command="pvesm status 2>/dev/null",
+            port=pve_node.ssh_port,
+            username=pve_node.ssh_user,
+            key_path=pve_node.ssh_key_path
+        )
+        if storage_result.success and storage_result.stdout:
+            for line in storage_result.stdout.strip().split('\n')[1:]:
+                parts = line.split()
+                if len(parts) >= 3 and parts[1] == "pbs" and parts[2] == "active":
+                    storage_name = parts[0]
+                    logger.info(f"Trovato storage PBS: {storage_name}")
+                    break
+
+    return node, ds, pve_node, storage_name
+
+
 @router.get("/pbs-nodes/", response_model=List[PBSNodeInfo])
 async def list_pbs_nodes(
     user: User = Depends(get_current_user),
@@ -967,49 +1020,11 @@ async def list_pbs_backups(
     Preferisce sempre pvesh via nodo PVE (include notes con nome VM).
     Fallback a proxmox-backup-client se non c'è nodo PVE disponibile.
     """
-    node = db.query(Node).filter(
-        Node.id == node_id,
-        Node.node_type == NodeType.PBS.value
-    ).first()
-    
-    if not node:
-        raise HTTPException(status_code=404, detail="Nodo PBS non trovato")
-    assert_node_access(user, node)
-    
-    ds = datastore or node.pbs_datastore or "datastore1"
-    pve_node = None
-    storage_name = pbs_storage
-
-    if pve_node_id:
-        pve_node = db.query(Node).filter(
-            Node.id == pve_node_id,
-            Node.node_type == NodeType.PVE.value
-        ).first()
-        if pve_node:
-            assert_node_access(user, pve_node)
-    else:
-        pve_node = db.query(Node).filter(
-            Node.node_type == NodeType.PVE.value
-        ).first()
-
-    if pve_node and not storage_name:
-        storage_result = await ssh_service.execute(
-            hostname=pve_node.hostname,
-            command="pvesm status 2>/dev/null",
-            port=pve_node.ssh_port,
-            username=pve_node.ssh_user,
-            key_path=pve_node.ssh_key_path
-        )
-        if storage_result.success and storage_result.stdout:
-            for line in storage_result.stdout.strip().split('\n')[1:]:
-                parts = line.split()
-                if len(parts) >= 3 and parts[1] == "pbs" and parts[2] == "active":
-                    storage_name = parts[0]
-                    logger.info(f"Trovato storage PBS: {storage_name}")
-                    break
+    node, ds, pve_node, storage_name = await _resolve_pbs_inventory_context(
+        db, user, node_id, datastore, pve_node_id, pbs_storage
+    )
 
     try:
-        from services.pbs_service import pbs_service
         backups = await pbs_service.list_inventory_backups(
             pbs_node=node,
             datastore=ds,
@@ -1025,6 +1040,79 @@ async def list_pbs_backups(
         "datastore": ds,
         "backups": backups,
         "count": len(backups)
+    }
+
+
+@router.get("/pbs-nodes/{node_id}/backups/vms")
+async def list_pbs_backup_vms(
+    node_id: int,
+    datastore: Optional[str] = None,
+    pve_node_id: Optional[int] = None,
+    pbs_storage: Optional[str] = None,
+    force_refresh: bool = False,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Riepilogo VM con conteggio backup (lazy load — senza catena date)."""
+    node, ds, pve_node, storage_name = await _resolve_pbs_inventory_context(
+        db, user, node_id, datastore, pve_node_id, pbs_storage
+    )
+
+    try:
+        vms = await pbs_service.list_inventory_vm_summaries(
+            pbs_node=node,
+            datastore=ds,
+            pve_node=pve_node,
+            pbs_storage=storage_name,
+            force_refresh=force_refresh,
+        )
+    except Exception as e:
+        logger.error(f"Errore summary PBS: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    total_versions = sum(v.get("backup_count", 0) for v in vms)
+    return {
+        "datastore": ds,
+        "vms": vms,
+        "vm_count": len(vms),
+        "total_versions": total_versions,
+    }
+
+
+@router.get("/pbs-nodes/{node_id}/backups/vms/{vm_id}")
+async def list_pbs_backup_vm_versions(
+    node_id: int,
+    vm_id: int,
+    datastore: Optional[str] = None,
+    pve_node_id: Optional[int] = None,
+    pbs_storage: Optional[str] = None,
+    force_refresh: bool = False,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Catena date backup per una singola VM (caricata on-demand)."""
+    node, ds, pve_node, storage_name = await _resolve_pbs_inventory_context(
+        db, user, node_id, datastore, pve_node_id, pbs_storage
+    )
+
+    try:
+        versions = await pbs_service.list_inventory_vm_versions(
+            pbs_node=node,
+            datastore=ds,
+            vm_id=vm_id,
+            pve_node=pve_node,
+            pbs_storage=storage_name,
+            force_refresh=force_refresh,
+        )
+    except Exception as e:
+        logger.error(f"Errore versioni PBS vm {vm_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return {
+        "datastore": ds,
+        "vmid": vm_id,
+        "versions": versions,
+        "count": len(versions),
     }
 
 

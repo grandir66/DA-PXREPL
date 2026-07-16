@@ -10,9 +10,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-# Set test environment
-os.environ["SANOID_MANAGER_DB"] = ":memory:"
-os.environ["SANOID_MANAGER_SECRET_KEY"] = "test-secret-key-for-testing-only"
+# Set test environment before app imports (logging, DB, secrets)
+_test_log_dir = tempfile.mkdtemp(prefix="dapx-test-logs-")
+os.environ.setdefault("DAPX_LOG_DIR", _test_log_dir)
+os.environ.setdefault("DAPX_SECRET_KEY", "test-secret-key-for-testing-only")
+os.environ.setdefault("SANOID_MANAGER_SECRET_KEY", "test-secret-key-for-testing-only")
+os.environ.setdefault("SANOID_MANAGER_DB", ":memory:")
 
 from database import Base, get_db, User, Node, SyncJob, Dataset
 from main import app
@@ -55,8 +58,13 @@ def db():
 @pytest.fixture(scope="function")
 def client(db):
     """Create test client with fresh database"""
+    from main import scheduler
+
     Base.metadata.create_all(bind=engine)
+    # Health check richiede scheduler "running"; TestClient non avvia lifespan async.
+    scheduler._running = True
     yield TestClient(app)
+    scheduler._running = False
     Base.metadata.drop_all(bind=engine)
 
 

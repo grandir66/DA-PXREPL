@@ -1,15 +1,15 @@
 #!/bin/bash
 #
-# Sanoid Manager v3.0.5 - Script di Installazione
-# Gestione centralizzata Sanoid/Syncoid per Proxmox VE
+# DAPX-Unified v3.17.4 - Script di Installazione
+# Gestione centralizzata backup/replica per Proxmox VE
 # Con autenticazione integrata Proxmox
 #
 
 set -e
 
 # ============== CONFIGURAZIONE ==============
-VERSION="3.0.5"
-GITHUB_REPO="grandir66/sanoid-manager-3.0.0"
+VERSION="3.17.4"
+GITHUB_REPO="grandir66/DA-PXREPL"
 INSTALL_DIR="/opt/dapx-unified"
 DATA_DIR="/var/lib/dapx-unified"
 LOG_DIR="/var/log/dapx-unified"

@@ -8,6 +8,7 @@ from typing import Optional, Dict, List, Tuple, Any
 import logging
 import json
 import re
+import time
 from datetime import datetime, timedelta
 import aiohttp
 import ssl
@@ -16,6 +17,58 @@ import urllib.parse
 from services.ssh_service import ssh_service
 
 logger = logging.getLogger(__name__)
+
+# Cache inventario PBS (evita chiamate ripetute a PBS/pvesh per ogni expand VM)
+_INVENTORY_CACHE: Dict[str, Tuple[float, List[Dict]]] = {}
+INVENTORY_CACHE_TTL_SEC = 300
+
+
+def inventory_cache_key(
+    pbs_node_id: int,
+    datastore: str,
+    pve_node_id: Optional[int] = None,
+    pbs_storage: Optional[str] = None,
+) -> str:
+    return f"{pbs_node_id}:{datastore}:{pve_node_id or ''}:{pbs_storage or ''}"
+
+
+def summarize_inventory_entries(entries: List[Dict]) -> List[Dict]:
+    """Raggruppa snapshot per VMID → riepilogo (senza catena date)."""
+    groups: Dict[int, Dict] = {}
+    for entry in entries:
+        vmid = entry.get("vmid")
+        if vmid is None:
+            continue
+        vmid = int(vmid)
+        group = groups.get(vmid)
+        if not group:
+            group = {
+                "vmid": vmid,
+                "vm_name": entry.get("vm_name") or f"VM #{vmid}",
+                "vm_type": entry.get("vm_type") or "qemu",
+                "backup_count": 0,
+                "latest_backup_time": 0,
+                "latest_size": 0,
+            }
+            groups[vmid] = group
+        name = entry.get("vm_name")
+        if name and (group["vm_name"].startswith("VM #") or group["vm_name"].startswith("CT #")):
+            group["vm_name"] = name
+        group["backup_count"] += 1
+        btime = int(entry.get("backup_time") or 0)
+        if btime >= group["latest_backup_time"]:
+            group["latest_backup_time"] = btime
+            group["latest_size"] = entry.get("size") or 0
+
+    return sorted(
+        groups.values(),
+        key=lambda g: g["latest_backup_time"],
+        reverse=True,
+    )
+
+
+def filter_inventory_by_vmid(entries: List[Dict], vm_id: int) -> List[Dict]:
+    return [e for e in entries if e.get("vmid") == vm_id]
 
 
 # Pattern di validazione per evitare command injection nei comandi
@@ -413,6 +466,97 @@ class PBSService:
 
         results.sort(key=lambda x: x.get("backup_time", 0), reverse=True)
         return results
+
+    async def get_cached_inventory_entries(
+        self,
+        pbs_node: Any,
+        datastore: str,
+        vm_id: Optional[int] = None,
+        pve_node: Any = None,
+        pbs_storage: Optional[str] = None,
+        force_refresh: bool = False,
+    ) -> List[Dict]:
+        """Inventario completo con cache TTL (condivisa tra summary e dettaglio VM)."""
+        key = inventory_cache_key(
+            int(pbs_node.id),
+            datastore,
+            getattr(pve_node, "id", None) if pve_node else None,
+            pbs_storage,
+        )
+        now = time.time()
+        if not force_refresh and key in _INVENTORY_CACHE:
+            ts, cached = _INVENTORY_CACHE[key]
+            if now - ts < INVENTORY_CACHE_TTL_SEC:
+                entries = cached
+                if vm_id is not None:
+                    return filter_inventory_by_vmid(entries, vm_id)
+                return entries
+
+        entries = await self.list_inventory_backups(
+            pbs_node=pbs_node,
+            datastore=datastore,
+            vm_id=vm_id,
+            pve_node=pve_node,
+            pbs_storage=pbs_storage,
+        )
+        if vm_id is None:
+            _INVENTORY_CACHE[key] = (now, entries)
+        return entries
+
+    async def list_inventory_vm_summaries(
+        self,
+        pbs_node: Any,
+        datastore: str,
+        pve_node: Any = None,
+        pbs_storage: Optional[str] = None,
+        force_refresh: bool = False,
+    ) -> List[Dict]:
+        entries = await self.get_cached_inventory_entries(
+            pbs_node=pbs_node,
+            datastore=datastore,
+            pve_node=pve_node,
+            pbs_storage=pbs_storage,
+            force_refresh=force_refresh,
+        )
+        return summarize_inventory_entries(entries)
+
+    async def list_inventory_vm_versions(
+        self,
+        pbs_node: Any,
+        datastore: str,
+        vm_id: int,
+        pve_node: Any = None,
+        pbs_storage: Optional[str] = None,
+        force_refresh: bool = False,
+    ) -> List[Dict]:
+        entries = await self.get_cached_inventory_entries(
+            pbs_node=pbs_node,
+            datastore=datastore,
+            vm_id=vm_id,
+            pve_node=pve_node,
+            pbs_storage=pbs_storage,
+            force_refresh=force_refresh,
+        )
+        if not entries:
+            key = inventory_cache_key(
+                int(pbs_node.id),
+                datastore,
+                getattr(pve_node, "id", None) if pve_node else None,
+                pbs_storage,
+            )
+            now = time.time()
+            if key in _INVENTORY_CACHE:
+                _, cached = _INVENTORY_CACHE[key]
+                entries = filter_inventory_by_vmid(cached, vm_id)
+            else:
+                entries = await self.list_inventory_backups(
+                    pbs_node=pbs_node,
+                    datastore=datastore,
+                    vm_id=vm_id,
+                    pve_node=pve_node,
+                    pbs_storage=pbs_storage,
+                )
+        return sorted(entries, key=lambda x: x.get("backup_time", 0), reverse=True)
 
     async def check_pbs_available(
         self,

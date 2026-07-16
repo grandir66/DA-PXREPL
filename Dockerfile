@@ -21,10 +21,12 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 # ============== Stage 2: Runtime ==============
 FROM python:3.11-slim
 
+ARG APP_VERSION=3.17.4
+
 # Metadati
 LABEL maintainer="Domarc S.r.l. <info@domarc.it>"
 LABEL description="DAPX-backandrepl - Sistema centralizzato di backup e replica per Proxmox VE"
-LABEL version="3.5.3"
+LABEL version="${APP_VERSION}"
 
 # Variabili d'ambiente
 ENV PYTHONUNBUFFERED=1 \
@@ -54,8 +56,7 @@ COPY --from=builder /root/.local /home/dapx/.local
 # Copia codice applicazione
 COPY backend/ ./backend/
 COPY frontend/dist/ ./frontend/dist/
-# Copia file VERSION per la versione
-COPY VERSION ./VERSION
+COPY version.json ./version.json
 
 # Imposta PATH per Python packages e PYTHONPATH
 ENV PATH=/home/dapx/.local/bin:$PATH \

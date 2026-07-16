@@ -27,6 +27,31 @@ export interface NodeMetrics {
   disk_io: Record<string, unknown>
 }
 
+export interface ReplicationHealthJob {
+  id: number
+  name: string
+  type: string
+  sync_method?: string | null
+  vm_id?: number | null
+  vm_name?: string | null
+  vm_group_id?: string | null
+  schedule: string
+  last_run?: string | null
+  last_status?: string | null
+  overdue: boolean
+  expected_slot?: string | null
+  hours_since_last_run?: number | null
+  reason?: string | null
+}
+
+export interface ReplicationHealth {
+  overdue_count: number
+  healthy_count: number
+  total_scheduled: number
+  checked_at: string
+  jobs: ReplicationHealthJob[]
+}
+
 export default {
   getJobStats() {
     return apiClient.get<JobStats>('/dashboard/job-stats')
@@ -34,5 +59,9 @@ export default {
 
   getNodesMetrics() {
     return apiClient.get<NodeMetrics[]>('/dashboard/nodes-metrics')
+  },
+
+  getReplicationHealth() {
+    return apiClient.get<ReplicationHealth>('/dashboard/replication-health')
   },
 }

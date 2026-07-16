@@ -77,7 +77,7 @@
           </span>
         </h3>
         <span class="badge badge-purple">
-          {{ vmGroups.length }} VM · {{ totalVersions }} date
+          {{ filteredVmSummaries.length }} VM · {{ totalVersions }} date
         </span>
       </div>
 
@@ -87,7 +87,7 @@
         </div>
         <div v-else-if="loading" class="empty-state">Caricamento backup PBS…</div>
         <div v-else-if="error" class="alert alert-danger">{{ error }}</div>
-        <div v-else-if="backups.length === 0" class="empty-state">
+        <div v-else-if="vmSummaries.length === 0" class="empty-state">
           Nessun backup trovato. Verifica datastore, credenziali PBS e storage PBS sui nodi PVE.
         </div>
         <template v-else>
@@ -99,13 +99,13 @@
             />
           </div>
 
-          <div v-if="vmGroups.length === 0" class="empty-state">
+          <div v-if="filteredVmSummaries.length === 0" class="empty-state">
             Nessuna macchina corrisponde alla ricerca.
           </div>
 
           <div v-else class="vm-groups">
             <section
-              v-for="group in vmGroups"
+              v-for="group in filteredVmSummaries"
               :key="group.vmid"
               class="vm-group"
               :class="{ expanded: isVmExpanded(group.vmid) }"
@@ -114,7 +114,7 @@
                 type="button"
                 class="vm-group-head"
                 :aria-expanded="isVmExpanded(group.vmid)"
-                @click="toggleVm(group.vmid)"
+                @click="toggleVm(group)"
               >
                 <span class="vm-group-chevron" aria-hidden="true">
                   {{ isVmExpanded(group.vmid) ? '▾' : '▸' }}
@@ -124,32 +124,40 @@
                   <div class="vm-group-meta">
                     {{ group.vm_type === 'lxc' ? 'LXC' : 'QEMU' }}
                     · VMID {{ group.vmid }}
-                    · {{ group.versions.length }} backup
+                    · {{ group.backup_count }} backup
                   </div>
                 </div>
                 <div v-if="!isVmExpanded(group.vmid)" class="vm-group-latest">
                   <span class="text-secondary text-sm">Ultimo:</span>
-                  <span class="date-label">{{ formatBackupTime(group.versions[0]?.backup_time) }}</span>
+                  <span class="date-label">{{ formatBackupTime(group.latest_backup_time) }}</span>
                 </div>
               </button>
 
-              <ol v-if="isVmExpanded(group.vmid)" class="date-chain">
-                <li
-                  v-for="(ver, idx) in group.versions"
-                  :key="backupKey(ver)"
-                  class="date-chain-item"
-                  :class="{ latest: idx === 0 }"
-                >
-                  <div class="date-chain-when">
-                    <span class="date-label">{{ formatBackupTime(ver.backup_time) }}</span>
-                    <span v-if="idx === 0" class="badge badge-success badge-xs">più recente</span>
-                  </div>
-                  <div class="date-chain-size">{{ formatSize(ver.size) }}</div>
-                  <button class="btn btn-xs btn-primary" @click="openRestore(ver)">
-                    Restore
-                  </button>
-                </li>
-              </ol>
+              <div v-if="isVmExpanded(group.vmid)" class="date-chain-wrap">
+                <div v-if="isVmLoading(group.vmid)" class="date-chain-loading">
+                  Caricamento date backup…
+                </div>
+                <div v-else-if="vmVersionsError(group.vmid)" class="date-chain-error">
+                  {{ vmVersionsError(group.vmid) }}
+                </div>
+                <ol v-else class="date-chain">
+                  <li
+                    v-for="(ver, idx) in getVmVersions(group.vmid)"
+                    :key="backupKey(ver)"
+                    class="date-chain-item"
+                    :class="{ latest: idx === 0 }"
+                  >
+                    <div class="date-chain-when">
+                      <span class="date-label">{{ formatBackupTime(ver.backup_time) }}</span>
+                      <span v-if="idx === 0" class="badge badge-success badge-xs">più recente</span>
+                    </div>
+                    <div class="date-chain-size">{{ formatSize(ver.size) }}</div>
+                    <button class="btn btn-xs btn-primary" @click="openRestore(ver)">
+                      Restore
+                    </button>
+                  </li>
+                </ol>
+              </div>
             </section>
           </div>
         </template>
@@ -221,22 +229,22 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import PageHeader from '../components/ui/PageHeader.vue'
 import ModalDialog from '../components/ModalDialog.vue'
 import nodesService, { type Node, type NodeStorage } from '../services/nodes'
-import pbsInventoryService, { type PBSBackupEntry } from '../services/pbsInventory'
+import pbsInventoryService, {
+  type PBSBackupEntry,
+  type PBSVmSummary,
+} from '../services/pbsInventory'
 import { useToast, errorMessage } from '../stores/toast'
 import { confirmDangerous } from '../stores/confirm'
-
-interface VmBackupGroup {
-  vmid: number
-  vm_name: string
-  vm_type: string
-  versions: PBSBackupEntry[]
-}
 
 const toast = useToast()
 
 const pbsNodes = ref<Node[]>([])
 const pveNodes = ref<Node[]>([])
-const backups = ref<PBSBackupEntry[]>([])
+const vmSummaries = ref<PBSVmSummary[]>([])
+const vmVersions = ref<Record<number, PBSBackupEntry[]>>({})
+const vmVersionsErrors = ref<Record<number, string>>({})
+const loadingVmids = ref<Set<number>>(new Set())
+const totalVersions = ref(0)
 const datastoreLabel = ref('')
 const loading = ref(false)
 const error = ref('')
@@ -265,50 +273,25 @@ const selectedPbs = computed(() =>
   pbsNodes.value.find(n => n.id === filters.pbsNodeId) ?? null
 )
 
-const filteredBackups = computed(() => {
+const filteredVmSummaries = computed(() => {
   const q = search.value.trim().toLowerCase()
-  if (!q) return backups.value
-  return backups.value.filter(b => {
-    const name = (b.vm_name || '').toLowerCase()
-    const vmid = String(b.vmid ?? '')
+  if (!q) return vmSummaries.value
+  return vmSummaries.value.filter(v => {
+    const name = (v.vm_name || '').toLowerCase()
+    const vmid = String(v.vmid ?? '')
     return name.includes(q) || vmid.includes(q)
   })
 })
 
-const vmGroups = computed((): VmBackupGroup[] => {
-  const map = new Map<number, VmBackupGroup>()
-  for (const b of filteredBackups.value) {
-    if (b.vmid == null) continue
-    let group = map.get(b.vmid)
-    if (!group) {
-      group = {
-        vmid: b.vmid,
-        vm_name: b.vm_name || `VM #${b.vmid}`,
-        vm_type: b.vm_type || 'qemu',
-        versions: [],
-      }
-      map.set(b.vmid, group)
-    }
-    if (b.vm_name && group.vm_name.startsWith('VM #')) {
-      group.vm_name = b.vm_name
-    }
-    group.versions.push(b)
-  }
-
-  for (const group of map.values()) {
-    group.versions.sort((a, b) => (b.backup_time || 0) - (a.backup_time || 0))
-  }
-
-  return [...map.values()].sort((a, b) => {
-    const ta = a.versions[0]?.backup_time || 0
-    const tb = b.versions[0]?.backup_time || 0
-    return tb - ta
-  })
-})
-
-const totalVersions = computed(() =>
-  vmGroups.value.reduce((n, g) => n + g.versions.length, 0)
-)
+function inventoryParams(forceRefresh = false): Record<string, string | number | boolean> {
+  const params: Record<string, string | number | boolean> = {}
+  if (filters.datastore.trim()) params.datastore = filters.datastore.trim()
+  if (filters.pveNodeId) params.pve_node_id = filters.pveNodeId
+  if (filters.pbsStorage.trim()) params.pbs_storage = filters.pbsStorage.trim()
+  if (filters.vmId) params.vm_id = filters.vmId
+  if (forceRefresh) params.force_refresh = true
+  return params
+}
 
 onMounted(async () => {
   await loadNodes()
@@ -337,8 +320,11 @@ function onPbsChange() {
   if (pbs?.pbs_datastore && !filters.datastore) {
     filters.datastore = pbs.pbs_datastore
   }
-  backups.value = []
+  vmSummaries.value = []
+  vmVersions.value = {}
+  vmVersionsErrors.value = {}
   expandedVmids.value = new Set()
+  totalVersions.value = 0
   error.value = ''
 }
 
@@ -346,11 +332,58 @@ function isVmExpanded(vmid: number): boolean {
   return expandedVmids.value.has(vmid)
 }
 
-function toggleVm(vmid: number) {
+function isVmLoading(vmid: number): boolean {
+  return loadingVmids.value.has(vmid)
+}
+
+function getVmVersions(vmid: number): PBSBackupEntry[] {
+  return vmVersions.value[vmid] || []
+}
+
+function vmVersionsError(vmid: number): string {
+  return vmVersionsErrors.value[vmid] || ''
+}
+
+async function toggleVm(group: PBSVmSummary) {
+  const vmid = group.vmid
   const next = new Set(expandedVmids.value)
-  if (next.has(vmid)) next.delete(vmid)
-  else next.add(vmid)
+  if (next.has(vmid)) {
+    next.delete(vmid)
+    expandedVmids.value = next
+    return
+  }
+  next.add(vmid)
   expandedVmids.value = next
+  if (!vmVersions.value[vmid] && !loadingVmids.value.has(vmid)) {
+    await loadVmVersions(vmid)
+  }
+}
+
+async function loadVmVersions(vmid: number) {
+  if (!filters.pbsNodeId) return
+  const loading = new Set(loadingVmids.value)
+  loading.add(vmid)
+  loadingVmids.value = loading
+  delete vmVersionsErrors.value[vmid]
+  vmVersionsErrors.value = { ...vmVersionsErrors.value }
+
+  try {
+    const res = await pbsInventoryService.listVmVersions(
+      filters.pbsNodeId,
+      vmid,
+      inventoryParams(),
+    )
+    vmVersions.value = { ...vmVersions.value, [vmid]: res.data.versions || [] }
+  } catch (e) {
+    vmVersionsErrors.value = {
+      ...vmVersionsErrors.value,
+      [vmid]: errorMessage(e),
+    }
+  } finally {
+    const done = new Set(loadingVmids.value)
+    done.delete(vmid)
+    loadingVmids.value = done
+  }
 }
 
 async function loadBackups() {
@@ -358,20 +391,20 @@ async function loadBackups() {
   loading.value = true
   error.value = ''
   try {
-    const params: Record<string, string | number> = {}
-    if (filters.datastore.trim()) params.datastore = filters.datastore.trim()
-    if (filters.pveNodeId) params.pve_node_id = filters.pveNodeId
-    if (filters.pbsStorage.trim()) params.pbs_storage = filters.pbsStorage.trim()
-    if (filters.vmId) params.vm_id = filters.vmId
-
-    const res = await pbsInventoryService.listBackups(filters.pbsNodeId, params)
-    backups.value = res.data.backups || []
+    const res = await pbsInventoryService.listVmSummaries(
+      filters.pbsNodeId,
+      inventoryParams(true),
+    )
+    vmSummaries.value = res.data.vms || []
+    totalVersions.value = res.data.total_versions || 0
     datastoreLabel.value = res.data.datastore || filters.datastore || ''
-    backups.value.sort((a, b) => (b.backup_time || 0) - (a.backup_time || 0))
+    vmVersions.value = {}
+    vmVersionsErrors.value = {}
     expandedVmids.value = new Set()
   } catch (e) {
     error.value = errorMessage(e)
-    backups.value = []
+    vmSummaries.value = []
+    totalVersions.value = 0
   } finally {
     loading.value = false
   }
@@ -532,6 +565,21 @@ async function executeRestore() {
   font-size: 0.8rem;
   color: var(--text-secondary, #9ca3af);
   margin-top: 0.15rem;
+}
+
+.date-chain-wrap {
+  min-height: 0;
+}
+
+.date-chain-loading,
+.date-chain-error {
+  padding: 0.75rem 1rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary, #9ca3af);
+}
+
+.date-chain-error {
+  color: var(--color-danger-fg, #f87171);
 }
 
 .date-chain {

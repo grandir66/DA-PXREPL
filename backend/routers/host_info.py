@@ -608,6 +608,19 @@ async def get_dashboard_job_stats(
     return stats
 
 
+@router.get("/dashboard/replication-health")
+async def get_replication_health(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Job di replica schedulati in ritardo rispetto all'ultimo slot cron."""
+    from database import SyncJob
+    from services.replication_health_service import build_replication_health_report
+
+    sync_jobs = db.query(SyncJob).filter(SyncJob.is_active == True).all()
+    return build_replication_health_report(sync_jobs)
+
+
 # Dashboard VM Endpoint (Moved from vms.py)
 @router.get("/dashboard/vms")
 async def get_all_dashboard_vms(

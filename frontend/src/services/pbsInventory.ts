@@ -12,6 +12,29 @@ export interface PBSBackupEntry {
   volid?: string
 }
 
+export interface PBSVmSummary {
+  vmid: number
+  vm_name: string
+  vm_type: string
+  backup_count: number
+  latest_backup_time: number
+  latest_size: number
+}
+
+export interface PBSVmListResponse {
+  datastore: string
+  vms: PBSVmSummary[]
+  vm_count: number
+  total_versions: number
+}
+
+export interface PBSVmVersionsResponse {
+  datastore: string
+  vmid: number
+  versions: PBSBackupEntry[]
+  count: number
+}
+
 export interface PBSBackupListResponse {
   datastore: string
   backups: PBSBackupEntry[]
@@ -27,16 +50,30 @@ export interface DirectRestoreRequest {
   vm_type?: 'qemu' | 'lxc'
 }
 
+export interface InventoryParams {
+  vm_id?: number
+  datastore?: string
+  pve_node_id?: number
+  pbs_storage?: string
+  force_refresh?: boolean
+}
+
 export default {
-  listBackups(
-    pbsNodeId: number | string,
-    params?: {
-      vm_id?: number
-      datastore?: string
-      pve_node_id?: number
-      pbs_storage?: string
-    }
-  ) {
+  listVmSummaries(pbsNodeId: number | string, params?: InventoryParams) {
+    return apiClient.get<PBSVmListResponse>(
+      `/recovery-jobs/pbs-nodes/${pbsNodeId}/backups/vms`,
+      { params }
+    )
+  },
+
+  listVmVersions(pbsNodeId: number | string, vmId: number, params?: InventoryParams) {
+    return apiClient.get<PBSVmVersionsResponse>(
+      `/recovery-jobs/pbs-nodes/${pbsNodeId}/backups/vms/${vmId}`,
+      { params }
+    )
+  },
+
+  listBackups(pbsNodeId: number | string, params?: InventoryParams) {
     return apiClient.get<PBSBackupListResponse>(
       `/recovery-jobs/pbs-nodes/${pbsNodeId}/backups`,
       { params }

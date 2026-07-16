@@ -28,7 +28,7 @@ class TestSettingsAPI:
     def test_update_setting_admin(self, client, admin_token):
         """Test admin can update settings"""
         response = client.put(
-            "/api/settings/test_setting",
+            "/api/settings/legacy/test_setting",
             headers={"Authorization": f"Bearer {admin_token}"},
             json={"value": "test_value"}
         )
@@ -39,7 +39,7 @@ class TestSettingsAPI:
     def test_update_setting_non_admin(self, client, operator_token):
         """Test non-admin cannot update settings"""
         response = client.put(
-            "/api/settings/test_setting",
+            "/api/settings/legacy/test_setting",
             headers={"Authorization": f"Bearer {operator_token}"},
             json={"value": "test_value"}
         )
