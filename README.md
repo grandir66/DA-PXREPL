@@ -20,6 +20,20 @@
     *   **Network Metrics**: Real-time traffic visualization (RX/TX) for Nodes and VMs.
 *   **Security & Logs**: Centralized logging, SSH key management for inter-node communication.
 
+## 📁 Repository layout
+
+Single active project: **`dapx-unified/`** (this repo). The sibling folder `dapx-backandrepl/` on disk, if present, is **legacy and not part of git**.
+
+| Path | Role |
+|------|------|
+| `backend/` | FastAPI app, services, tests |
+| `backend/scripts/` | Runtime scripts invoked by API (SSL, diagnostics) |
+| `frontend/` | Vue 3 SPA (`src/` + prebuilt `dist/` for deploy) |
+| `scripts/` | Ops: catch-up, DB maintenance, production cleanup |
+| `scripts/dev/` | Local development (`run_dev.py`) |
+
+See `scripts/README.md` for details.
+
 ## 📋 Prerequisites
 
 *   **Typical deploy**: a **Proxmox VE** host where you run `deploy_lxc.sh` once; it creates the LXC and invokes **`install.sh`** inside it (same script as a manual clone).

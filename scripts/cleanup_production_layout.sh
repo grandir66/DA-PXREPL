@@ -31,20 +31,21 @@ move_item() {
   echo "MOVED: ${rel}"
 }
 
-# Backup legacy completo
+# Backup legacy completo (pre-repo cleanup)
 move_item "_legacy_backup_20260504"
 
-# Script one-off in root
+# Script one-off in root (non più nel layout canonico)
 for f in check_pbs_config.py check_schema.py fix_pbs_fingerprint.py manual_restore.py run_dev.py requirements.txt config.env.example; do
   move_item "${f}"
 done
 
-# Script duplicati / debug fuori path standard
+# Runtime scripts duplicati in root (canonici: backend/scripts/)
 for f in scripts/generate_cert.py scripts/quick_diagnostic.sh scripts/verify_database.py; do
   move_item "${f}"
 done
 
-# Test duplicati in root (backend/tests è la fonte canonica)
+# Test duplicati in root (canonici: backend/tests/)
 move_item "tests"
 
 echo "Cleanup completato. Archivio: ${ARCHIVE}"
+echo "Layout attuale: scripts/ (ops), scripts/dev/ (locale), backend/scripts/ (runtime API)"

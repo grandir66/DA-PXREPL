@@ -66,12 +66,14 @@ export interface ReplicationHealthGroup {
 export interface ReplicationHealth {
   overdue_count: number
   overdue_group_count: number
+  running_count: number
   healthy_count: number
   total_scheduled: number
   checked_at: string
   jobs: ReplicationHealthJob[]
   groups: ReplicationHealthGroup[]
   overdue_groups: ReplicationHealthGroup[]
+  running_jobs: ReplicationHealthJob[]
 }
 
 export default {

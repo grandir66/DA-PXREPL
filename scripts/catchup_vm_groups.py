@@ -9,7 +9,7 @@ if str(_BACKEND) not in sys.path:
     sys.path.insert(0, str(_BACKEND))
 
 from database import SessionLocal, SyncJob  # noqa: E402
-from routers.sync_jobs import execute_vm_group_sync_task  # noqa: E402
+from services.vm_group_sync_service import execute_vm_group_sync_task  # noqa: E402
 
 
 async def main() -> int:

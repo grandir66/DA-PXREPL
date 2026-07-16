@@ -124,9 +124,12 @@ class SchedulerService:
             return
         self._last_sync_reconcile = now
         try:
-            from routers.sync_jobs import _reconcile_running_sync_jobs_once, _reconcile_pending_vm_registrations
+            from routers.sync_jobs import (
+                _reconcile_running_sync_jobs_once,
+                reconcile_pending_vm_registrations,
+            )
             await _reconcile_running_sync_jobs_once()
-            await _reconcile_pending_vm_registrations()
+            await reconcile_pending_vm_registrations()
         except Exception as e:
             logger.warning(f"Reconcile sync jobs periodico fallito: {e}")
 

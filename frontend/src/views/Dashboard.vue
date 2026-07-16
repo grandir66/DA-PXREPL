@@ -51,11 +51,23 @@
         </RouterLink>
       </div>
 
-      <div v-if="replicationHealth.overdue_count === 0" class="health-ok">
+      <div v-if="replicationHealth.overdue_count === 0 && !runningJobs.length" class="health-ok">
         {{ replicationHealth.healthy_count }} job schedulati aggiornati
         <span v-if="scheduleGroups.length"> · {{ scheduleGroups.length }} VM/gruppi monitorati</span>.
       </div>
-      <table v-else class="health-table">
+
+      <div v-if="runningJobs.length" class="health-running">
+        <strong>{{ runningJobs.length }} replica in corso</strong>
+        <ul class="running-list">
+          <li v-for="job in runningJobs" :key="job.id">
+            {{ job.vm_name || job.name }}
+            <span v-if="job.vm_id" class="health-sub">VMID {{ job.vm_id }}</span>
+          </li>
+        </ul>
+        <RouterLink to="/replication" class="btn btn-secondary btn-sm">Apri Repliche</RouterLink>
+      </div>
+
+      <table v-if="replicationHealth.overdue_count > 0" class="health-table">
         <thead>
           <tr>
             <th>VM / gruppo</th>
@@ -221,6 +233,8 @@ const overdueGroups = computed(() =>
 )
 
 const scheduleGroups = computed(() => replicationHealth.value?.groups || [])
+
+const runningJobs = computed(() => replicationHealth.value?.running_jobs || [])
 
 interface Kpi {
   id: string
@@ -417,6 +431,21 @@ function formatDelay(hours?: number | null): string {
   padding: var(--space-3) var(--space-4);
   font-size: 0.86rem;
   color: var(--color-text-secondary);
+}
+
+.health-running {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  background: rgba(59, 130, 246, 0.06);
+  font-size: 0.86rem;
+}
+.running-list {
+  margin: var(--space-2) 0 var(--space-3);
+  padding-left: 1.2rem;
+  color: var(--color-text-secondary);
+}
+.running-list li {
+  margin: 0.2rem 0;
 }
 
 .health-table {

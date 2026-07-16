@@ -6,6 +6,19 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 ## [Unreleased]
 
 ### Aggiunte
+- **Layout repository**: `scripts/README.md`, `scripts/dev/run_dev.py`; rimossi progetti/script obsoleti annidati.
+- **Stato live sync**: modulo `sync_job_live_state.py` estratto da `sync_jobs.py`.
+- **Dashboard replica in corso**: elenco job `running` nel widget salute replica.
+- **Test VM group + reconcile scheduler**: `test_vm_group_sync.py`, fix import reconcile periodico.
+
+### Rimozioni
+- Documentazione obsoleta (`gemini.md`, template Vite), script debug one-off (`scripts/debug/`), componenti Vue orfani, CLI standalone ProxLB non usata, workflow agent `.agent/`.
+
+### Correzioni
+- **Scheduler reconcile**: import errato `_reconcile_pending_vm_registrations` → `reconcile_pending_vm_registrations`.
+- **catchup_vm_groups.py**: import da `vm_group_sync_service` (non più da `sync_jobs`).
+
+### Aggiunte (precedenti)
 - **Alert replica in ritardo**: notifica proattiva email/Telegram/webhook quando VM/gruppi schedulati saltano slot cron (`notification_service`, `scheduler`, cooldown 6h).
 - **Dashboard pianificazione**: widget salute replica con prossima run, slot saltati e tabella VM/gruppi collassabile (`Dashboard.vue`, `replication_health_service`).
 - **Script cleanup produzione**: `scripts/cleanup_production_layout.sh` archivia file legacy non tracciati su CT332.

@@ -219,6 +219,11 @@ def build_replication_health_report(
         if entry["overdue"]:
             overdue_count += 1
 
+    running_jobs = [
+        j for j in jobs_out
+        if (j.get("last_status") or "").lower() in ("running", "started", "backing_up")
+    ]
+
     jobs_out.sort(
         key=lambda j: (not j["overdue"], -(j["hours_since_last_run"] or 0)),
     )
@@ -229,10 +234,12 @@ def build_replication_health_report(
     return {
         "overdue_count": overdue_count,
         "overdue_group_count": len(overdue_groups),
+        "running_count": len(running_jobs),
         "healthy_count": scheduled - overdue_count,
         "total_scheduled": scheduled,
         "checked_at": now.isoformat(),
         "jobs": jobs_out,
         "groups": groups,
         "overdue_groups": overdue_groups,
+        "running_jobs": running_jobs,
     }

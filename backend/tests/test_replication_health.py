@@ -121,12 +121,6 @@ def test_build_replication_health_report_groups():
     assert len(report["overdue_groups"]) == 1
 
 
-def test_vm_group_key_format():
-    from services.vm_group_sync_service import vm_group_key
-
-    assert vm_group_key("grp-abc") == "vmgroup_grp-abc"
-
-
 @pytest.mark.asyncio
 async def test_send_replication_overdue_alert_delegates():
     svc = NotificationService()
