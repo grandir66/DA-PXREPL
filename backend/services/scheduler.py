@@ -213,6 +213,7 @@ class SchedulerService:
             try:
                 await self._check_and_run_jobs()
                 await self._check_daily_summary()
+                await self._check_replication_overdue()
                 await self._check_host_info_updates()
                 await self._refresh_vm_cache()
                 await self._daily_log_cleanup()
@@ -276,6 +277,59 @@ class SchedulerService:
                 self._last_daily_summary = now
             except Exception as e:
                 logger.error(f"Errore invio riepilogo giornaliero: {e}")
+
+    async def _check_replication_overdue(self):
+        """Alert proattivo se VM/gruppi schedulati non hanno rispettato lo slot cron."""
+        now = datetime.utcnow()
+        if getattr(self, "_last_overdue_check", None):
+            if (now - self._last_overdue_check).total_seconds() < 3600:
+                return
+        self._last_overdue_check = now
+
+        db = SessionLocal()
+        try:
+            from services.replication_health_service import (
+                build_replication_health_report,
+                OVERDUE_ALERT_COOLDOWN_HOURS,
+            )
+
+            jobs = db.query(SyncJob).filter(SyncJob.is_active == True).all()
+            report = build_replication_health_report(jobs, now=now)
+            if report.get("overdue_group_count", 0) == 0:
+                return
+
+            last_alert_cfg = db.query(SystemConfig).filter(
+                SystemConfig.key == "replication_overdue_last_alert"
+            ).first()
+            if last_alert_cfg and last_alert_cfg.value:
+                try:
+                    last_alert = datetime.fromisoformat(last_alert_cfg.value)
+                    if (now - last_alert).total_seconds() < OVERDUE_ALERT_COOLDOWN_HOURS * 3600:
+                        return
+                except ValueError:
+                    pass
+
+            logger.info(
+                "Replica in ritardo: %s gruppi — invio alert",
+                report["overdue_group_count"],
+            )
+            result = await notification_service.send_replication_overdue_alert(
+                report.get("overdue_groups") or []
+            )
+            if not result.get("sent"):
+                logger.debug("Alert replica in ritardo non inviato: %s", result.get("reason"))
+                return
+
+            if last_alert_cfg:
+                last_alert_cfg.value = now.isoformat()
+            else:
+                db.add(SystemConfig(key="replication_overdue_last_alert", value=now.isoformat()))
+            db.commit()
+            logger.info("Alert replica in ritardo inviato: %s", result.get("channels", {}))
+        except Exception as e:
+            logger.error(f"Errore check replica in ritardo: {e}")
+        finally:
+            db.close()
 
     async def _check_host_info_updates(self):
         """Aggiorna i dati dei nodi una volta al giorno (03:00 UTC)"""

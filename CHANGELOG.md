@@ -6,6 +6,10 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 ## [Unreleased]
 
 ### Aggiunte
+- **Alert replica in ritardo**: notifica proattiva email/Telegram/webhook quando VM/gruppi schedulati saltano slot cron (`notification_service`, `scheduler`, cooldown 6h).
+- **Dashboard pianificazione**: widget salute replica con prossima run, slot saltati e tabella VM/gruppi collassabile (`Dashboard.vue`, `replication_health_service`).
+- **Script cleanup produzione**: `scripts/cleanup_production_layout.sh` archivia file legacy non tracciati su CT332.
+- **Test salute replica**: copertura slot cron, aggregazione gruppi VM e alert (`test_replication_health.py`).
 - **CI GitHub Actions**: pytest backend + build frontend su push/PR (`/.github/workflows/ci.yml`).
 - **Salute replica in dashboard**: widget job schedulati in ritardo vs ultimo slot cron (`/api/dashboard/replication-health`, `Dashboard.vue`).
 - **Inventario PBS lazy-load**: API riepilogo VM + date on-demand con cache TTL 5 min (`/pbs-nodes/{id}/backups/vms`, `/backups/vms/{vmid}`).

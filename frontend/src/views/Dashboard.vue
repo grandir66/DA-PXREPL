@@ -43,7 +43,7 @@
           :class="replicationHealth.overdue_count > 0 ? 'health-badge-warn' : 'health-badge-ok'"
         >
           {{ replicationHealth.overdue_count > 0
-            ? `${replicationHealth.overdue_count} in ritardo`
+            ? `${replicationHealth.overdue_group_count || replicationHealth.overdue_count} in ritardo`
             : 'Tutto ok' }}
         </span>
         <RouterLink v-if="replicationHealth.overdue_count > 0" to="/replication" class="btn btn-secondary btn-sm">
@@ -52,29 +52,69 @@
       </div>
 
       <div v-if="replicationHealth.overdue_count === 0" class="health-ok">
-        {{ replicationHealth.healthy_count }} job schedulati aggiornati.
+        {{ replicationHealth.healthy_count }} job schedulati aggiornati
+        <span v-if="scheduleGroups.length"> · {{ scheduleGroups.length }} VM/gruppi monitorati</span>.
       </div>
       <table v-else class="health-table">
         <thead>
           <tr>
-            <th>Job / VM</th>
+            <th>VM / gruppo</th>
             <th>Ultima run</th>
+            <th>Prossima run</th>
+            <th>Slot saltati</th>
             <th>Ritardo</th>
             <th>Stato</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="job in overdueJobs" :key="job.id">
+          <tr v-for="group in overdueGroups" :key="group.key">
             <td>
-              <strong>{{ job.vm_name || job.name }}</strong>
-              <div v-if="job.vm_id" class="health-sub">VMID {{ job.vm_id }}</div>
+              <strong>{{ group.vm_name || group.key }}</strong>
+              <div v-if="group.vm_id" class="health-sub">VMID {{ group.vm_id }} · {{ group.job_count }} job</div>
+              <div v-else-if="group.job_count > 1" class="health-sub">{{ group.job_count }} dischi</div>
             </td>
-            <td>{{ formatLastRun(job.last_run) }}</td>
-            <td>{{ formatDelay(job.hours_since_last_run) }}</td>
-            <td><span class="badge badge-warning">{{ job.reason === 'never_ran' ? 'Mai eseguito' : 'Run mancata' }}</span></td>
+            <td>{{ formatLastRun(group.last_run) }}</td>
+            <td>{{ formatLastRun(group.next_run) }}</td>
+            <td>{{ group.missed_slots || 0 }}</td>
+            <td>{{ formatDelay(group.hours_since_last_run) }}</td>
+            <td>
+              <span class="badge badge-warning">
+                {{ group.last_status === 'failed' ? 'Ultimo fallito' : 'Run mancata' }}
+              </span>
+            </td>
           </tr>
         </tbody>
       </table>
+
+      <details v-if="scheduleGroups.length" class="schedule-details">
+        <summary>Pianificazione VM/gruppi ({{ scheduleGroups.length }})</summary>
+        <table class="health-table health-table-compact">
+          <thead>
+            <tr>
+              <th>VM / gruppo</th>
+              <th>Ultima run</th>
+              <th>Prossima run</th>
+              <th>Slot saltati</th>
+              <th>Stato</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="group in scheduleGroups" :key="group.key" :class="{ 'row-overdue': group.overdue }">
+              <td>
+                <strong>{{ group.vm_name || group.key }}</strong>
+                <div v-if="group.vm_id" class="health-sub">VMID {{ group.vm_id }}</div>
+              </td>
+              <td>{{ formatLastRun(group.last_run) }}</td>
+              <td>{{ formatLastRun(group.next_run) }}</td>
+              <td>{{ group.overdue ? (group.missed_slots || 0) : '—' }}</td>
+              <td>
+                <span v-if="group.overdue" class="badge badge-warning">In ritardo</span>
+                <span v-else class="badge badge-success">Ok</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </details>
     </section>
 
     <section class="card">
@@ -162,9 +202,25 @@ const jobStats = ref<JobStats | null>(null)
 const nodesMetrics = ref<NodeMetrics[]>([])
 const replicationHealth = ref<ReplicationHealth | null>(null)
 
-const overdueJobs = computed(() =>
-  (replicationHealth.value?.jobs || []).filter(j => j.overdue)
+const overdueGroups = computed(() =>
+  replicationHealth.value?.overdue_groups?.length
+    ? replicationHealth.value.overdue_groups
+    : (replicationHealth.value?.jobs || []).filter(j => j.overdue).map(j => ({
+        key: `job:${j.id}`,
+        vm_id: j.vm_id,
+        vm_name: j.vm_name || j.name,
+        job_count: 1,
+        overdue: true,
+        missed_slots: j.missed_slots || 0,
+        hours_since_last_run: j.hours_since_last_run,
+        last_run: j.last_run,
+        next_run: j.next_run,
+        last_status: j.last_status,
+        jobs: [{ id: j.id, name: j.name, disk_name: j.disk_name }],
+      }))
 )
+
+const scheduleGroups = computed(() => replicationHealth.value?.groups || [])
 
 interface Kpi {
   id: string
@@ -390,6 +446,25 @@ function formatDelay(hours?: number | null): string {
   font-size: 0.72rem;
   color: var(--color-text-secondary);
   margin-top: 2px;
+}
+
+.schedule-details {
+  border-top: 1px solid var(--color-border);
+  padding: var(--space-3) var(--space-4);
+}
+.schedule-details summary {
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-2);
+}
+.health-table-compact td,
+.health-table-compact th {
+  padding: 8px var(--space-4);
+}
+.row-overdue td {
+  background: rgba(245, 158, 11, 0.04);
 }
 
 .metrics-table {

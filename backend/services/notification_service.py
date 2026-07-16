@@ -293,6 +293,49 @@ class NotificationService:
         
         return results
     
+    async def send_replication_overdue_alert(
+        self,
+        overdue_groups: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Notifica consolidata per VM/gruppi con replica schedulata in ritardo."""
+        if not overdue_groups:
+            return {"sent": False, "reason": "nothing_overdue"}
+
+        config = self._load_config()
+        if not config:
+            return {"sent": False, "reason": "not_configured"}
+        if not (config.smtp_enabled or config.webhook_enabled or config.telegram_enabled):
+            return {"sent": False, "reason": "no_channels_enabled"}
+        if not config.notify_on_warning:
+            return {"sent": False, "reason": "notify_on_warning_disabled"}
+
+        lines = []
+        for g in overdue_groups:
+            name = g.get("vm_name") or g.get("key") or "?"
+            missed = g.get("missed_slots") or 0
+            last = g.get("last_run") or "Mai"
+            delay = g.get("hours_since_last_run")
+            delay_txt = f"{delay:.1f}h" if delay is not None else "—"
+            nxt = g.get("next_run") or "—"
+            lines.append(
+                f"• {name} (VMID {g.get('vm_id') or '—'}): "
+                f"{missed} slot saltati, ritardo {delay_txt}, ultima run {last}, prossima {nxt}"
+            )
+
+        details = "\n".join(lines)
+        title = f"Replica in ritardo — {len(overdue_groups)} VM/gruppi"
+
+        return await self.send_job_notification(
+            job_name=title,
+            status="warning",
+            source="Scheduler DAPX",
+            destination="—",
+            details=details,
+            is_scheduled=True,
+            notify_mode="always",
+            job_type="sync",
+        )
+
     async def send_daily_summary(self) -> Dict[str, Any]:
         """
         Invia il riepilogo giornaliero delle attività con dettaglio per ogni job.
