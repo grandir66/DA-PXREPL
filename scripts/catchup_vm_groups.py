@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 """Esegue in sequenza tutti i gruppi VM attivi (force_rerun) per recupero manuale."""
 import asyncio
+import sys
+from pathlib import Path
 
-from database import SessionLocal, SyncJob
-from routers.sync_jobs import execute_vm_group_sync_task
+_BACKEND = Path(__file__).resolve().parents[1] / "backend"
+if str(_BACKEND) not in sys.path:
+    sys.path.insert(0, str(_BACKEND))
+
+from database import SessionLocal, SyncJob  # noqa: E402
+from routers.sync_jobs import execute_vm_group_sync_task  # noqa: E402
 
 
 async def main() -> int:
