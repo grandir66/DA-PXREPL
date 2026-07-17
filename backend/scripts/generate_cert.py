@@ -71,10 +71,14 @@ def generate_self_signed_cert(
     ])
     
     # Subject Alternative Names (SAN)
-    san_list = [
-        x509.DNSName(hostname),
-        x509.DNSName("localhost"),
-    ]
+    san_list = []
+    try:
+        ipaddress.ip_address(hostname)
+        san_list.append(x509.IPAddress(ipaddress.ip_address(hostname)))
+    except ValueError:
+        san_list.append(x509.DNSName(hostname))
+        if hostname != "localhost":
+            san_list.append(x509.DNSName("localhost"))
     
     # Aggiungi IP addresses
     if ip_addresses:

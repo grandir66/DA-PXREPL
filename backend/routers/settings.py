@@ -531,7 +531,33 @@ import os
 import subprocess
 from pathlib import Path
 
-CERTS_DIR = Path(__file__).parent.parent / "certs"
+def get_certs_dir() -> Path:
+    """Directory persistente per certificati SSL (scrivibile in produzione)."""
+    env_dir = os.environ.get("DAPX_CERTS_DIR")
+    if env_dir:
+        return Path(env_dir)
+    state_dir = Path("/var/lib/dapx-unified/certs")
+    if state_dir.parent.exists():
+        return state_dir
+    return Path(__file__).parent.parent / "certs"
+
+
+CERTS_DIR = get_certs_dir()
+
+
+class SSLCertGenerateRequest(BaseModel):
+    hostname: Optional[str] = None
+    ip_addresses: Optional[List[str]] = None
+    days_valid: int = 365
+
+    @field_validator("ip_addresses", mode="before")
+    @classmethod
+    def clean_ip_list(cls, value):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            value = [value]
+        return [ip.strip() for ip in value if isinstance(ip, str) and ip.strip()]
 
 @router.get("/ssl/status")
 async def get_ssl_status(
@@ -576,40 +602,48 @@ async def get_ssl_status(
 @router.post("/ssl/generate-cert")
 async def generate_ssl_certificate(
     request: Request,
-    hostname: str = None,
-    ip_addresses: List[str] = None,
-    days_valid: int = 365,
+    body: SSLCertGenerateRequest,
     user: User = Depends(require_admin),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Genera un nuovo certificato SSL auto-firmato"""
     import socket
-    
-    # Determina hostname se non specificato
-    if not hostname:
-        hostname = socket.getfqdn()
-    
-    # Aggiungi IP locali se non specificati
+
+    hostname = (body.hostname or "").strip() or socket.getfqdn()
+    ip_addresses = list(body.ip_addresses or [])
+    days_valid = body.days_valid or 365
+
+    # Se l'hostname è un IP, spostalo nei SAN IP
+    try:
+        import ipaddress
+
+        ipaddress.ip_address(hostname)
+        if hostname not in ip_addresses:
+            ip_addresses.append(hostname)
+        hostname = "dapx-unified.local"
+    except ValueError:
+        pass
+
     if not ip_addresses:
-        ip_addresses = []
         try:
-            # Ottieni IP locale
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.connect(("8.8.8.8", 80))
             local_ip = s.getsockname()[0]
             s.close()
             ip_addresses.append(local_ip)
-        except:
+        except OSError:
             pass
-    
+
+    cert_dir = get_certs_dir()
     try:
+        cert_dir.mkdir(parents=True, exist_ok=True)
         from scripts.generate_cert import generate_self_signed_cert
-        
+
         cert_path, key_path = generate_self_signed_cert(
-            cert_dir=str(CERTS_DIR),
+            cert_dir=str(cert_dir),
             hostname=hostname,
             ip_addresses=ip_addresses,
-            days_valid=days_valid
+            days_valid=days_valid,
         )
         
         log_audit(
@@ -644,10 +678,11 @@ async def upload_ssl_certificate(
     db: Session = Depends(get_db)
 ):
     """Carica un certificato SSL personalizzato"""
-    CERTS_DIR.mkdir(parents=True, exist_ok=True)
-    
-    cert_path = CERTS_DIR / "server.crt"
-    key_path = CERTS_DIR / "server.key"
+    cert_dir = get_certs_dir()
+    cert_dir.mkdir(parents=True, exist_ok=True)
+
+    cert_path = cert_dir / "server.crt"
+    key_path = cert_dir / "server.key"
     
     try:
         # Verifica che siano PEM validi
@@ -853,7 +888,7 @@ async def update_systemd_service(config: dict):
         
         port = config.get("port", 8420)
         ssl_enabled = config.get("ssl_enabled", False)
-        cert_dir = str(CERTS_DIR)
+        cert_dir = str(get_certs_dir())
         
         # Costruisci il comando ExecStart
         if ssl_enabled:

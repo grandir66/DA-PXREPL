@@ -37,6 +37,7 @@ from typing import Any, Awaitable, Callable, Dict, Optional
 
 from services.ssh_service import ssh_service
 from services.proxmox_service import proxmox_service
+from services.pve_tags import ensure_vm_replication_tag
 
 logger = logging.getLogger(__name__)
 
@@ -356,6 +357,22 @@ class PveNativeReplicateService:
                             )
             except Exception as e:
                 warnings.append(f"Override config parziale: {e}")
+
+        # Tag REPL su tutte le VM replicate via pve_native
+        try:
+            tag_ok, tag_msg = await ensure_vm_replication_tag(
+                ssh_service,
+                hostname=dest_host,
+                vmid=target_vmid,
+                vm_type=vm_type,
+                port=dest_port,
+                username=dest_user,
+                key_path=dest_key,
+            )
+            if not tag_ok:
+                warnings.append(tag_msg)
+        except Exception as e:
+            warnings.append(f"Tag REPL non applicato: {e}")
 
         # --- 9) cleanup archivi ---
         # dest sempre (l'archivio e' stato consumato)

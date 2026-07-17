@@ -211,7 +211,10 @@
                 class="form-input"
                 placeholder="replica"
               />
-              <small>I dataset finali saranno <code>{{ form.dest_pool || '<pool>' }}/{{ form.dest_subfolder || '' }}/vm-XXX-disk-N</code>.</small>
+              <small>
+                Dataset: <code>{{ syncoidDestPreview.zfsPath }}/vm-XXX-disk-N</code>
+                · Storage Proxmox: <code>{{ syncoidDestPreview.storageName }}</code>
+              </small>
             </div>
 
             <div class="field field-full" v-if="form.kind === 'backup_pbs' || form.kind === 'recovery_pbs'">
@@ -455,6 +458,7 @@ import type { ScheduleConfig } from '../../services/schedule'
 import StoragePicker from './StoragePicker.vue'
 import VMRegistrationFields, { type VMRegistration } from './VMRegistrationFields.vue'
 import ScheduleEditor from './ScheduleEditor.vue'
+import { normalizeZfsReplicaDest } from '../../utils/zfsNaming'
 
 interface DiskInfo {
   disk_name: string
@@ -712,6 +716,35 @@ function onDestStoragesLoaded(storages: Array<{ storage?: string; type?: string 
   if (zfs.length === 1) form.value.dest_pool = zfs[0]
 }
 
+/** Allinea pool/subfolder evitando nomi ridondanti (es. ZFS-LARGE-replica + replica). */
+function applySyncoidDestNormalization() {
+  if (form.value.kind !== 'syncoid' || !form.value.dest_pool) return
+  const n = normalizeZfsReplicaDest(
+    form.value.dest_pool,
+    form.value.dest_subfolder,
+    form.value.registration.dest_storage,
+  )
+  form.value.dest_pool = n.pool
+  form.value.dest_subfolder = n.subfolder || ''
+}
+
+watch(
+  () => [form.value.dest_pool, form.value.dest_subfolder] as const,
+  () => applySyncoidDestNormalization(),
+)
+
+const syncoidDestPreview = computed(() => {
+  if (form.value.kind !== 'syncoid') {
+    return { zfsPath: '', storageName: '' }
+  }
+  const n = normalizeZfsReplicaDest(
+    form.value.dest_pool,
+    form.value.dest_subfolder,
+    form.value.registration.dest_storage || form.value.dest_pool,
+  )
+  return { zfsPath: n.zfsPath || '<pool>', storageName: n.storageName || '—' }
+})
+
 const filteredVMs = computed(() => {
   const list = form.value.source_node_id
     ? store.vmsByNode(form.value.source_node_id)
@@ -927,7 +960,11 @@ function humanBytes(v: any) {
 }
 
 function buildSyncoidPayload() {
-  const destStorage = form.value.registration.dest_storage || form.value.dest_pool
+  const normalized = normalizeZfsReplicaDest(
+    form.value.dest_pool,
+    form.value.dest_subfolder,
+    form.value.registration.dest_storage || form.value.dest_pool,
+  )
   const selected = vmDisks.value.filter(
     d => selectedDisks.value.has(d.disk_name) && d.dataset && d.replicable !== false
   )
@@ -937,9 +974,9 @@ function buildSyncoidPayload() {
     vm_name: form.value.vm_name,
     source_node_id: form.value.source_node_id,
     dest_node_id: form.value.dest_node_id,
-    dest_pool: form.value.dest_pool,
-    dest_subfolder: form.value.dest_subfolder || '',
-    dest_storage: destStorage,
+    dest_pool: normalized.pool,
+    dest_subfolder: normalized.subfolder || '',
+    dest_storage: normalized.storageName,
     dest_vm_id: form.value.registration.dest_vm_id,
     dest_vm_name: form.value.registration.dest_vm_name,
     dest_vm_name_suffix: form.value.registration.dest_vm_name_suffix,

@@ -10,6 +10,8 @@ const endpoints = ref<FileEndpoint[]>([])
 const stats = ref({ total: 0, active: 0, running: 0, failed: 0 })
 const showJobModal = ref(false)
 const showEndpointForm = ref(false)
+const editingEndpoint = ref<FileEndpoint | null>(null)
+const endpointError = ref('')
 const loading = ref(false)
 
 const activeCount = computed(() => stats.value.active)
@@ -53,8 +55,58 @@ function onJobCreated() {
   refresh()
 }
 
-function onEndpointSaved() {
+function openNewEndpoint() {
+  editingEndpoint.value = null
+  showEndpointForm.value = true
+  endpointError.value = ''
+}
+
+function openEditEndpoint(ep: FileEndpoint) {
+  editingEndpoint.value = ep
+  showEndpointForm.value = true
+  endpointError.value = ''
+}
+
+function closeEndpointForm() {
   showEndpointForm.value = false
+  editingEndpoint.value = null
+  endpointError.value = ''
+}
+
+async function testEndpoint(id: number) {
+  endpointError.value = ''
+  try {
+    const { data } = await fileEndpointsApi.test(id)
+    await refresh()
+    alert(data.success ? `OK: ${data.message}` : `Fallito: ${data.message}`)
+  } catch (e: unknown) {
+    endpointError.value = e instanceof Error ? e.message : 'Test fallito'
+  }
+}
+
+async function deleteEndpoint(ep: FileEndpoint) {
+  if (!confirm(`Eliminare l'endpoint "${ep.name || ep.host}"?`)) return
+  endpointError.value = ''
+  try {
+    await fileEndpointsApi.delete(ep.id)
+    if (editingEndpoint.value?.id === ep.id) closeEndpointForm()
+    await refresh()
+  } catch (e: unknown) {
+    const msg =
+      typeof e === 'object' &&
+      e !== null &&
+      'response' in e &&
+      typeof (e as { response?: { data?: { detail?: string } } }).response?.data?.detail === 'string'
+        ? (e as { response: { data: { detail: string } } }).response.data.detail
+        : e instanceof Error
+          ? e.message
+          : 'Eliminazione fallita'
+    endpointError.value = msg
+  }
+}
+
+function onEndpointSaved() {
+  closeEndpointForm()
   refresh()
 }
 
@@ -77,8 +129,8 @@ onMounted(refresh)
         </p>
       </div>
       <div class="repl-head-actions">
-        <button class="btn btn-secondary mr-2" @click="showEndpointForm = !showEndpointForm">
-          Endpoint
+        <button class="btn btn-secondary mr-2" @click="openNewEndpoint">
+          + Endpoint
         </button>
         <button class="btn btn-primary" @click="showJobModal = true">+ Nuovo job</button>
       </div>
@@ -103,7 +155,57 @@ onMounted(refresh)
       </div>
     </section>
 
-    <FileEndpointForm v-if="showEndpointForm" @saved="onEndpointSaved" />
+    <FileEndpointForm
+      v-if="showEndpointForm"
+      :endpoint="editingEndpoint"
+      @saved="onEndpointSaved"
+      @cancel="closeEndpointForm"
+    />
+
+    <div class="card mb-4">
+      <div class="card-header">
+        <h3>Endpoint registrati ({{ endpoints.length }})</h3>
+        <button class="btn btn-sm btn-secondary" :disabled="loading" @click="refresh">Aggiorna</button>
+      </div>
+      <div class="card-body p-0">
+        <p v-if="endpointError" class="p-3 text-danger">{{ endpointError }}</p>
+        <table class="data-table" v-if="endpoints.length">
+          <thead>
+            <tr>
+              <th>Nome</th>
+              <th>Tipo</th>
+              <th>Ruolo</th>
+              <th>Host</th>
+              <th>Ultimo test</th>
+              <th>Azioni</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="ep in endpoints" :key="ep.id">
+              <td><strong>{{ ep.name || '—' }}</strong></td>
+              <td><span class="badge">{{ ep.endpoint_type }}</span></td>
+              <td>{{ ep.role }}</td>
+              <td><code>{{ ep.host }}:{{ ep.port }}</code></td>
+              <td>
+                <span
+                  v-if="ep.last_test_status"
+                  :class="ep.last_test_status === 'success' ? 'text-success' : 'text-danger'"
+                >
+                  {{ ep.last_test_status }}
+                </span>
+                <span v-else class="muted">—</span>
+              </td>
+              <td class="actions">
+                <button class="btn btn-sm btn-secondary" @click="openEditEndpoint(ep)">Modifica</button>
+                <button class="btn btn-sm btn-primary" @click="testEndpoint(ep.id)">Test</button>
+                <button class="btn btn-sm btn-danger" @click="deleteEndpoint(ep)">Elimina</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-else class="p-4">Nessun endpoint. Clicca <strong>+ Endpoint</strong> per registrarne uno.</p>
+      </div>
+    </div>
 
     <div class="card">
       <div class="card-header">
@@ -149,20 +251,6 @@ onMounted(refresh)
       </div>
     </div>
 
-    <div class="card mt-4">
-      <div class="card-header"><h3>Endpoint registrati ({{ endpoints.length }})</h3></div>
-      <ul class="endpoint-list">
-        <li v-for="ep in endpoints" :key="ep.id">
-          <strong>{{ ep.name }}</strong>
-          <span class="badge">{{ ep.endpoint_type }}</span>
-          <span class="muted">{{ ep.host }}:{{ ep.port }}</span>
-          <span v-if="ep.last_test_status" :class="ep.last_test_status === 'success' ? 'text-success' : 'text-danger'">
-            {{ ep.last_test_status }}
-          </span>
-        </li>
-      </ul>
-    </div>
-
     <FileReplJobModal v-if="showJobModal" @close="showJobModal = false" @created="onJobCreated" />
   </div>
 </template>
@@ -176,10 +264,9 @@ onMounted(refresh)
 .repl-stat-label { display: block; font-size: 0.75rem; opacity: 0.7; }
 .repl-stat-val { font-size: 1.5rem; font-weight: 700; }
 .actions { display: flex; gap: 6px; flex-wrap: wrap; }
-.endpoint-list { list-style: none; padding: 12px 20px; margin: 0; }
-.endpoint-list li { display: flex; gap: 12px; align-items: center; padding: 6px 0; flex-wrap: wrap; }
 .badge { font-size: 0.75rem; background: #333; padding: 2px 8px; border-radius: 4px; }
 .muted { opacity: 0.65; font-size: 0.85rem; }
+.mb-4 { margin-bottom: 16px; }
 .mr-2 { margin-right: 8px; }
 .mt-4 { margin-top: 16px; }
 .p-4 { padding: 16px; }

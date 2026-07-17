@@ -405,6 +405,14 @@ async def create_vm_replica_jobs(
     # la stessa pianificazione.
     _vm_cron, _vm_cfg = _resolve_schedule_pair(vm_data.schedule, vm_data.schedule_config)
 
+    from services.zfs_naming import normalize_zfs_replica_dest
+
+    norm_pool, norm_sub, dest_zfs_path, dest_storage_derived = normalize_zfs_replica_dest(
+        vm_data.dest_pool,
+        vm_data.dest_subfolder,
+        vm_data.dest_storage,
+    )
+
     # Path PVE_NATIVE: un solo SyncJob per VM (vzdump dumpa l'intera VM
     # in un colpo, no per-disco). I campi ZFS-specifici sono placeholder.
     if vm_data.sync_method == SyncMethod.PVE_NATIVE.value:
@@ -484,9 +492,9 @@ async def create_vm_replica_jobs(
         dataset_name = source_dataset.split("/")[-1]  # es: vm-100-disk-0
         
         if vm_data.dest_subfolder:
-            dest_dataset = f"{vm_data.dest_pool}/{vm_data.dest_subfolder}/{dataset_name}"
+            dest_dataset = f"{norm_pool}/{norm_sub}/{dataset_name}"
         else:
-            dest_dataset = f"{vm_data.dest_pool}/{dataset_name}"
+            dest_dataset = f"{norm_pool}/{dataset_name}"
         
         # Nome job: VM-100 scsi0 -> Node2
         job_name = f"VM-{vm_data.vm_id} {disk.get('disk_name', 'disk')} → {dest_node.name}"
@@ -494,14 +502,7 @@ async def create_vm_replica_jobs(
         # Crea il job
         # Determina storage sorgente (dal disco) e destinazione
         source_storage = disk.get("storage", None)  # es: local-zfs
-        dest_zfs_path = (
-            f"{vm_data.dest_pool}/{vm_data.dest_subfolder}"
-            if vm_data.dest_subfolder
-            else vm_data.dest_pool
-        )
-        base_storage = vm_data.dest_storage or vm_data.dest_pool
-        from services.proxmox_service import proxmox_service as _px
-        dest_storage = _px.derive_zfs_storage_name(base_storage, dest_zfs_path)
+        dest_storage = dest_storage_derived
         
         db_job = SyncJob(
             name=job_name,
@@ -529,7 +530,7 @@ async def create_vm_replica_jobs(
             disk_name=disk.get("disk_name"),
             source_storage=source_storage,
             dest_storage=dest_storage,
-            dest_subfolder=vm_data.dest_subfolder,
+            dest_subfolder=norm_sub,
             # BTRFS options
             btrfs_snapshot_dir=vm_data.btrfs_snapshot_dir,
             btrfs_dest_snapshot_dir=vm_data.btrfs_dest_snapshot_dir,

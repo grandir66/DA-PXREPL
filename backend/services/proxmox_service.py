@@ -9,6 +9,7 @@ import json
 import re
 
 from services.ssh_service import ssh_service, SSHResult
+from services.pve_tags import ensure_vm_replication_tag, merge_tag_in_vm_config
 
 logger = logging.getLogger(__name__)
 
@@ -595,17 +596,9 @@ class ProxmoxService:
     @staticmethod
     def derive_zfs_storage_name(storage_name: Optional[str], zfs_pool: str) -> str:
         """Nome storage Proxmox coerente con il dataset ZFS usato dalla replica."""
-        if not zfs_pool:
-            return storage_name or ""
-        parts = zfs_pool.split("/")
-        root = parts[0]
-        base = (storage_name or root).strip()
-        if len(parts) <= 1 or zfs_pool == base or zfs_pool == root:
-            return base
-        sub = "-".join(parts[1:])
-        if base == root:
-            return f"{root}-{sub}"
-        return f"{base}-{sub}"
+        from services.zfs_naming import derive_zfs_storage_name as _derive
+
+        return _derive(storage_name, zfs_pool)
 
     async def get_storage_zfs_pool(
         self,
@@ -876,6 +869,8 @@ class ProxmoxService:
                 except Exception:
                     warnings.append(f"dest_vlan non valido, ignorato: {dest_vlan!r}")
 
+            config_content = merge_tag_in_vm_config(config_content)
+
             # Verifica bridge di rete (warning se non disponibile sul dest)
             if dest_node_bridges:
                 net_pattern = re.compile(r'^(net\d+):.+bridge=([^,\s]+)', re.MULTILINE)
@@ -919,6 +914,17 @@ echo "Configuration created"
         )
         
         if result.success:
+            tag_ok, tag_msg = await ensure_vm_replication_tag(
+                ssh_service,
+                hostname=hostname,
+                vmid=vmid_int,
+                vm_type=vm_type,
+                port=port,
+                username=username,
+                key_path=key_path,
+            )
+            if not tag_ok:
+                warnings.append(tag_msg)
             return True, f"VM {vmid} registrata con successo", warnings
         else:
             return False, f"Verifica fallita: {result.stderr}", warnings

@@ -111,9 +111,9 @@ const initialPort = ref(8420);
 const restartRequired = ref(false);
 
 const genForm = reactive({
- hostname: window.location.hostname,
+ hostname: window.location.hostname.match(/^\d+\.\d+\.\d+\.\d+$/) ? 'dapx-unified.local' : window.location.hostname,
  days_valid: 365,
- ip_addresses: ''
+ ip_addresses: window.location.hostname.match(/^\d+\.\d+\.\d+\.\d+$/) ? window.location.hostname : ''
 });
 
 const uploadForm = reactive({

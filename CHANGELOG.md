@@ -5,8 +5,16 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.6] - 2026-07-17
+
 ### Correzioni
 - Browse Synology/QNAP: messaggi errore espliciti su timeout/rete irraggiungibile e dettaglio API mostrato in UI (`connection_errors.py`, `FolderBrowser.vue`).
+- Certificato SSL auto-firmato: accetta body JSON dalla UI, hostname IP spostato nei SAN, certificati in `/var/lib/dapx-unified/certs` (`settings.py`, `generate_cert.py`).
+
+### Modifiche
+- UI replica file: gestione completa endpoint (crea, modifica, elimina, test connessione) in tabella dedicata (`FileReplication.vue`, `FileEndpointForm.vue`).
+- Replica syncoid: normalizzazione centralizzata pool/subfolder/storage ZFS per evitare nomi ridondanti tipo `*-replica-replica` (`zfs_naming.py`, `zfsNaming.ts`, `JobModal.vue`).
+- VM replicate: tag Proxmox **REPL** creato/assegnato automaticamente su registrazione syncoid e replica pve_native (`pve_tags.py`, `proxmox_service.py`, `pve_native_replicate_service.py`).
 
 ## [3.17.5] - 2026-07-17
 
