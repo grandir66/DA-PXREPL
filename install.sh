@@ -297,6 +297,7 @@ install_system_dependencies() {
         sshpass
         cifs-utils
         smbclient
+        rclone
         # Build
         build-essential
         libffi-dev

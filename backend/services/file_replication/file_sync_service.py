@@ -70,7 +70,7 @@ def build_sync_plan(
     """Piano sync per path: pull (SMB su Synology, rsync altrove) + push QNAP."""
     steps: list[dict] = []
     dest_base = job.dest_staging_path.rstrip("/")
-    use_stream = (
+    use_rclone = (
         source.endpoint_type == FileEndpointType.SYNOLOGY
         and dest.endpoint_type == FileEndpointType.QNAP
         and not (source.extra_config or {}).get("rsync_module")
@@ -81,13 +81,15 @@ def build_sync_plan(
         local_dir = f"{staging_dir}/{leaf}/"
         dest_remote = f"{dest_base}/{leaf}/"
 
-        if use_stream:
+        if use_rclone:
             steps.append(
                 {
-                    "type": "stream_tar",
+                    "type": "rclone_sync",
                     "src_path": src_path,
                     "dest_dir": dest_remote,
                     "exclude_file": exclude_file,
+                    "delete_on_dest": job.delete_on_dest,
+                    "bandwidth_limit_kb": job.bandwidth_limit_kb,
                 }
             )
             continue

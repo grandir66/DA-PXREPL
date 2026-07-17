@@ -190,9 +190,9 @@ onMounted(loadEndpoints)
           :exclude-presets="form.exclude_presets"
         />
         <p class="text-muted mt-2">
-          Synology → QNAP: sync <strong>diretto</strong> (stream, non riempie il disco dapx).
-          Path es. <code>/Comune/AArchivio</code> — share <code>Comune</code>, cartella <code>AArchivio</code>.
-          Staging QNAP: <code>/share/DATI/archivio</code> (DATI solo in destinazione).
+          Synology → QNAP: sync <strong>incrementale</strong> (rclone) — solo file nuovi o modificati.
+          Con «Elimina su destinazione» lo staging resta allineato; lo storico via <strong>snapshot QNAP</strong>.
+          Path es. <code>/Comune/AArchivio</code>, staging <code>/share/DATI/archivio</code>.
         </p>
       </div>
 
@@ -220,7 +220,7 @@ onMounted(loadEndpoints)
       <div v-show="step === 4" class="modal-body">
         <label class="checkbox-label">
           <input v-model="form.delete_on_dest" type="checkbox" />
-          Elimina file rimossi dalla sorgente (solo staging mutabile)
+          Elimina su staging QNAP i file non più presenti in Synology (allineamento mirror; versioning = snapshot QNAP)
         </label>
         <div class="form-group mt-3">
           <label>Cron sync dapx</label>

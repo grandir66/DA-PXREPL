@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.19] - 2026-07-17
+
+### Modifiche
+- Synology → QNAP: sync **incrementale** con **rclone** (SMB→SFTP): trasferisce solo delta; opzione **Elimina su destinazione** allinea lo staging (`rclone_sync.py`). Versioning delegato agli snapshot QNAP.
+
 ## [3.17.18] - 2026-07-17
 
 ### Correzioni

@@ -13,8 +13,12 @@ from typing import Optional
 from database import FileEndpoint, FileEndpointType, FileReplicationJob, JobLog, SessionLocal
 from services.file_replication.endpoint_crypto import decrypt_password
 from services.file_replication.exclude_presets import build_exclude_lines
-from services.file_replication.direct_stream import stream_synology_to_qnap
 from services.file_replication.file_sync_service import build_sync_plan, parse_rsync_progress
+from services.file_replication.rclone_sync import (
+    parse_rclone_progress,
+    preflight_rclone,
+    rclone_sync_synology_to_qnap,
+)
 from services.notification_service import notification_service
 
 logger = logging.getLogger(__name__)
@@ -112,6 +116,11 @@ async def execute_file_replication_job(job_id: int) -> None:
             raise RuntimeError("La destinazione deve essere un endpoint QNAP")
 
         _preflight_rsync_tools(source, dest)
+        if (
+            source.endpoint_type == FileEndpointType.SYNOLOGY
+            and dest.endpoint_type == FileEndpointType.QNAP
+        ):
+            preflight_rclone()
 
         job.current_status = "running"
         db.commit()
@@ -184,21 +193,26 @@ async def execute_file_replication_job(job_id: int) -> None:
                 )
 
         for step in sync_plan:
-            if step["type"] == "stream_tar":
-                out, err = await stream_synology_to_qnap(
+            if step["type"] == "rclone_sync":
+                out, err = await rclone_sync_synology_to_qnap(
                     source,
                     dest,
                     step["src_path"],
                     step["dest_dir"],
-                    step.get("exclude_file"),
+                    delete_on_dest=bool(step.get("delete_on_dest")),
+                    exclude_file=step.get("exclude_file"),
+                    bandwidth_limit_kb=step.get("bandwidth_limit_kb"),
                 )
                 combined_stdout.extend(out)
                 combined_stderr.extend(err)
-                _progress[job_id] = {
-                    "status": "running",
-                    "percent": "—",
-                    "message": f"Stream {step['src_path']} → {step['dest_dir']}",
-                }
+                for line in out:
+                    prog = parse_rclone_progress(line)
+                    if prog:
+                        _progress[job_id] = {
+                            "status": "running",
+                            **prog,
+                            "message": f"rclone {step['src_path']}",
+                        }
             elif step["type"] == "rsync":
                 await _run_rsync(step["cmd"])
 

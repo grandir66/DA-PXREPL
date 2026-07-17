@@ -37,5 +37,6 @@ def test_synology_uses_smb_pull_not_ssh(db):
 
     plan = build_sync_plan(job, src, dest, "/tmp/exclude.txt", "/tmp/staging")
     assert len(plan) == 1
-    assert plan[0]["type"] == "stream_tar"
+    assert plan[0]["type"] == "rclone_sync"
+    assert plan[0]["delete_on_dest"] is True
     assert plan[0]["dest_dir"] == "/share/DATI/archivio/AArchivio/"
