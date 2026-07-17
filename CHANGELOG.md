@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.13] - 2026-07-17
+
+### Modifiche
+- UI replica file: **modifica job** esistenti (wizard con dati salvati, PUT `/api/file-replication/{id}`); hint path staging QNAP `/share/...` per rsync SSH (`FileReplJobModal.vue`, `FileReplication.vue`).
+
 ## [3.17.12] - 2026-07-17
 
 ### Correzioni

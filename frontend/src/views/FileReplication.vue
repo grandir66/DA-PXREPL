@@ -9,6 +9,7 @@ const jobs = ref<FileReplicationJob[]>([])
 const endpoints = ref<FileEndpoint[]>([])
 const stats = ref({ total: 0, active: 0, running: 0, failed: 0 })
 const showJobModal = ref(false)
+const editingJob = ref<FileReplicationJob | null>(null)
 const showEndpointForm = ref(false)
 const editingEndpoint = ref<FileEndpoint | null>(null)
 const endpointError = ref('')
@@ -50,9 +51,25 @@ async function deleteJob(id: number) {
   await refresh()
 }
 
-function onJobCreated() {
+function onJobSaved() {
   showJobModal.value = false
+  editingJob.value = null
   refresh()
+}
+
+function openNewJob() {
+  editingJob.value = null
+  showJobModal.value = true
+}
+
+function openEditJob(job: FileReplicationJob) {
+  editingJob.value = job
+  showJobModal.value = true
+}
+
+function closeJobModal() {
+  showJobModal.value = false
+  editingJob.value = null
 }
 
 function openNewEndpoint() {
@@ -132,7 +149,7 @@ onMounted(refresh)
         <button class="btn btn-secondary mr-2" @click="openNewEndpoint">
           + Endpoint
         </button>
-        <button class="btn btn-primary" @click="showJobModal = true">+ Nuovo job</button>
+        <button class="btn btn-primary" @click="openNewJob">+ Nuovo job</button>
       </div>
     </header>
 
@@ -240,6 +257,7 @@ onMounted(refresh)
                 </span>
               </td>
               <td class="actions">
+                <button class="btn btn-sm btn-secondary" @click="openEditJob(job)">Modifica</button>
                 <button class="btn btn-sm btn-primary" @click="runJob(job.id)">Run</button>
                 <button class="btn btn-sm btn-secondary" @click="toggleJob(job.id)">
                   {{ job.is_active ? 'Off' : 'On' }}
@@ -253,7 +271,12 @@ onMounted(refresh)
       </div>
     </div>
 
-    <FileReplJobModal v-if="showJobModal" @close="showJobModal = false" @created="onJobCreated" />
+    <FileReplJobModal
+      v-if="showJobModal"
+      :job="editingJob"
+      @close="closeJobModal"
+      @saved="onJobSaved"
+    />
   </div>
 </template>
 
