@@ -189,6 +189,10 @@ onMounted(loadEndpoints)
           :endpoint-id="form.source_endpoint_id"
           :exclude-presets="form.exclude_presets"
         />
+        <p class="text-muted mt-2">
+          Synology: il browse mostra <code>/DATI/...</code> ma rsync SSH usa
+          <code>/volume1/DATI/...</code> (convertito automaticamente se manca <code>/volumeN</code>).
+        </p>
       </div>
 
       <div v-show="step === 3" class="modal-body">

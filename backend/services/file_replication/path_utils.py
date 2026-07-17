@@ -16,6 +16,15 @@ def sanitize_path(path: str) -> str:
     return p.rstrip("/") or "/"
 
 
+def normalize_synology_ssh_path(path: str, volume: str = "volume1") -> str:
+    """File Station usa /Share/...; rsync via SSH richiede /volume1/Share/..."""
+    p = sanitize_path(path)
+    if p.startswith("/volume"):
+        return p
+    vol = (volume or "volume1").strip("/") or "volume1"
+    return f"/{vol}{p}"
+
+
 def is_excluded_name(name: str, presets: list[str]) -> bool:
     patterns: list[str] = []
     for preset in presets or []:

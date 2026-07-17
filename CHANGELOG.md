@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.15] - 2026-07-17
+
+### Correzioni
+- Synology rsync SSH: path browse `/DATI/...` convertito in `/volume1/DATI/...`; fix errore `module is write only` (`path_utils.py`, `file_sync_service.py`).
+
 ## [3.17.14] - 2026-07-17
 
 ### Correzioni

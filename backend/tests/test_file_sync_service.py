@@ -29,7 +29,7 @@ def test_synology_api_endpoint_uses_ssh_port_22(db):
         name="t",
         source_endpoint_id=1,
         dest_endpoint_id=2,
-        source_paths=["/volume1/DATI/archivio"],
+        source_paths=["/DATI/archivio"],
         dest_staging_path="/share/DATI/archivio",
     )
     db.add_all([src, dest, job])
@@ -47,4 +47,5 @@ def test_synology_api_endpoint_uses_ssh_port_22(db):
     push_e = push[push.index("-e") + 1]
     assert "ssh -p 22" in push_e
     assert "qnap@172.16.1.120:/volume1/DATI/archivio/" in pull
+    assert "--rsync-path=/usr/bin/rsync" in pull
     assert "replica@172.16.1.125:/share/DATI/archivio/" in push

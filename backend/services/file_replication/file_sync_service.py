@@ -7,6 +7,7 @@ from typing import Optional
 
 from database import FileEndpoint, FileEndpointType, FileReplicationJob
 from services.file_replication.endpoint_crypto import decrypt_password
+from services.file_replication.path_utils import normalize_synology_ssh_path
 
 _PROGRESS_RE = re.compile(
     r"(\d+(?:,\d+)*)\s+(\d+(?:\.\d+)?%)\s+([\d.]+\w+/s)?",
@@ -88,6 +89,10 @@ def build_rsync_legs(
             push.extend(extra)
 
         src_remote = src_path.rstrip("/") + "/"
+        if source.endpoint_type == FileEndpointType.SYNOLOGY:
+            extra = source.extra_config or {}
+            vol = extra.get("synology_volume") or extra.get("ssh_volume") or "volume1"
+            src_remote = normalize_synology_ssh_path(src_path, vol).rstrip("/") + "/"
 
         if source.endpoint_type in (FileEndpointType.SYNOLOGY, FileEndpointType.QNAP):
             module = (source.extra_config or {}).get("rsync_module", "")
@@ -95,6 +100,8 @@ def build_rsync_legs(
                 pull.append(f"rsync://{source.username}@{source.host}/{module}/{src_path.strip('/')}/")
             else:
                 pull.extend(["-e", _ssh_transport(source)])
+                if source.endpoint_type == FileEndpointType.SYNOLOGY:
+                    pull.append("--rsync-path=/usr/bin/rsync")
                 pull.append(_remote_spec(source, src_remote))
         else:
             pull.extend(["-e", _ssh_transport(source)])
