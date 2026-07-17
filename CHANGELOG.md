@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.18] - 2026-07-17
+
+### Correzioni
+- Synology → QNAP: sync **diretto in stream** (tar pipe SSH), senza staging locale su dapx — adatto a volumi TB (`direct_stream.py`).
+
 ## [3.17.17] - 2026-07-17
 
 ### Correzioni

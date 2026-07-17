@@ -29,15 +29,13 @@ def test_synology_uses_smb_pull_not_ssh(db):
         name="t",
         source_endpoint_id=1,
         dest_endpoint_id=2,
-        source_paths=["/DATI/archivio"],
+        source_paths=["/Comune/AArchivio"],
         dest_staging_path="/share/DATI/archivio",
     )
     db.add_all([src, dest, job])
     db.commit()
 
     plan = build_sync_plan(job, src, dest, "/tmp/exclude.txt", "/tmp/staging")
-    assert len(plan) == 2
-    assert plan[0]["type"] == "synology_smb"
-    assert plan[0]["src_path"] == "/DATI/archivio"
-    assert plan[1]["type"] == "rsync"
-    assert "domarc@172.16.1.125:/share/DATI/archivio/" in plan[1]["cmd"]
+    assert len(plan) == 1
+    assert plan[0]["type"] == "stream_tar"
+    assert plan[0]["dest_dir"] == "/share/DATI/archivio/AArchivio/"

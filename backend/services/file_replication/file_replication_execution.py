@@ -13,12 +13,8 @@ from typing import Optional
 from database import FileEndpoint, FileEndpointType, FileReplicationJob, JobLog, SessionLocal
 from services.file_replication.endpoint_crypto import decrypt_password
 from services.file_replication.exclude_presets import build_exclude_lines
+from services.file_replication.direct_stream import stream_synology_to_qnap
 from services.file_replication.file_sync_service import build_sync_plan, parse_rsync_progress
-from services.file_replication.synology_smb import (
-    describe_synology_pull,
-    preflight_synology_smb,
-    pull_synology_share,
-)
 from services.notification_service import notification_service
 
 logger = logging.getLogger(__name__)
@@ -116,8 +112,6 @@ async def execute_file_replication_job(job_id: int) -> None:
             raise RuntimeError("La destinazione deve essere un endpoint QNAP")
 
         _preflight_rsync_tools(source, dest)
-        if source.endpoint_type == FileEndpointType.SYNOLOGY:
-            preflight_synology_smb()
 
         job.current_status = "running"
         db.commit()
@@ -190,14 +184,21 @@ async def execute_file_replication_job(job_id: int) -> None:
                 )
 
         for step in sync_plan:
-            if step["type"] == "synology_smb":
-                share, subpath, desc = describe_synology_pull(step["src_path"])
-                logger.info("FileReplicationJob %s pull Synology SMB %s", job_id, desc)
-                out, err = await pull_synology_share(
-                    source, share, subpath, step["local_dir"]
+            if step["type"] == "stream_tar":
+                out, err = await stream_synology_to_qnap(
+                    source,
+                    dest,
+                    step["src_path"],
+                    step["dest_dir"],
+                    step.get("exclude_file"),
                 )
                 combined_stdout.extend(out)
                 combined_stderr.extend(err)
+                _progress[job_id] = {
+                    "status": "running",
+                    "percent": "—",
+                    "message": f"Stream {step['src_path']} → {step['dest_dir']}",
+                }
             elif step["type"] == "rsync":
                 await _run_rsync(step["cmd"])
 

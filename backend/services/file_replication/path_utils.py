@@ -26,7 +26,7 @@ def normalize_synology_ssh_path(path: str, volume: str = "volume1") -> str:
 
 
 def parse_synology_share_path(path: str) -> tuple[str, str]:
-    """Da /DATI/archivio o /volume1/DATI/archivio → ('DATI', 'archivio')."""
+    """Da /Comune/AArchivio o /volume1/Comune/AArchivio → ('Comune', 'AArchivio')."""
     p = sanitize_path(path).strip("/")
     parts = [x for x in p.split("/") if x]
     if not parts:
@@ -34,6 +34,16 @@ def parse_synology_share_path(path: str) -> tuple[str, str]:
     if parts[0].startswith("volume") and len(parts) >= 2:
         return parts[1], "/".join(parts[2:])
     return parts[0], "/".join(parts[1:])
+
+
+def synology_ssh_path(path: str, volume: str = "volume1") -> str:
+    """Path assoluto SSH su Synology: /volume1/Comune/AArchivio."""
+    share, subpath = parse_synology_share_path(path)
+    vol = (volume or "volume1").strip("/") or "volume1"
+    base = f"/{vol}/{share}"
+    if subpath:
+        return f"{base}/{subpath}"
+    return base
 
 
 def is_excluded_name(name: str, presets: list[str]) -> bool:

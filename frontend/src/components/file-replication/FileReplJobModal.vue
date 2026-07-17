@@ -190,8 +190,9 @@ onMounted(loadEndpoints)
           :exclude-presets="form.exclude_presets"
         />
         <p class="text-muted mt-2">
-          Synology: il browse mostra <code>/DATI/...</code>; il job legge la share via <strong>SMB</strong>
-          (es. share <code>DATI</code>, cartella <code>archivio</code>). Path nel job: <code>/DATI/archivio</code>.
+          Synology → QNAP: sync <strong>diretto</strong> (stream, non riempie il disco dapx).
+          Path es. <code>/Comune/AArchivio</code> — share <code>Comune</code>, cartella <code>AArchivio</code>.
+          Staging QNAP: <code>/share/DATI/archivio</code> (DATI solo in destinazione).
         </p>
       </div>
 

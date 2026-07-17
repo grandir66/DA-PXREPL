@@ -70,14 +70,27 @@ def build_sync_plan(
     """Piano sync per path: pull (SMB su Synology, rsync altrove) + push QNAP."""
     steps: list[dict] = []
     dest_base = job.dest_staging_path.rstrip("/")
-    use_synology_smb = source.endpoint_type == FileEndpointType.SYNOLOGY and not (
-        (source.extra_config or {}).get("rsync_module")
+    use_stream = (
+        source.endpoint_type == FileEndpointType.SYNOLOGY
+        and dest.endpoint_type == FileEndpointType.QNAP
+        and not (source.extra_config or {}).get("rsync_module")
     )
 
     for src_path in job.source_paths or []:
         leaf = src_path.strip("/").split("/")[-1] or "data"
         local_dir = f"{staging_dir}/{leaf}/"
         dest_remote = f"{dest_base}/{leaf}/"
+
+        if use_stream:
+            steps.append(
+                {
+                    "type": "stream_tar",
+                    "src_path": src_path,
+                    "dest_dir": dest_remote,
+                    "exclude_file": exclude_file,
+                }
+            )
+            continue
 
         pull = ["rsync", "-a", "--info=progress2", "--exclude-from", exclude_file]
         push = ["rsync", "-a", "--info=progress2"]
@@ -91,31 +104,20 @@ def build_sync_plan(
             pull.extend(extra)
             push.extend(extra)
 
-        if use_synology_smb:
-            steps.append(
-                {
-                    "type": "synology_smb",
-                    "src_path": src_path,
-                    "local_dir": local_dir,
-                    "exclude_file": exclude_file,
-                    "mount_root": f"{staging_dir}/smb",
-                }
-            )
-        else:
-            src_remote = src_path.rstrip("/") + "/"
-            if source.endpoint_type == FileEndpointType.SYNOLOGY:
-                extra_cfg = source.extra_config or {}
-                vol = extra_cfg.get("synology_volume") or extra_cfg.get("ssh_volume") or "volume1"
-                src_remote = normalize_synology_ssh_path(src_path, vol).rstrip("/") + "/"
+        src_remote = src_path.rstrip("/") + "/"
+        if source.endpoint_type == FileEndpointType.SYNOLOGY:
+            extra_cfg = source.extra_config or {}
+            vol = extra_cfg.get("synology_volume") or extra_cfg.get("ssh_volume") or "volume1"
+            src_remote = normalize_synology_ssh_path(src_path, vol).rstrip("/") + "/"
 
-            module = (source.extra_config or {}).get("rsync_module", "")
-            if source.endpoint_type in (FileEndpointType.SYNOLOGY, FileEndpointType.QNAP) and module:
-                pull.append(f"rsync://{source.username}@{source.host}/{module}/{src_path.strip('/')}/")
-            else:
-                pull.extend(["-e", _ssh_transport(source)])
-                pull.append(_remote_spec(source, src_remote))
-            pull.append(local_dir)
-            steps.append({"type": "rsync", "cmd": pull})
+        module = (source.extra_config or {}).get("rsync_module", "")
+        if source.endpoint_type in (FileEndpointType.SYNOLOGY, FileEndpointType.QNAP) and module:
+            pull.append(f"rsync://{source.username}@{source.host}/{module}/{src_path.strip('/')}/")
+        else:
+            pull.extend(["-e", _ssh_transport(source)])
+            pull.append(_remote_spec(source, src_remote))
+        pull.append(local_dir)
+        steps.append({"type": "rsync", "cmd": pull})
 
         push.extend(["-e", _ssh_transport(dest)])
         push.append(local_dir)

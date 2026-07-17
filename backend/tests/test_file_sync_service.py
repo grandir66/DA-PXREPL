@@ -43,4 +43,4 @@ def test_synology_push_only_in_rsync_legs_compat(db):
     assert "domarc@172.16.1.125:/share/DATI/archivio/" in push
 
     plan = build_sync_plan(job, src, dest, "/tmp/exclude.txt", "/tmp/staging")
-    assert plan[0]["type"] == "synology_smb"
+    assert plan[0]["type"] == "stream_tar"
