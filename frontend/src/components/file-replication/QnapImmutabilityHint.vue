@@ -8,16 +8,16 @@ defineProps<{
 
 <template>
   <div class="hint-card">
-    <h4>Protezione immutabilità — QuTS hero h6.0</h4>
+    <h4>Snapshot QNAP (unico storico)</h4>
     <p>
-      dapx esegue il sync sulla share <strong>staging mutabile</strong>. Configura su QNAP
-      (Snapshot Manager) snapshot immutabili con retention.
+      dapx replica solo i <strong>file correnti</strong> da Synology. Cartelle snapshot e di sistema
+      (<code>#snapshot</code>, <code>@Snapshot</code>, …) non vengono mai copiate.
+      Lo storico si gestisce <strong>solo su QNAP</strong> con Snapshot Manager.
     </p>
     <ol>
-      <li>Crea share staging <em>thin</em>, compressione ON, <strong>senza WORM</strong>.</li>
-      <li>Abilita rsync/SSH/SMB per l'host dapx.</li>
+      <li>Share destinazione <em>thin</em>, compressione ON.</li>
       <li>Snapshot schedule: almeno <strong>1h dopo</strong> il cron sync dapx.</li>
-      <li>Protection policy: <strong>Prohibit recycle and delete until expired</strong>.</li>
+      <li>Protection: <strong>Prohibit recycle and delete until expired</strong>.</li>
       <li>Retention: Smart Versioning o max snapshot (es. {{ maxSnapshots ?? 10 }}).</li>
       <li>Abilita <strong>Only if modified</strong> e guaranteed snapshot space.</li>
     </ol>

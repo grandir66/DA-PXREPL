@@ -5,6 +5,25 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.20] - 2026-07-18
+
+### Modifiche
+- Replica file: **report sync** strutturato (log + modale) e **notifiche email** con riepilogo copiati/saltati/dimensione; opzioni notifica per job; inclusione nel riepilogo giornaliero (`file_replication_report.py`, `notification_service.py`).
+- Replica file: esclusione **obbligatoria** di `#snapshot`, `@Snapshot`, `#recycle`, `@eaDir` e cartelle di sistema; nessuno storico sorgente — versioning solo snapshot QNAP (`exclude_presets.py`).
+- UI replica file: visualizzazione **compatta** origine → destinazione (una riga per cartella, senza tabella estesa).
+- Replica file Synology → QNAP: destinazione limitata alla **share QNAP** (es. `/share/DATI`); la sottostruttura Synology viene ereditata senza annidamenti extra (`normalize_qnap_dest_share`, `FolderBrowser` share-only).
+- Replica file Synology → QNAP: ogni sorgente mantiene la **struttura share** su DATI (`/Comune/foo` → `DATI/Comune/foo`, `/Duerre` → `DATI/Duerre`) invece di finire tutte sotto la stessa sottocartella staging (`path_utils.py`, `file_sync_service.py`).
+- UI job replica: **browser cartelle QNAP** per path staging destinazione (come sorgente); normalizzazione `/DATI` → `/share/DATI` (`FolderBrowser.vue`, `FileReplJobModal.vue`, `path_utils.py`).
+- Browse Synology: cache sessione condivisa, SynoToken e retry automatico su errori 106/107/119 (`synology_client.py`).
+
+### Correzioni
+- Modifica job replica file: fix errore 500 su PUT (loop `setattr` rotto in `file_replication_jobs.py`).
+- Selezione cartelle sorgente: scelta del padre include automaticamente i figli (path compattati, badge «inclusa» in browse).
+- Avanzamento replica file: parsing output rclone corretto (formato `--stats-one-line` e righe `Checks:`); contatori **copiati / saltati / controllati** e dimensione trasferita in UI e messaggio log (`rclone_sync.py`, `fileReplProgress.ts`, `FileReplLogModal.vue`).
+- Synology → QNAP rclone: destinazione **SMB** (non SFTP) e path corretto `DATI/...` invece di `share/DATI/...` relativo — i file finiscono nella share DATI visibile in File Station (`rclone_sync.py`, `path_utils.py`).
+- Avanzamento replica file: progresso **live** con dati/file trasferiti (non percentuale 0% fittizia); aggiornamento durante sync rclone (`rclone_sync.py`, `FileReplLogModal.vue`, `FileReplication.vue`).
+- rclone: creazione cartelle **vuote** su QNAP (`--create-empty-src-dirs` + `mkdir` destinazione) (`rclone_sync.py`).
+
 ## [3.17.19] - 2026-07-17
 
 ### Modifiche

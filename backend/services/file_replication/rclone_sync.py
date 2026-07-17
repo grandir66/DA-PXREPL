@@ -1,4 +1,4 @@
-"""Sync incrementale Synology → QNAP via rclone (SMB → SFTP)."""
+"""Sync incrementale Synology → QNAP via rclone (SMB → SMB)."""
 
 from __future__ import annotations
 
@@ -7,17 +7,58 @@ import logging
 import os
 import re
 import tempfile
+from collections.abc import Callable
 from typing import Optional
 
 from database import FileEndpoint
 from services.file_replication.endpoint_crypto import decrypt_password
-from services.file_replication.path_utils import parse_synology_share_path
+from services.file_replication.path_utils import parse_synology_share_path, qnap_rclone_dest_path
 
 logger = logging.getLogger(__name__)
 
-_TRANSFER_RE = re.compile(
-    r"Transferred:\s+([\d.]+\s*\w+)(?:\s*/\s*([\d.]+\s*\w+))?,?\s+(\d+)%",
+def _parse_rclone_count(raw: str) -> int:
+    """Converte contatori rclone (es. 3.803k, 1,234) in intero."""
+    text = raw.strip().replace(",", "")
+    if not text:
+        return 0
+    mult = 1
+    suffix = text[-1].lower()
+    if suffix in ("k", "m", "g", "t"):
+        mult = {"k": 1_000, "m": 1_000_000, "g": 1_000_000_000, "t": 1_000_000_000_000}[suffix]
+        text = text[:-1]
+    try:
+        return int(float(text) * mult)
+    except ValueError:
+        return 0
+
+
+_STATS_BYTES_RE = re.compile(
+    r"(?:Transferred:\s+|INFO\s+:\s+)\s*"
+    r"([\d.]+\s*(?:[KMGT]i?)?B)\s*/\s*([\d.]+\s*(?:[KMGT]i?)?B|\?),?\s*(\d+|-)?%?,?\s*"
+    r"([\d.]+\s*(?:[KMGT]i?)?B/s)?,?\s*(?:ETA\s+([\dmswh-]+))?",
+    re.IGNORECASE,
 )
+_STATS_FILES_RE = re.compile(
+    r"Transferred:\s+([\d,.kKmMgGtT]+)\s*/\s*([\d,.kKmMgGtT]+),?\s*(\d+|-)?%?",
+    re.IGNORECASE,
+)
+_CHECKS_RE = re.compile(
+    r"Checks:\s+([\d,.kKmMgGtT]+)\s*/\s*([\d,.kKmMgGtT]+),?\s*(\d+|-)?%?",
+    re.IGNORECASE,
+)
+_COPIED_RE = re.compile(
+    r"INFO\s+:\s+(.+?):\s+Copied\s+\((new|replaced|unchanged)\)",
+    re.IGNORECASE,
+)
+_SKIPPED_MTIME_RE = re.compile(
+    r"INFO\s+:\s+(.+?):\s+Updated modification time in destination",
+    re.IGNORECASE,
+)
+_DELETED_RE = re.compile(
+    r"INFO\s+:\s+(.+?):\s+Deleted",
+    re.IGNORECASE,
+)
+_NOTHING_TRANSFER_RE = re.compile(r"There was nothing to transfer", re.IGNORECASE)
 
 
 def preflight_rclone() -> None:
@@ -62,11 +103,11 @@ pass = {_obscure_password(spass)}
 use_signing = false
 
 [fr_dest]
-type = sftp
+type = smb
 host = {dest.host}
 user = {dest.username}
 pass = {_obscure_password(dpass)}
-shell_type = unix
+use_signing = false
 """
     with open(cfg_path, "w", encoding="utf-8") as fh:
         fh.write(content)
@@ -76,19 +117,159 @@ shell_type = unix
 def _remote_paths(src_path: str, dest_dir: str) -> tuple[str, str]:
     share, subpath = parse_synology_share_path(src_path)
     src_remote = f"{share}/{subpath}" if subpath else share
-    dest_remote = dest_dir.strip("/")
+    dest_remote = qnap_rclone_dest_path(dest_dir.rstrip("/"))
     return src_remote, dest_remote
 
 
 def parse_rclone_progress(line: str) -> Optional[dict]:
-    match = _TRANSFER_RE.search(line)
-    if not match:
-        return None
-    return {
-        "bytes_transferred": None,
-        "percent": f"{match.group(3)}%",
-        "speed": None,
-    }
+    """Estrae avanzamento da righe stats/copied di rclone."""
+    if _NOTHING_TRANSFER_RE.search(line):
+        return {"nothing_to_transfer": True}
+
+    copied = _COPIED_RE.search(line)
+    if copied:
+        action = copied.group(2).lower()
+        out: dict = {"last_file": copied.group(1).strip()}
+        if action == "unchanged":
+            out["files_skipped_delta"] = 1
+        else:
+            out["files_copied_delta"] = 1
+        return out
+
+    skipped = _SKIPPED_MTIME_RE.search(line)
+    if skipped:
+        return {
+            "files_skipped_delta": 1,
+            "last_file": skipped.group(1).strip(),
+        }
+
+    deleted = _DELETED_RE.search(line)
+    if deleted:
+        return {
+            "files_deleted_delta": 1,
+            "last_file": deleted.group(1).strip(),
+        }
+
+    checks_match = _CHECKS_RE.search(line)
+    if checks_match:
+        done = _parse_rclone_count(checks_match.group(1))
+        total = _parse_rclone_count(checks_match.group(2))
+        pct_raw = (checks_match.group(3) or "").strip()
+        out = {
+            "files_checked": done,
+            "files_checked_total": total,
+        }
+        if pct_raw and pct_raw != "-":
+            out["checks_percent"] = f"{pct_raw}%"
+        elif total > 0:
+            out["checks_percent"] = f"{int(done * 100 / total)}%"
+        return out
+
+    files_match = _STATS_FILES_RE.search(line)
+    if files_match:
+        done = _parse_rclone_count(files_match.group(1))
+        total = _parse_rclone_count(files_match.group(2))
+        pct_raw = (files_match.group(3) or "").strip()
+        out = {
+            "files_copied": done,
+            "files_total": total,
+        }
+        if pct_raw and pct_raw != "-":
+            out["percent"] = f"{pct_raw}%"
+        elif total > 0:
+            out["percent"] = f"{int(done * 100 / total)}%"
+        return out
+
+    bytes_match = _STATS_BYTES_RE.search(line)
+    if bytes_match:
+        transferred = bytes_match.group(1).strip()
+        total_raw = bytes_match.group(2).strip()
+        pct_raw = (bytes_match.group(3) or "").strip()
+        speed = (bytes_match.group(4) or "").strip() or None
+        eta = (bytes_match.group(5) or "").strip() or None
+        out = {
+            "transferred_human": transferred,
+            "speed": speed,
+            "eta": eta,
+        }
+        if total_raw != "?":
+            out["transferred_total_human"] = total_raw
+            if pct_raw and pct_raw != "-":
+                out["percent"] = f"{pct_raw}%"
+        return out
+
+    return None
+
+
+def merge_rclone_progress(state: dict, patch: dict) -> dict:
+    """Accumula patch di progresso rclone nello stato del job."""
+    merged = dict(state)
+    for delta_key, counter_key in (
+        ("files_copied_delta", "files_copied"),
+        ("files_skipped_delta", "files_skipped"),
+        ("files_deleted_delta", "files_deleted"),
+    ):
+        if patch.get(delta_key):
+            merged[counter_key] = int(merged.get(counter_key) or 0) + int(patch[delta_key])
+
+    if patch.get("nothing_to_transfer"):
+        merged["nothing_to_transfer"] = True
+
+    for key, value in patch.items():
+        if key.endswith("_delta") or key == "nothing_to_transfer":
+            continue
+        if value is not None:
+            merged[key] = value
+
+    copied = int(merged.get("files_copied") or 0)
+    skipped = int(merged.get("files_skipped") or 0)
+    checked = merged.get("files_checked")
+    if checked is not None and copied + skipped == 0 and int(checked) > 0:
+        merged["files_skipped"] = max(skipped, int(checked) - copied)
+
+    merged["files_done"] = copied
+    return merged
+
+
+def summarize_rclone_output(lines: list[str]) -> dict:
+    """Ricostruisce riepilogo finale da tutto l'output rclone."""
+    state: dict = {}
+    for line in lines:
+        patch = parse_rclone_progress(line)
+        if patch:
+            state = merge_rclone_progress(state, patch)
+    return state
+
+
+def format_rclone_progress_summary(state: dict) -> str:
+    """Testo riepilogo per log/messaggi UI."""
+    if not state:
+        return ""
+    parts: list[str] = []
+    copied = int(state.get("files_copied") or state.get("files_done") or 0)
+    skipped = int(state.get("files_skipped") or 0)
+    deleted = int(state.get("files_deleted") or 0)
+    checked = state.get("files_checked_total") or state.get("files_checked")
+
+    if copied:
+        parts.append(f"{copied:,} copiati".replace(",", "."))
+    if skipped:
+        parts.append(f"{skipped:,} saltati".replace(",", "."))
+    if deleted:
+        parts.append(f"{deleted:,} eliminati".replace(",", "."))
+    if checked:
+        parts.append(f"{int(checked):,} controllati".replace(",", "."))
+
+    if state.get("transferred_human"):
+        size = state["transferred_human"]
+        if state.get("transferred_total_human"):
+            size += f" / {state['transferred_total_human']}"
+        parts.append(size)
+
+    if state.get("nothing_to_transfer") and not copied:
+        parts.insert(0, "Nessun file da trasferire")
+
+    return " · ".join(parts)
 
 
 async def rclone_sync_synology_to_qnap(
@@ -100,6 +281,7 @@ async def rclone_sync_synology_to_qnap(
     delete_on_dest: bool,
     exclude_file: str | None = None,
     bandwidth_limit_kb: int | None = None,
+    on_line: Callable[[str], None] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Sync incrementale; con delete_on_dest rimuove su QNAP ciò che non è più in sorgente."""
     cfg_path, src_name, dest_name = _build_rclone_config(source, dest)
@@ -109,7 +291,7 @@ async def rclone_sync_synology_to_qnap(
         "sync" if delete_on_dest else "copy",
         f"{src_name}:{src_remote}",
         f"{dest_name}:{dest_remote}",
-        "--stats-one-line",
+        "--create-empty-src-dirs",
         "--stats",
         "5s",
         "-v",
@@ -134,6 +316,20 @@ async def rclone_sync_synology_to_qnap(
     )
 
     try:
+        mkdir_proc = await asyncio.create_subprocess_exec(
+            "rclone",
+            "mkdir",
+            f"{dest_name}:{dest_remote}",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            env=env,
+        )
+        mkdir_out, _ = await mkdir_proc.communicate()
+        if mkdir_out:
+            combined_mkdir = mkdir_out.decode(errors="replace")
+            if on_line:
+                on_line(combined_mkdir)
+
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
@@ -148,9 +344,18 @@ async def rclone_sync_synology_to_qnap(
                 break
             line = line_b.decode(errors="replace")
             combined.append(line)
+            if on_line:
+                on_line(line)
         code = await proc.wait()
         if code != 0:
-            raise RuntimeError(f"rclone exit {code}: {''.join(combined)[-2000:]}")
+            tail = "".join(combined)[-2000:]
+            if code in (-15, -2, 130, 143):
+                raise RuntimeError(
+                    "Sync interrotto (processo terminato). "
+                    "I file già copiati restano su QNAP. "
+                    "Rilancia il job: rclone trasferirà solo i file mancanti."
+                ) from None
+            raise RuntimeError(f"rclone exit {code}: {tail}")
         return combined, []
     finally:
         try:

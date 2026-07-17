@@ -10,7 +10,16 @@ from typing import List, Optional, Tuple, Dict, Any
 import logging
 
 from services.email_service import email_service
-from database import SessionLocal, NotificationConfig, JobLog, SyncJob, RecoveryJob, Node
+from database import (
+    SessionLocal,
+    NotificationConfig,
+    JobLog,
+    SyncJob,
+    RecoveryJob,
+    FileReplicationJob,
+    FileEndpoint,
+    Node,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +93,8 @@ class NotificationService:
         dest_node_name: Optional[str] = None,
         cluster_name: Optional[str] = None,
         vm_name: Optional[str] = None,
-        vm_id: Optional[int] = None
+        vm_id: Optional[int] = None,
+        notify_subject: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Invia notifica per un job completato su tutti i canali abilitati.
@@ -244,7 +254,9 @@ class NotificationService:
                     dest_node_name=dest_node_name,
                     job_type=job_type,
                     vm_name=vm_name,
-                    vm_id=vm_id
+                    vm_id=vm_id,
+                    transferred=transferred,
+                    notify_subject=notify_subject,
                 )
                 results["channels"]["email"] = {"success": success, "message": message}
                 if success:
@@ -361,8 +373,9 @@ class NotificationService:
             # Ottieni tutti i sync jobs attivi
             sync_jobs = db.query(SyncJob).filter(SyncJob.is_active == True).all()
             recovery_jobs = db.query(RecoveryJob).filter(RecoveryJob.is_active == True).all()
-            
-            if not sync_jobs and not recovery_jobs:
+            file_repl_jobs = db.query(FileReplicationJob).filter(FileReplicationJob.is_active == True).all()
+
+            if not sync_jobs and not recovery_jobs and not file_repl_jobs:
                 logger.info("Nessun job configurato, riepilogo non inviato")
                 return {"sent": False, "reason": "no_jobs_configured"}
             
@@ -501,9 +514,68 @@ class NotificationService:
                 successful += job_success
                 failed += job_failed
                 total_duration += job_duration
-            
+
+            for job in file_repl_jobs:
+                job_logs = db.query(JobLog).filter(
+                    JobLog.job_id == job.id,
+                    JobLog.job_type == "file_replication",
+                    JobLog.started_at >= yesterday,
+                ).order_by(JobLog.started_at.desc()).all()
+
+                source = db.query(FileEndpoint).filter(FileEndpoint.id == job.source_endpoint_id).first()
+                dest = db.query(FileEndpoint).filter(FileEndpoint.id == job.dest_endpoint_id).first()
+
+                job_runs = len(job_logs)
+                job_success = len([l for l in job_logs if l.status == "success"])
+                job_failed = len([l for l in job_logs if l.status == "failed"])
+                job_duration = sum(l.duration or 0 for l in job_logs)
+
+                last_error = None
+                last_error_time = None
+                for log in job_logs:
+                    if log.status == "failed" and log.error:
+                        last_error = log.error[:200]
+                        last_error_time = log.started_at.strftime("%H:%M") if log.started_at else None
+                        break
+
+                last_transferred = None
+                for log in job_logs:
+                    if log.transferred:
+                        last_transferred = log.transferred
+                        break
+
+                paths = job.source_paths or []
+                source_paths_label = ", ".join(paths[:2])
+                if len(paths) > 2:
+                    source_paths_label += f" (+{len(paths) - 2})"
+
+                job_info = {
+                    "id": job.id,
+                    "name": job.name,
+                    "type": "file_replication",
+                    "source_node": source.name if source else "N/A",
+                    "dest_node": dest.name if dest else "N/A",
+                    "source_dataset": source_paths_label or "—",
+                    "dest_dataset": job.dest_staging_path,
+                    "schedule": job.schedule or "Manuale",
+                    "runs_24h": job_runs,
+                    "success_24h": job_success,
+                    "failed_24h": job_failed,
+                    "duration_24h": job_duration,
+                    "last_status": job.last_run_status or "never_run",
+                    "last_run": job.last_run_at.strftime("%d/%m %H:%M") if job.last_run_at else "Mai",
+                    "last_transferred": last_transferred,
+                    "last_error": last_error,
+                    "last_error_time": last_error_time,
+                }
+                jobs_summary.append(job_info)
+                total_runs += job_runs
+                successful += job_success
+                failed += job_failed
+                total_duration += job_duration
+
             summary_data = {
-                "total_jobs": len(sync_jobs) + len(recovery_jobs),
+                "total_jobs": len(sync_jobs) + len(recovery_jobs) + len(file_repl_jobs),
                 "total_runs": total_runs,
                 "successful": successful,
                 "failed": failed,
@@ -615,8 +687,23 @@ class NotificationService:
                         <div>🔄 Restore: <strong>{restore_mins}m {restore_secs}s</strong></div>
                     </div>
                 """
+            elif job.get("type") == "file_replication":
+                job_type_label = "📁 Replica file (NAS)"
+                source_info = (
+                    f"{job['source_node']}<br>"
+                    f"<code style='background: #f1f1f1; padding: 2px 4px; border-radius: 3px; font-size: 10px;'>"
+                    f"{job.get('source_dataset', 'N/A')}</code>"
+                )
+                dest_info = (
+                    f"{job['dest_node']}<br>"
+                    f"<code style='background: #f1f1f1; padding: 2px 4px; border-radius: 3px; font-size: 10px;'>"
+                    f"{job.get('dest_dataset', 'N/A')}</code>"
+                )
+                duration_info = f"""
+                    {job_duration}<br>
+                    <span style="color: #6c757d;">{job.get('last_transferred', '-')}</span>
+                """
             else:
-                # Sync Job: mostra dataset
                 job_type_label = "📦 Sync (ZFS/BTRFS)"
                 source_info = f"{job['source_node']}<br><code style='background: #f1f1f1; padding: 2px 4px; border-radius: 3px; font-size: 10px;'>{job.get('source_dataset', 'N/A')}</code>"
                 dest_info = f"{job['dest_node']}<br><code style='background: #f1f1f1; padding: 2px 4px; border-radius: 3px; font-size: 10px;'>{job.get('dest_dataset', 'N/A')}</code>"

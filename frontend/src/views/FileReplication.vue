@@ -1,10 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import FileEndpointForm from '../components/file-replication/FileEndpointForm.vue'
 import FileReplJobModal from '../components/file-replication/FileReplJobModal.vue'
 import FileReplLogModal from '../components/file-replication/FileReplLogModal.vue'
+import FileReplPathMapping from '../components/file-replication/FileReplPathMapping.vue'
 import { fileEndpointsApi, type FileEndpoint } from '../services/fileEndpoints'
 import { fileReplicationApi, type FileReplicationJob } from '../services/fileReplication'
+import {
+  formatFileReplProgress,
+  type FileReplProgress,
+} from '../utils/fileReplProgress'
 
 const jobs = ref<FileReplicationJob[]>([])
 const endpoints = ref<FileEndpoint[]>([])
@@ -18,13 +23,15 @@ const showEndpointForm = ref(false)
 const editingEndpoint = ref<FileEndpoint | null>(null)
 const endpointError = ref('')
 const loading = ref(false)
+const progressByJob = ref<Record<number, FileReplProgress>>({})
+let pollTimer: ReturnType<typeof setInterval> | null = null
 
 const activeCount = computed(() => stats.value.active)
 const runningCount = computed(() => stats.value.running)
 const failedCount = computed(() => stats.value.failed)
 
-async function refresh() {
-  loading.value = true
+async function refresh(silent = false) {
+  if (!silent) loading.value = true
   try {
     const [j, e, s] = await Promise.all([
       fileReplicationApi.list(),
@@ -35,7 +42,51 @@ async function refresh() {
     endpoints.value = e.data
     stats.value = s.data
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
+  }
+}
+
+function jobIsRunning(job: FileReplicationJob) {
+  return job.current_status === 'running'
+}
+
+async function refreshProgressForRunning() {
+  const running = jobs.value.filter((j) => jobIsRunning(j))
+  await Promise.all(
+    running.map(async (j) => {
+      try {
+        const { data } = await fileReplicationApi.progress(j.id)
+        if (data.status === 'running') {
+          progressByJob.value[j.id] = data as FileReplProgress
+        } else {
+          delete progressByJob.value[j.id]
+        }
+      } catch {
+        /* ignore transient progress errors */
+      }
+    }),
+  )
+}
+
+function progressLabel(jobId: number) {
+  return formatFileReplProgress(progressByJob.value[jobId])
+}
+
+function startLivePoll() {
+  if (pollTimer) return
+  pollTimer = setInterval(async () => {
+    await refresh(true)
+    await refreshProgressForRunning()
+    const anyRunning =
+      stats.value.running > 0 || jobs.value.some((j) => jobIsRunning(j))
+    if (!anyRunning) stopLivePoll()
+  }, 3000)
+}
+
+function stopLivePoll() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
   }
 }
 
@@ -46,6 +97,7 @@ async function runJob(job: FileReplicationJob) {
     logJob.value = job
     showLogModal.value = true
     await refresh()
+    startLivePoll()
     for (let i = 0; i < 90; i++) {
       await new Promise((r) => setTimeout(r, 2000))
       const { data } = await fileReplicationApi.progress(job.id)
@@ -70,6 +122,10 @@ async function runJob(job: FileReplicationJob) {
 function openJobLogs(job: FileReplicationJob) {
   logJob.value = job
   showLogModal.value = true
+  if (jobIsRunning(job)) {
+    void refreshProgressForRunning()
+    startLivePoll()
+  }
 }
 
 function closeLogModal() {
@@ -169,7 +225,27 @@ function formatDate(v?: string | null) {
   return new Date(v).toLocaleString()
 }
 
-onMounted(refresh)
+function formatBytes(n?: number | null) {
+  if (!n) return ''
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let v = n
+  let i = 0
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024
+    i++
+  }
+  return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`
+}
+
+onMounted(async () => {
+  await refresh()
+  if (stats.value.running > 0 || jobs.value.some((j) => jobIsRunning(j))) {
+    await refreshProgressForRunning()
+    startLivePoll()
+  }
+})
+
+onUnmounted(stopLivePoll)
 </script>
 
 <template>
@@ -274,8 +350,7 @@ onMounted(refresh)
           <thead>
             <tr>
               <th>Nome</th>
-              <th>Sorgente</th>
-              <th>Destinazione</th>
+              <th>Replica</th>
               <th>Schedule</th>
               <th>Ultimo run</th>
               <th>Stato</th>
@@ -285,14 +360,41 @@ onMounted(refresh)
           <tbody>
             <tr v-for="job in jobs" :key="job.id">
               <td>{{ job.name }}</td>
-              <td>{{ job.source_endpoint_name }}</td>
-              <td>{{ job.dest_endpoint_name }}<br /><small>{{ job.dest_staging_path }}</small></td>
+              <td class="fr-job-structure">
+                <FileReplPathMapping
+                  compact
+                  :max-rows="2"
+                  :source-paths="job.source_paths || []"
+                  :dest-share-path="job.dest_staging_path"
+                  :source-label="job.source_endpoint_name"
+                  :dest-label="job.dest_endpoint_name"
+                />
+              </td>
               <td><code>{{ job.schedule || 'manuale' }}</code></td>
-              <td>{{ formatDate(job.last_run_at) }}</td>
               <td>
-                <span :class="job.last_run_status === 'success' ? 'text-success' : job.last_run_status === 'failed' ? 'text-danger' : ''">
-                  {{ job.current_status || job.last_run_status || 'idle' }}
+                {{ formatDate(job.last_run_at) }}
+                <small v-if="job.last_run_duration_sec" class="muted d-block">
+                  {{ job.last_run_duration_sec }}s
+                  <span v-if="job.last_bytes_transferred"> · {{ formatBytes(job.last_bytes_transferred) }}</span>
+                </small>
+              </td>
+              <td>
+                <span
+                  :class="
+                    jobIsRunning(job)
+                      ? 'text-warning'
+                      : job.current_status === 'failed' || job.last_run_status === 'failed'
+                        ? 'text-danger'
+                        : job.last_run_status === 'success'
+                          ? 'text-success'
+                          : ''
+                  "
+                >
+                  {{ jobIsRunning(job) ? 'running' : job.current_status || job.last_run_status || 'idle' }}
                 </span>
+                <small v-if="jobIsRunning(job) && progressLabel(job.id)" class="muted d-block">
+                  {{ progressLabel(job.id) }}
+                </small>
                 <small v-if="job.last_run_error" class="muted d-block text-danger" :title="job.last_run_error">
                   {{ job.last_run_error.length > 120 ? job.last_run_error.slice(0, 120) + '…' : job.last_run_error }}
                 </small>
@@ -317,6 +419,7 @@ onMounted(refresh)
       v-if="showLogModal && logJob"
       :job-id="logJob.id"
       :job-name="logJob.name"
+      :job="logJob"
       @close="closeLogModal"
     />
 
@@ -338,6 +441,7 @@ onMounted(refresh)
 .repl-stat-label { display: block; font-size: 0.75rem; opacity: 0.7; }
 .repl-stat-val { font-size: 1.5rem; font-weight: 700; }
 .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.fr-job-structure { min-width: 240px; max-width: 380px; vertical-align: top; }
 .badge { font-size: 0.75rem; background: #333; padding: 2px 8px; border-radius: 4px; }
 .muted { opacity: 0.65; font-size: 0.85rem; }
 .d-block { display: block; margin-top: 2px; max-width: 280px; }

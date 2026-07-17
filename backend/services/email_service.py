@@ -138,7 +138,9 @@ class EmailService:
         dest_node_name: Optional[str] = None,
         job_type: Optional[str] = None,  # sync, backup, recovery, migration
         vm_name: Optional[str] = None,
-        vm_id: Optional[int] = None
+        vm_id: Optional[int] = None,
+        transferred: Optional[str] = None,
+        notify_subject: Optional[str] = None,
     ) -> Tuple[bool, str]:
         """
         Invia notifica per un job di replica.
@@ -175,7 +177,8 @@ class EmailService:
             "sync": "📦 Sync (ZFS/BTRFS)",
             "backup": "💾 Backup (PBS)",
             "recovery": "🔄 Recovery (PBS)",
-            "migration": "🚀 Migration (Live)"
+            "migration": "🚀 Migration (Live)",
+            "file_replication": "📁 Replica file (NAS)",
         }
         module_label = job_type_labels.get(job_type, "📋 Job") if job_type else "📋 Job"
         
@@ -200,7 +203,9 @@ class EmailService:
             else:
                 duration_str = f"{seconds}s"
         
-        subject = f"{status_emoji} {module_label} {status_text}: {job_name}"
+        subject = notify_subject.strip() if notify_subject and notify_subject.strip() else (
+            f"{status_emoji} {module_label} {status_text}: {job_name}"
+        )
         
         # Corpo email HTML
         body = f"""
@@ -248,6 +253,7 @@ class EmailService:
         
         <p><span class="label">Data/Ora:</span> {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC</p>
         {'<p><span class="label">Durata:</span> <strong>' + duration_str + '</strong></p>' if duration_str else ''}
+        {'<p><span class="label">Trasferito:</span> <strong>' + transferred + '</strong></p>' if transferred else ''}
     </div>
     
     {'<div class="error"><strong>Errore:</strong><br><pre style="white-space: pre-wrap; word-break: break-all;">' + (error or '') + '</pre></div>' if error else ''}

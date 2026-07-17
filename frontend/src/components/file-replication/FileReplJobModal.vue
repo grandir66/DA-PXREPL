@@ -2,9 +2,12 @@
 import axios from 'axios'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import FolderBrowser from './FolderBrowser.vue'
+import FileReplPathMapping from './FileReplPathMapping.vue'
 import QnapImmutabilityHint from './QnapImmutabilityHint.vue'
 import { fileEndpointsApi, type FileEndpoint } from '../../services/fileEndpoints'
 import { fileReplicationApi, type FileReplicationJob } from '../../services/fileReplication'
+import { normalizeQnapDestShare } from '../../utils/qnapPath'
+import { compactSourcePaths } from '../../utils/pathSelection'
 
 const props = defineProps<{
   job?: FileReplicationJob | null
@@ -24,7 +27,7 @@ const form = reactive({
   source_endpoint_id: null as number | null,
   dest_endpoint_id: null as number | null,
   source_paths: [] as string[],
-  dest_staging_path: '/share/staging/archivio',
+  dest_staging_path: '/share/DATI',
   delete_on_dest: true,
   exclude_presets: ['nas_snapshots', 'system_files'] as string[],
   exclude_patterns: '',
@@ -32,7 +35,8 @@ const form = reactive({
   snapshot_schedule: '0 3 * * *',
   expiration_days: 30,
   max_snapshots: 10,
-  notify_mode: 'daily',
+  notify_mode: 'daily' as 'daily' | 'always' | 'failure' | 'never',
+  notify_subject: '',
 })
 
 const sourceEndpoints = computed(() =>
@@ -44,12 +48,28 @@ const destEndpoints = computed(() =>
   ),
 )
 
+const destShare = computed(() => normalizeQnapDestShare(form.dest_staging_path))
+
+const sourceEndpointName = computed(
+  () => sourceEndpoints.value.find((e) => e.id === form.source_endpoint_id)?.name || null,
+)
+const destEndpointName = computed(
+  () => destEndpoints.value.find((e) => e.id === form.dest_endpoint_id)?.name || null,
+)
+
+const destStagingPaths = computed({
+  get: () => (form.dest_staging_path ? [form.dest_staging_path] : []),
+  set: (paths: string[]) => {
+    form.dest_staging_path = paths[0] ? normalizeQnapDestShare(paths[0]) : '/share/DATI'
+  },
+})
+
 function resetForm() {
   form.name = ''
   form.source_endpoint_id = null
   form.dest_endpoint_id = null
   form.source_paths = []
-  form.dest_staging_path = '/share/staging/archivio'
+  form.dest_staging_path = '/share/DATI'
   form.delete_on_dest = true
   form.exclude_presets = ['nas_snapshots', 'system_files']
   form.exclude_patterns = ''
@@ -58,6 +78,7 @@ function resetForm() {
   form.expiration_days = 30
   form.max_snapshots = 10
   form.notify_mode = 'daily'
+  form.notify_subject = ''
   step.value = 1
   errorMsg.value = ''
 }
@@ -67,8 +88,8 @@ function loadFromJob(job: FileReplicationJob) {
   form.name = job.name
   form.source_endpoint_id = job.source_endpoint_id
   form.dest_endpoint_id = job.dest_endpoint_id
-  form.source_paths = [...(job.source_paths || [])]
-  form.dest_staging_path = job.dest_staging_path
+  form.source_paths = compactSourcePaths([...(job.source_paths || [])])
+  form.dest_staging_path = normalizeQnapDestShare(job.dest_staging_path)
   form.delete_on_dest = job.delete_on_dest
   form.exclude_presets = [...(job.exclude_presets || ['nas_snapshots', 'system_files'])]
   form.exclude_patterns = (job.exclude_patterns || []).join('\n')
@@ -76,7 +97,8 @@ function loadFromJob(job: FileReplicationJob) {
   form.snapshot_schedule = String(hint.schedule || '0 3 * * *')
   form.expiration_days = Number(hint.expiration_days || 30)
   form.max_snapshots = Number(hint.max_snapshots || 10)
-  form.notify_mode = job.notify_mode || 'daily'
+  form.notify_mode = (job.notify_mode as typeof form.notify_mode) || 'daily'
+  form.notify_subject = job.notify_subject || ''
   step.value = 1
   errorMsg.value = ''
 }
@@ -84,7 +106,7 @@ function loadFromJob(job: FileReplicationJob) {
 function buildPayload(): Record<string, unknown> {
   return {
     name: form.name,
-    source_paths: form.source_paths,
+    source_paths: compactSourcePaths(form.source_paths),
     dest_staging_path: form.dest_staging_path,
     delete_on_dest: form.delete_on_dest,
     exclude_presets: form.exclude_presets,
@@ -94,6 +116,7 @@ function buildPayload(): Record<string, unknown> {
       .filter(Boolean),
     schedule: form.schedule || null,
     notify_mode: form.notify_mode,
+    notify_subject: form.notify_subject.trim() || null,
     snapshot_policy_hint: {
       schedule: form.snapshot_schedule,
       expiration_days: form.expiration_days,
@@ -190,9 +213,9 @@ onMounted(loadEndpoints)
           :exclude-presets="form.exclude_presets"
         />
         <p class="text-muted mt-2">
-          Synology → QNAP: sync <strong>incrementale</strong> (rclone) — solo file nuovi o modificati.
-          Con «Elimina su destinazione» lo staging resta allineato; lo storico via <strong>snapshot QNAP</strong>.
-          Path es. <code>/Comune/AArchivio</code>, staging <code>/share/DATI/archivio</code>.
+          Seleziona le cartelle Synology. La struttura share/cartelle viene replicata sotto DATI su QNAP.
+          <strong>#snapshot</strong>, <strong>@Snapshot</strong>, <strong>#recycle</strong> e cartelle di sistema
+          sono <strong>sempre escluse</strong> dal sync (nessuno storico dalla sorgente).
         </p>
       </div>
 
@@ -208,23 +231,70 @@ onMounted(loadEndpoints)
           <small v-if="isEdit" class="text-muted">L'endpoint destinazione non è modificabile in modifica job.</small>
         </div>
         <div class="form-group">
-          <label>Path staging su QNAP</label>
-          <input v-model="form.dest_staging_path" class="form-input" placeholder="/share/DATI/archivio" />
+          <label>Share destinazione QNAP</label>
+          <FolderBrowser
+            v-model="destStagingPaths"
+            :endpoint-id="form.dest_endpoint_id"
+            :exclude-presets="form.exclude_presets"
+            mode="single"
+            normalize-qnap-paths
+            share-only
+            hint="Seleziona solo la share QNAP (es. DATI). Le sottocartelle ereditano il percorso Synology."
+          />
           <small class="text-muted">
-            Per rsync via SSH usa il prefisso <code>/share/</code>, es. <code>/share/DATI/archivio</code>
-            (non solo <code>/DATI/...</code>).
+            Scegli solo la share QNAP di destinazione. Le sottocartelle ereditano il percorso Synology.
           </small>
         </div>
+        <FileReplPathMapping
+          v-if="form.source_paths.length"
+          class="mt-2"
+          show-header
+          :source-paths="form.source_paths"
+          :dest-share-path="destShare"
+          :source-label="sourceEndpointName"
+          :dest-label="destEndpointName"
+        />
       </div>
 
       <div v-show="step === 4" class="modal-body">
+        <FileReplPathMapping
+          v-if="form.source_paths.length"
+          class="mb-2"
+          compact
+          show-header
+          :source-paths="form.source_paths"
+          :dest-share-path="destShare"
+          :source-label="sourceEndpointName"
+          :dest-label="destEndpointName"
+        />
         <label class="checkbox-label">
           <input v-model="form.delete_on_dest" type="checkbox" />
-          Elimina su staging QNAP i file non più presenti in Synology (allineamento mirror; versioning = snapshot QNAP)
+          Elimina su QNAP i file non più presenti in Synology (mirror corrente; nessuno storico sorgente)
         </label>
+        <p class="text-muted mt-2">
+          Esclusioni automatiche (non disabilitabili): <code>#snapshot</code>, <code>@Snapshot</code>,
+          <code>#recycle</code>, <code>@eaDir</code>, cestini e cartelle di sistema.
+          Lo storico/versioning va configurato solo con gli <strong>snapshot QNAP</strong>.
+        </p>
         <div class="form-group mt-3">
           <label>Cron sync dapx</label>
           <input v-model="form.schedule" class="form-input" placeholder="0 2 * * *" />
+        </div>
+        <div class="form-group">
+          <label>Notifiche email</label>
+          <select v-model="form.notify_mode" class="form-input">
+            <option value="daily">Riepilogo giornaliero (max 1 OK/giorno) + errori</option>
+            <option value="always">Ogni esecuzione</option>
+            <option value="failure">Solo fallimenti</option>
+            <option value="never">Mai</option>
+          </select>
+          <small class="text-muted">
+            Richiede SMTP configurato in Impostazioni → Notifiche e «Notifica successi» attivo per le email OK.
+          </small>
+        </div>
+        <div class="form-group">
+          <label>Oggetto email (opzionale)</label>
+          <input v-model="form.notify_subject" type="text" class="form-input" placeholder="Replica Comune → QNAP" />
         </div>
         <div class="form-group">
           <label>Pattern exclude aggiuntivi (uno per riga)</label>
@@ -271,5 +341,6 @@ onMounted(loadEndpoints)
 .steps { display: flex; gap: 12px; padding: 0 20px 12px; font-size: 0.85rem; opacity: 0.7; }
 .steps .active { opacity: 1; font-weight: 600; }
 .mt-3 { margin-top: 12px; }
+.mb-3 { margin-bottom: 12px; }
 .text-muted { opacity: 0.75; font-size: 0.85rem; display: block; margin-top: 4px; }
 </style>

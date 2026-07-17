@@ -14,12 +14,20 @@ from database import FileEndpoint, FileEndpointType, FileReplicationJob, JobLog,
 from services.file_replication.endpoint_crypto import decrypt_password
 from services.file_replication.exclude_presets import build_exclude_lines
 from services.file_replication.file_sync_service import build_sync_plan, parse_rsync_progress
+from services.file_replication.file_replication_notifications import notify_file_replication_result
+from services.file_replication.file_replication_report import (
+    build_file_replication_report,
+    report_transferred_human,
+)
 from services.file_replication.rclone_sync import (
+    format_rclone_progress_summary,
+    merge_rclone_progress,
     parse_rclone_progress,
     preflight_rclone,
     rclone_sync_synology_to_qnap,
+    summarize_rclone_output,
 )
-from services.notification_service import notification_service
+from services.size_utils import parse_transfer_size_to_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +101,13 @@ async def execute_file_replication_job(job_id: int) -> None:
         return
 
     _running.add(job_id)
-    _progress[job_id] = {"status": "running", "percent": "0%", "bytes_transferred": 0}
+    _progress[job_id] = {
+        "status": "running",
+        "transferred_human": "0 B",
+        "files_copied": 0,
+        "files_skipped": 0,
+        "files_done": 0,
+    }
     db = SessionLocal()
     log_row: Optional[JobLog] = None
     started = datetime.utcnow()
@@ -194,6 +208,21 @@ async def execute_file_replication_job(job_id: int) -> None:
 
         for step in sync_plan:
             if step["type"] == "rclone_sync":
+                step_msg = f"rclone {step['src_path']}"
+                rclone_state: dict = dict(_progress.get(job_id) or {})
+
+                def _on_rclone_line(line: str, _msg: str = step_msg) -> None:
+                    patch = parse_rclone_progress(line)
+                    if not patch:
+                        return
+                    nonlocal rclone_state
+                    rclone_state = merge_rclone_progress(rclone_state, patch)
+                    _progress[job_id] = {
+                        **rclone_state,
+                        "status": "running",
+                        "message": _msg,
+                    }
+
                 out, err = await rclone_sync_synology_to_qnap(
                     source,
                     dest,
@@ -202,50 +231,73 @@ async def execute_file_replication_job(job_id: int) -> None:
                     delete_on_dest=bool(step.get("delete_on_dest")),
                     exclude_file=step.get("exclude_file"),
                     bandwidth_limit_kb=step.get("bandwidth_limit_kb"),
+                    on_line=_on_rclone_line,
                 )
                 combined_stdout.extend(out)
                 combined_stderr.extend(err)
-                for line in out:
-                    prog = parse_rclone_progress(line)
-                    if prog:
-                        _progress[job_id] = {
-                            "status": "running",
-                            **prog,
-                            "message": f"rclone {step['src_path']}",
-                        }
+                step_summary = summarize_rclone_output(out)
+                if step_summary:
+                    rclone_state = merge_rclone_progress(rclone_state, step_summary)
+                    _progress[job_id] = {
+                        **rclone_state,
+                        "status": "running",
+                        "message": step_msg,
+                    }
             elif step["type"] == "rsync":
                 await _run_rsync(step["cmd"])
 
         duration = int((datetime.utcnow() - started).total_seconds())
+        final_progress = dict(_progress.get(job_id) or {})
+        progress_summary = format_rclone_progress_summary(final_progress)
+        if not total_bytes and final_progress.get("transferred_human"):
+            total_bytes = parse_transfer_size_to_bytes(final_progress["transferred_human"])
+        transferred_label = report_transferred_human(final_progress, total_bytes)
+        files_copied = int(final_progress.get("files_copied") or final_progress.get("files_done") or 0)
+        report_text = build_file_replication_report(
+            job=job,
+            source=source,
+            dest=dest,
+            duration_sec=duration,
+            progress={**final_progress, "summary": progress_summary},
+            total_bytes=total_bytes,
+        )
+
         job.last_run_at = datetime.utcnow()
         job.last_run_status = "success"
         job.last_run_duration_sec = duration
         job.last_bytes_transferred = total_bytes
+        job.last_files_transferred = files_copied
         job.current_status = "idle"
         db.commit()
 
         if log_row:
             log_row.status = "success"
-            log_row.message = f"Replica completata in {duration}s"
-            log_row.output = "".join(combined_stdout)[-50000:]
+            log_row.message = report_text.split("\n")[0] if report_text else f"Replica completata in {duration}s"
+            if progress_summary:
+                log_row.message = f"Replica completata in {duration}s — {progress_summary}"
+            log_row.output = report_text + "\n\n--- rclone/rsync ---\n" + "".join(combined_stdout)[-45000:]
+            log_row.duration = duration
+            log_row.transferred = transferred_label
+            log_row.completed_at = datetime.utcnow()
             db.commit()
 
-        _progress[job_id] = {"status": "success", "bytes_transferred": total_bytes}
+        _progress[job_id] = {
+            **final_progress,
+            "status": "success",
+            "summary": progress_summary,
+            "report": report_text,
+        }
 
-        if job.notify_mode in ("always", "daily"):
-            try:
-                await notification_service.send_job_notification(
-                    job_name=job.name,
-                    status="success",
-                    source=source.name,
-                    destination=dest.name,
-                    duration=duration,
-                    transferred=str(total_bytes),
-                    job_type="file_replication",
-                    notify_mode=job.notify_mode,
-                )
-            except Exception as notify_err:
-                logger.warning("Notifica file replication fallita: %s", notify_err)
+        await notify_file_replication_result(
+            job=job,
+            source=source,
+            dest=dest,
+            status="success",
+            duration=duration,
+            progress=final_progress,
+            total_bytes=total_bytes,
+            is_scheduled=bool(job.schedule),
+        )
 
     except Exception as exc:
         logger.error("FileReplicationJob %s fallito: %s", job_id, exc, exc_info=True)
@@ -266,22 +318,20 @@ async def execute_file_replication_job(job_id: int) -> None:
             error=err_text,
             duration=duration,
         )
+        if log_row and job and source and dest:
+            log_row.output = err_text
         db.commit()
         _progress[job_id] = {"status": "failed", "error": err_text}
-        if job and job.notify_mode in ("always", "failure", "daily"):
-            try:
-                await notification_service.send_job_notification(
-                    job_name=job.name,
-                    status="failed",
-                    source=source.name if source else "?",
-                    destination=dest.name if dest else "?",
-                    duration=duration,
-                    error=str(exc),
-                    job_type="file_replication",
-                    notify_mode=job.notify_mode,
-                )
-            except Exception as notify_err:
-                logger.warning("Notifica failure fallita: %s", notify_err)
+        if job and source and dest:
+            await notify_file_replication_result(
+                job=job,
+                source=source,
+                dest=dest,
+                status="failed",
+                duration=duration,
+                error=err_text,
+                is_scheduled=bool(job.schedule),
+            )
     finally:
         if exclude_path and os.path.exists(exclude_path):
             try:

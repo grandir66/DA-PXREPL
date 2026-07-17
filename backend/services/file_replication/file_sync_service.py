@@ -7,7 +7,10 @@ from typing import Optional
 
 from database import FileEndpoint, FileEndpointType, FileReplicationJob
 from services.file_replication.endpoint_crypto import decrypt_password
-from services.file_replication.path_utils import normalize_synology_ssh_path
+from services.file_replication.path_utils import (
+    normalize_synology_ssh_path,
+    synology_to_qnap_dest_path,
+)
 
 _PROGRESS_RE = re.compile(
     r"(\d+(?:,\d+)*)\s+(\d+(?:\.\d+)?%)\s+([\d.]+\w+/s)?",
@@ -70,16 +73,19 @@ def build_sync_plan(
     """Piano sync per path: pull (SMB su Synology, rsync altrove) + push QNAP."""
     steps: list[dict] = []
     dest_base = job.dest_staging_path.rstrip("/")
-    use_rclone = (
+    mirror_synology = (
         source.endpoint_type == FileEndpointType.SYNOLOGY
         and dest.endpoint_type == FileEndpointType.QNAP
-        and not (source.extra_config or {}).get("rsync_module")
     )
+    use_rclone = mirror_synology and not (source.extra_config or {}).get("rsync_module")
 
     for src_path in job.source_paths or []:
-        leaf = src_path.strip("/").split("/")[-1] or "data"
-        local_dir = f"{staging_dir}/{leaf}/"
-        dest_remote = f"{dest_base}/{leaf}/"
+        if mirror_synology:
+            dest_remote = synology_to_qnap_dest_path(src_path, dest_base)
+        else:
+            leaf = src_path.strip("/").split("/")[-1] or "data"
+            dest_remote = f"{dest_base}/{leaf}/"
+        local_dir = f"{staging_dir}/{src_path.strip('/').replace('/', '_') or 'data'}/"
 
         if use_rclone:
             steps.append(

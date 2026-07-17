@@ -17,7 +17,12 @@ from services.file_replication.file_replication_execution import (
     get_job_progress,
     is_job_running,
 )
-from services.file_replication.path_utils import sanitize_path
+from services.file_replication.exclude_presets import _merge_presets
+from services.file_replication.path_utils import (
+    compact_source_paths,
+    normalize_qnap_dest_share,
+    sanitize_path,
+)
 from services.file_replication_schemas import (
     FileReplicationJobCreate,
     FileReplicationJobOut,
@@ -38,14 +43,18 @@ def _latest_log_errors(db: Session, job_ids: list[int]) -> dict[int, str]:
         .order_by(JobLog.job_id, JobLog.id.desc())
         .all()
     )
-    out: dict[int, str] = {}
+    latest_by_job: dict[int, JobLog] = {}
     for log in logs:
-        if log.job_id in out:
+        if log.job_id not in latest_by_job:
+            latest_by_job[log.job_id] = log
+    out: dict[int, str] = {}
+    for job_id, log in latest_by_job.items():
+        if log.status != "failed":
             continue
         if log.error:
-            out[log.job_id] = log.error
-        elif log.status == "failed" and log.message:
-            out[log.job_id] = log.message
+            out[job_id] = log.error
+        elif log.message:
+            out[job_id] = log.message
     return out
 
 
@@ -118,7 +127,13 @@ def list_jobs(
 ):
     jobs = db.query(FileReplicationJob).order_by(FileReplicationJob.name).all()
     errors = _latest_log_errors(db, [j.id for j in jobs])
-    return [_job_out(j, errors.get(j.id)) for j in jobs]
+    return [
+        _job_out(
+            j,
+            None if j.current_status == "running" else errors.get(j.id),
+        )
+        for j in jobs
+    ]
 
 
 @router.post("", response_model=FileReplicationJobOut)
@@ -129,7 +144,7 @@ def create_job(
 ):
     _validate_job_endpoints(db, body.source_endpoint_id, body.dest_endpoint_id)
     try:
-        dest_path = sanitize_path(body.dest_staging_path)
+        dest_path = normalize_qnap_dest_share(body.dest_staging_path)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -139,12 +154,12 @@ def create_job(
         description=body.description,
         source_endpoint_id=body.source_endpoint_id,
         dest_endpoint_id=body.dest_endpoint_id,
-        source_paths=[sanitize_path(p) for p in body.source_paths],
+        source_paths=compact_source_paths(body.source_paths),
         dest_staging_path=dest_path,
         sync_method=body.sync_method,
         delete_on_dest=body.delete_on_dest,
         on_source_delete=body.on_source_delete,
-        exclude_presets=body.exclude_presets,
+        exclude_presets=_merge_presets(body.exclude_presets),
         exclude_patterns=body.exclude_patterns,
         bandwidth_limit_kb=body.bandwidth_limit_kb,
         extra_rsync_args=body.extra_rsync_args,
@@ -190,10 +205,12 @@ def update_job(
     if "snapshot_policy_hint" in data and data["snapshot_policy_hint"] is not None:
         hint = data["snapshot_policy_hint"]
         data["snapshot_policy_hint"] = hint.model_dump() if hasattr(hint, "model_dump") else hint
+    if "exclude_presets" in data and data["exclude_presets"] is not None:
+        data["exclude_presets"] = _merge_presets(data["exclude_presets"])
     if "source_paths" in data and data["source_paths"] is not None:
-        data["source_paths"] = [sanitize_path(p) for p in data["source_paths"]]
+        data["source_paths"] = compact_source_paths(data["source_paths"])
     if "dest_staging_path" in data and data["dest_staging_path"] is not None:
-        data["dest_staging_path"] = sanitize_path(data["dest_staging_path"])
+        data["dest_staging_path"] = normalize_qnap_dest_share(data["dest_staging_path"])
 
     for key, value in data.items():
         setattr(job, key, value)
@@ -277,7 +294,10 @@ def job_logs(
             "message": log.message,
             "output": log.output,
             "error": log.error,
+            "duration": log.duration,
+            "transferred": log.transferred,
             "created_at": log.started_at,
+            "completed_at": log.completed_at,
         }
         for log in logs
     ]
