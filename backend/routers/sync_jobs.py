@@ -369,6 +369,8 @@ async def create_vm_replica_jobs(
     else:
         disks = vm_data.disks
     
+    disks = [d for d in disks if d.get("replicable", True) and d.get("dataset")]
+    
     if not disks:
         raise HTTPException(status_code=400, detail="Nessun disco trovato per questa VM")
     

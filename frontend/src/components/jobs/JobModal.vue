@@ -112,11 +112,12 @@
             </div>
 
             <div class="field field-full" v-if="form.vm_id">
-              <label>Dischi della VM</label>
+              <label>Dischi da replicare</label>
               <div v-if="loadingDisks" class="jm-empty">Caricamento dischi…</div>
               <table v-else-if="vmDisks.length" class="jm-disks">
                 <thead>
                   <tr>
+                    <th class="jm-disk-check"></th>
                     <th>Disco</th>
                     <th>Storage</th>
                     <th>Dataset/Volume</th>
@@ -124,8 +125,25 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="d in vmDisks" :key="d.disk_name">
-                    <td><code>{{ d.disk_name }}</code></td>
+                  <tr
+                    v-for="d in vmDisks"
+                    :key="d.disk_name"
+                    :class="{ 'jm-disk-aux': d.replicable === false }"
+                  >
+                    <td class="jm-disk-check">
+                      <input
+                        type="checkbox"
+                        :checked="selectedDisks.has(d.disk_name)"
+                        :disabled="d.replicable === false || !d.dataset"
+                        :title="diskSelectTitle(d)"
+                        @change="toggleDisk(d.disk_name, ($event.target as HTMLInputElement).checked)"
+                      />
+                    </td>
+                    <td>
+                      <code>{{ d.disk_name }}</code>
+                      <span v-if="d.is_iso" class="badge badge-outline jm-badge-iso">ISO/CD-ROM</span>
+                      <span v-else-if="d.kind === 'cloudinit'" class="badge badge-outline">cloud-init</span>
+                    </td>
                     <td>
                       <span class="badge badge-outline">{{ d.storage || '—' }}</span>
                     </td>
@@ -135,6 +153,9 @@
                 </tbody>
               </table>
               <div v-else class="jm-empty">Nessun disco rilevato (la VM potrebbe non esistere o avere storage non supportato).</div>
+              <small v-if="form.kind === 'syncoid' && vmDisks.length" class="jm-note">
+                ISO/CD-ROM e cloud-init sono esclusi dalla replica per default.
+              </small>
             </div>
           </div>
         </div>
@@ -441,6 +462,9 @@ interface DiskInfo {
   dataset?: string
   volume?: string
   size_bytes?: number
+  replicable?: boolean
+  is_iso?: boolean
+  kind?: string
 }
 
 interface FormState {
@@ -528,6 +552,7 @@ const form = ref<FormState>(emptyForm(props.mode))
 
 const vmFilter = ref('')
 const vmDisks = ref<DiskInfo[]>([])
+const selectedDisks = ref<Set<string>>(new Set())
 const loadingDisks = ref(false)
 const saving = ref(false)
 const submitError = ref<string | null>(null)
@@ -736,7 +761,14 @@ const kindLabel = computed(() => {
 
 const canAdvance = computed(() => {
   if (currentStep.value === 0) {
-    return !!(form.value.source_node_id && form.value.vm_id)
+    if (!form.value.source_node_id || !form.value.vm_id) return false
+    if (form.value.kind === 'syncoid' && vmDisks.value.length && !loadingDisks.value) {
+      const selected = vmDisks.value.filter(
+        d => selectedDisks.value.has(d.disk_name) && d.dataset && d.replicable !== false
+      )
+      if (!selected.length) return false
+    }
+    return true
   }
   if (currentStep.value === 1) {
     if (form.value.kind === 'syncoid')
@@ -754,7 +786,14 @@ const advanceBlockReason = computed(() => {
   if (canAdvance.value) return null
   if (currentStep.value === 0) {
     if (!form.value.source_node_id) return 'Seleziona il nodo sorgente.'
-    return 'Seleziona la VM da replicare.'
+    if (!form.value.vm_id) return 'Seleziona la VM da replicare.'
+    if (form.value.kind === 'syncoid' && vmDisks.value.length && !loadingDisks.value) {
+      const selected = vmDisks.value.filter(
+        d => selectedDisks.value.has(d.disk_name) && d.dataset && d.replicable !== false
+      )
+      if (!selected.length) return 'Seleziona almeno un disco replicabile (ISO/CD-ROM esclusi).'
+    }
+    return null
   }
   if (currentStep.value === 1) {
     if (form.value.kind === 'backup_pbs') {
@@ -819,7 +858,6 @@ async function loadDisks() {
   if (!form.value.source_node_id || !form.value.vm_id) return
   loadingDisks.value = true
   try {
-    // Endpoint /vms/node/{id}/vm/{vmid}/full-details ritorna anche dischi
     const r = await apiClient.get(
       `/vms/node/${form.value.source_node_id}/vm/${form.value.vm_id}/full-details?vm_type=${form.value.vm_type}`
     )
@@ -830,19 +868,47 @@ async function loadDisks() {
       dataset: d.dataset,
       volume: d.volume,
       size_bytes: d.size_bytes ?? d.size,
+      replicable: d.replicable !== false,
+      is_iso: !!d.is_iso,
+      kind: d.kind,
     }))
     vmDisks.value = disks
+    initDiskSelection(disks)
   } catch {
     vmDisks.value = []
+    selectedDisks.value = new Set()
   } finally {
     loadingDisks.value = false
   }
+}
+
+function initDiskSelection(disks: DiskInfo[]) {
+  selectedDisks.value = new Set(
+    disks
+      .filter(d => d.replicable !== false && d.dataset)
+      .map(d => d.disk_name)
+  )
+}
+
+function toggleDisk(name: string, checked: boolean) {
+  const next = new Set(selectedDisks.value)
+  if (checked) next.add(name)
+  else next.delete(name)
+  selectedDisks.value = next
+}
+
+function diskSelectTitle(d: DiskInfo): string {
+  if (d.is_iso) return 'ISO/CD-ROM: escluso dalla replica'
+  if (d.kind === 'cloudinit') return 'Cloud-init: escluso dalla replica'
+  if (!d.dataset) return 'Disco senza dataset ZFS: non replicabile via syncoid'
+  return 'Includi nella replica'
 }
 
 function onSourceNodeChange() {
   form.value.vm_id = null
   form.value.vm_name = null
   vmDisks.value = []
+  selectedDisks.value = new Set()
   reloadVMs()
 }
 
@@ -861,11 +927,11 @@ function humanBytes(v: any) {
 }
 
 function buildSyncoidPayload() {
-  // Per syncoid, dest_storage non viene piu' chiesto separatamente
-  // (era duplicazione di dest_pool). Usiamo dest_pool come storage
-  // Proxmox di destinazione se l'utente non ne ha specificato uno.
   const destStorage = form.value.registration.dest_storage || form.value.dest_pool
-  return {
+  const selected = vmDisks.value.filter(
+    d => selectedDisks.value.has(d.disk_name) && d.dataset && d.replicable !== false
+  )
+  const payload: Record<string, unknown> = {
     vm_id: form.value.vm_id,
     vm_type: form.value.vm_type,
     vm_name: form.value.vm_name,
@@ -888,6 +954,17 @@ function buildSyncoidPayload() {
     keep_snapshots: form.value.keep_snapshots,
     sync_method: 'syncoid',
   }
+  if (selected.length) {
+    payload.disks = selected.map(d => ({
+      disk_name: d.disk_name,
+      storage: d.storage,
+      volume: d.volume,
+      dataset: d.dataset,
+      size_bytes: d.size_bytes,
+      replicable: true,
+    }))
+  }
+  return payload
 }
 
 function buildPveNativePayload() {
@@ -1394,6 +1471,17 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 }
 .jm-disks code.muted {
   color: var(--color-text-secondary);
+}
+.jm-disk-check {
+  width: 2rem;
+  text-align: center;
+}
+.jm-disk-aux {
+  opacity: 0.65;
+}
+.jm-badge-iso {
+  margin-left: 6px;
+  font-size: 0.65rem;
 }
 
 .jm-empty {

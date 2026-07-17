@@ -13,6 +13,61 @@ from services.ssh_service import ssh_service, SSHResult
 logger = logging.getLogger(__name__)
 
 
+def vm_disk_config_line(config: str, disk_name: str) -> Optional[str]:
+    """Estrae la riga config Proxmox per un disco (es. ide2: local:iso/x.iso,media=cdrom)."""
+    if not config or not disk_name:
+        return None
+    match = re.search(rf"^{re.escape(disk_name)}:\s*(.+)$", config, re.MULTILINE)
+    if not match:
+        return None
+    return f"{disk_name}: {match.group(1)}"
+
+
+def classify_vm_disk(
+    disk_name: str,
+    volume: str,
+    config_line: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Classifica un disco VM: replicabile ZFS vs ISO/cloudinit/vuoto."""
+    vol_base = (volume or "").split(",")[0].strip().lower()
+    line = (config_line or "").lower()
+
+    if "cloudinit" in vol_base:
+        return {"replicable": False, "is_iso": False, "kind": "cloudinit"}
+    if vol_base in ("none", "") or vol_base.startswith("none/"):
+        return {"replicable": False, "is_iso": False, "kind": "empty"}
+    if "media=cdrom" in line:
+        return {"replicable": False, "is_iso": True, "kind": "iso"}
+    if vol_base.endswith(".iso") or vol_base.startswith("iso/") or "/iso/" in vol_base:
+        return {"replicable": False, "is_iso": True, "kind": "iso"}
+
+    return {"replicable": True, "is_iso": False, "kind": "disk"}
+
+
+def disable_optical_media_in_config(config_content: str, vm_type: str = "qemu") -> str:
+    """Svuota i drive CD-ROM/ISO nella config destinazione (none,media=cdrom)."""
+    if vm_type != "qemu" or not config_content:
+        return config_content
+
+    def _blank_optical(match: re.Match) -> str:
+        return f"{match.group(1)}: none,media=cdrom"
+
+    updated = re.sub(
+        r"^((?:ide|sata|scsi)\d+):\s*[^\n]*media=cdrom[^\n]*$",
+        _blank_optical,
+        config_content,
+        flags=re.MULTILINE | re.IGNORECASE,
+    )
+    # Anche righe ISO senza media=cdrom esplicito nel parser ma con path .iso
+    updated = re.sub(
+        r"^((?:ide|sata|scsi)\d+):\s*[^\n]*\.iso[^\n]*$",
+        _blank_optical,
+        updated,
+        flags=re.MULTILINE | re.IGNORECASE,
+    )
+    return updated
+
+
 class ProxmoxService:
     """Servizio per integrazione con Proxmox VE"""
     
@@ -252,8 +307,20 @@ class ProxmoxService:
         disks = []
         
         for disk_name, storage, volume in matches:
-            # Ignora cdrom e cloudinit
-            if 'cloudinit' in volume.lower() or 'none' in volume.lower():
+            line = vm_disk_config_line(config, disk_name)
+            meta = classify_vm_disk(disk_name, volume, line)
+            if not meta["replicable"]:
+                disks.append(
+                    {
+                        "disk_name": disk_name,
+                        "storage": storage,
+                        "volume": volume.split(",")[0],
+                        "dataset": None,
+                        "size": "N/A",
+                        "size_bytes": 0,
+                        **meta,
+                    }
+                )
                 continue
             
             disk_info = {
@@ -262,7 +329,8 @@ class ProxmoxService:
                 "volume": volume,
                 "dataset": None,
                 "size": "N/A",
-                "size_bytes": 0
+                "size_bytes": 0,
+                **meta,
             }
             
             # Ottieni il path ZFS dello storage
@@ -438,14 +506,17 @@ class ProxmoxService:
             return []
         
         # Cerca pattern disco (es: scsi0: local-zfs:vm-100-disk-0,size=10241M)
-        disk_pattern = r'(?:scsi|sata|virtio|ide|mp)\d+:\s*(\S+):(\S+)'
-        disks = re.findall(disk_pattern, config)
+        disk_pattern = r'((?:scsi|sata|virtio|ide|mp)\d+):\s*(\S+):(\S+)'
+        disk_matches = re.findall(disk_pattern, config)
         
         datasets = []
         
-        for storage, disk_name_raw in disks:
-            # Rimuovi parametri extra dopo la virgola (es: ,size=10241M)
-            disk_name = disk_name_raw.split(',')[0]
+        for disk_name, storage, disk_name_raw in disk_matches:
+            vol = disk_name_raw.split(",")[0]
+            line = vm_disk_config_line(config, disk_name)
+            if not classify_vm_disk(disk_name, vol, line)["replicable"]:
+                continue
+            disk_name = vol
             dataset_found = False
             
             # Trova il path ZFS dello storage
@@ -718,6 +789,8 @@ class ProxmoxService:
         
         if config_content:
             import re
+            
+            config_content = disable_optical_media_in_config(config_content, vm_type)
             
             # Se abbiamo source_storage e dest_storage, sostituisci nella config
             if source_storage and effective_dest_storage and source_storage != effective_dest_storage:
