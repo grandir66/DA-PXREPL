@@ -60,16 +60,19 @@ def _remote_spec(endpoint: FileEndpoint, remote_path: str) -> str:
     return f"{endpoint.username}@{endpoint.host}:{path}"
 
 
-def build_rsync_legs(
+def build_sync_plan(
     job: FileReplicationJob,
     source: FileEndpoint,
     dest: FileEndpoint,
     exclude_file: str,
     staging_dir: str,
-) -> list[list[str]]:
-    """Due gambe per path: pull sorgente → staging locale, push → QNAP."""
-    legs: list[list[str]] = []
+) -> list[dict]:
+    """Piano sync per path: pull (SMB su Synology, rsync altrove) + push QNAP."""
+    steps: list[dict] = []
     dest_base = job.dest_staging_path.rstrip("/")
+    use_synology_smb = source.endpoint_type == FileEndpointType.SYNOLOGY and not (
+        (source.extra_config or {}).get("rsync_module")
+    )
 
     for src_path in job.source_paths or []:
         leaf = src_path.strip("/").split("/")[-1] or "data"
@@ -88,32 +91,50 @@ def build_rsync_legs(
             pull.extend(extra)
             push.extend(extra)
 
-        src_remote = src_path.rstrip("/") + "/"
-        if source.endpoint_type == FileEndpointType.SYNOLOGY:
-            extra = source.extra_config or {}
-            vol = extra.get("synology_volume") or extra.get("ssh_volume") or "volume1"
-            src_remote = normalize_synology_ssh_path(src_path, vol).rstrip("/") + "/"
+        if use_synology_smb:
+            steps.append(
+                {
+                    "type": "synology_smb",
+                    "src_path": src_path,
+                    "local_dir": local_dir,
+                    "exclude_file": exclude_file,
+                    "mount_root": f"{staging_dir}/smb",
+                }
+            )
+        else:
+            src_remote = src_path.rstrip("/") + "/"
+            if source.endpoint_type == FileEndpointType.SYNOLOGY:
+                extra_cfg = source.extra_config or {}
+                vol = extra_cfg.get("synology_volume") or extra_cfg.get("ssh_volume") or "volume1"
+                src_remote = normalize_synology_ssh_path(src_path, vol).rstrip("/") + "/"
 
-        if source.endpoint_type in (FileEndpointType.SYNOLOGY, FileEndpointType.QNAP):
             module = (source.extra_config or {}).get("rsync_module", "")
-            if module:
+            if source.endpoint_type in (FileEndpointType.SYNOLOGY, FileEndpointType.QNAP) and module:
                 pull.append(f"rsync://{source.username}@{source.host}/{module}/{src_path.strip('/')}/")
             else:
                 pull.extend(["-e", _ssh_transport(source)])
-                if source.endpoint_type == FileEndpointType.SYNOLOGY:
-                    pull.append("--rsync-path=/usr/bin/rsync")
                 pull.append(_remote_spec(source, src_remote))
-        else:
-            pull.extend(["-e", _ssh_transport(source)])
-            pull.append(_remote_spec(source, src_remote))
-
-        pull.append(local_dir)
+            pull.append(local_dir)
+            steps.append({"type": "rsync", "cmd": pull})
 
         push.extend(["-e", _ssh_transport(dest)])
         push.append(local_dir)
         push.append(_remote_spec(dest, dest_remote))
+        steps.append({"type": "rsync", "cmd": push})
 
-        legs.append(pull)
-        legs.append(push)
+    return steps
 
-    return legs
+
+def build_rsync_legs(
+    job: FileReplicationJob,
+    source: FileEndpoint,
+    dest: FileEndpoint,
+    exclude_file: str,
+    staging_dir: str,
+) -> list[list[str]]:
+    """Compat test: espande il piano in comandi rsync (senza SMB)."""
+    cmds: list[list[str]] = []
+    for step in build_sync_plan(job, source, dest, exclude_file, staging_dir):
+        if step["type"] == "rsync":
+            cmds.append(step["cmd"])
+    return cmds

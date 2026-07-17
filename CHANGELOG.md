@@ -5,6 +5,14 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.16] - 2026-07-17
+
+### Correzioni
+- Sorgente Synology: pull via **SMB/CIFS** invece di rsync SSH (fix permanente `module is write only` su DSM); push QNAP resta rsync SSH (`synology_smb.py`, `file_sync_service.py`).
+
+### Modifiche
+- `install.sh` / `update.sh`: pacchetto `cifs-utils` per mount Synology.
+
 ## [3.17.15] - 2026-07-17
 
 ### Correzioni

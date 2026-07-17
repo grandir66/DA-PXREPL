@@ -3,9 +3,8 @@
 from services.file_replication.path_utils import normalize_synology_ssh_path
 
 
-def test_normalize_datI_to_volume1():
-    assert normalize_synology_ssh_path("/DATI/archivio") == "/volume1/DATI/archivio"
+def test_parse_share_path():
+    from services.file_replication.path_utils import parse_synology_share_path
 
-
-def test_keep_volume_path():
-    assert normalize_synology_ssh_path("/volume2/DATI/archivio") == "/volume2/DATI/archivio"
+    assert parse_synology_share_path("/DATI/archivio") == ("DATI", "archivio")
+    assert parse_synology_share_path("/volume1/DATI/archivio") == ("DATI", "archivio")

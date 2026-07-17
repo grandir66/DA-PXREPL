@@ -190,8 +190,8 @@ onMounted(loadEndpoints)
           :exclude-presets="form.exclude_presets"
         />
         <p class="text-muted mt-2">
-          Synology: il browse mostra <code>/DATI/...</code> ma rsync SSH usa
-          <code>/volume1/DATI/...</code> (convertito automaticamente se manca <code>/volumeN</code>).
+          Synology: il browse mostra <code>/DATI/...</code>; il job legge la share via <strong>SMB</strong>
+          (es. share <code>DATI</code>, cartella <code>archivio</code>). Path nel job: <code>/DATI/archivio</code>.
         </p>
       </div>
 

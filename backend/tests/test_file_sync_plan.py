@@ -1,10 +1,10 @@
-"""Test build comandi rsync replica file."""
+"""Test piano sync Synology SMB."""
 
 from database import FileEndpoint, FileEndpointRole, FileEndpointType, FileReplicationJob
-from services.file_replication.file_sync_service import build_rsync_legs, build_sync_plan
+from services.file_replication.file_sync_service import build_sync_plan
 
 
-def test_synology_push_only_in_rsync_legs_compat(db):
+def test_synology_uses_smb_pull_not_ssh(db):
     src = FileEndpoint(
         name="syn",
         endpoint_type=FileEndpointType.SYNOLOGY,
@@ -22,7 +22,7 @@ def test_synology_push_only_in_rsync_legs_compat(db):
         host="172.16.1.125",
         port=443,
         protocol="api",
-        username="replica",
+        username="domarc",
         password_enc="enc",
     )
     job = FileReplicationJob(
@@ -35,12 +35,9 @@ def test_synology_push_only_in_rsync_legs_compat(db):
     db.add_all([src, dest, job])
     db.commit()
 
-    legs = build_rsync_legs(job, src, dest, "/tmp/exclude.txt", "/tmp/staging")
-    assert len(legs) == 1
-    push = legs[0]
-    push_e = push[push.index("-e") + 1]
-    assert "ssh -p 22" in push_e
-    assert "domarc@172.16.1.125:/share/DATI/archivio/" in push
-
     plan = build_sync_plan(job, src, dest, "/tmp/exclude.txt", "/tmp/staging")
+    assert len(plan) == 2
     assert plan[0]["type"] == "synology_smb"
+    assert plan[0]["src_path"] == "/DATI/archivio"
+    assert plan[1]["type"] == "rsync"
+    assert "domarc@172.16.1.125:/share/DATI/archivio/" in plan[1]["cmd"]
