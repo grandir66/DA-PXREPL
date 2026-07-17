@@ -20,35 +20,23 @@
 
     <div v-else-if="error" class="sp-error">{{ error }}</div>
 
-    <div v-else-if="filtered.length === 0 && !loading" class="sp-empty">
-      Nessuno storage{{ type !== 'any' ? ` di tipo ${type}` : '' }} disponibile.
+    <select
+      v-if="filtered.length > 0"
+      class="form-input sp-select"
+      :value="modelValue || ''"
+      @change="onSelectChange"
+    >
+      <option value="">— seleziona storage —</option>
+      <option v-for="s in filtered" :key="s.storage" :value="s.storage">
+        {{ s.storage }} ({{ s.type || '?' }}{{ s.avail != null ? ` · disp. ${humanBytes(s.avail)}` : '' }})
+      </option>
+    </select>
+
+    <div v-else-if="filtered.length === 0" class="sp-empty">
+      Nessuno storage{{ type !== 'any' ? ` di tipo ${type}` : '' }} disponibile sul nodo.
     </div>
 
-    <ul v-else class="sp-list">
-      <li
-        v-for="s in filtered"
-        :key="s.storage"
-        class="sp-item"
-        :class="{ active: modelValue === s.storage, disabled: s.status && s.status !== 'active' }"
-        @click="emit('update:modelValue', s.storage)"
-      >
-        <div class="sp-item-main">
-          <span class="sp-item-name">{{ s.storage }}</span>
-          <span class="sp-item-type" :class="`type-${(s.type || 'unknown').toLowerCase()}`">{{ s.type || '—' }}</span>
-        </div>
-        <div class="sp-item-meta">
-          <span v-if="s.avail">disp. {{ humanBytes(s.avail) }}</span>
-          <span v-if="s.used && s.total">
-            {{ humanBytes(s.used) }} / {{ humanBytes(s.total) }}
-          </span>
-          <span v-if="s.status && s.status !== 'active'" class="sp-item-warn">
-            {{ s.status }}
-          </span>
-        </div>
-      </li>
-    </ul>
-
-    <div v-if="allowFreeText" class="sp-free">
+    <div v-if="allowFreeText && nodeId && !loading" class="sp-free">
       <label class="sp-label-sm">o digita manualmente</label>
       <input
         type="text"
@@ -91,6 +79,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
+  (e: 'loaded', storages: StorageEntry[]): void
 }>()
 
 const loading = ref(false)
@@ -116,11 +105,19 @@ async function reload() {
   try {
     const r = await nodesService.getStorages(props.nodeId)
     storages.value = (r.data?.storages || []) as StorageEntry[]
+    emit('loaded', storages.value)
   } catch (e: any) {
     error.value = e?.response?.data?.detail || e?.message || String(e)
+    storages.value = []
+    emit('loaded', [])
   } finally {
     loading.value = false
   }
+}
+
+function onSelectChange(e: Event) {
+  const v = (e.target as HTMLSelectElement).value
+  emit('update:modelValue', v)
 }
 
 watch(() => props.nodeId, () => reload(), { immediate: true })
@@ -260,5 +257,10 @@ function humanBytes(v: any): string {
   color: var(--color-text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+.sp-select {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
 }
 </style>

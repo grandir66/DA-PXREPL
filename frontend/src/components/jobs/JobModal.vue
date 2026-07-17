@@ -145,7 +145,11 @@
           <div class="jm-grid">
             <div class="field" v-if="form.kind !== 'backup_pbs'">
               <label>Nodo destinazione (PVE)</label>
-              <select v-model.number="form.dest_node_id" class="form-input">
+              <select
+                v-model.number="form.dest_node_id"
+                class="form-input"
+                @change="onDestNodeChange"
+              >
                 <option :value="null">— seleziona —</option>
                 <option
                   v-for="n in pveDestNodes"
@@ -174,6 +178,7 @@
                 :node-id="form.dest_node_id"
                 :node-name="destNodeName"
                 type="zfs"
+                @loaded="onDestStoragesLoaded"
               />
             </div>
 
@@ -641,10 +646,11 @@ function hydrateFromJob(j: UnifiedJob) {
 
 watch(
   () => props.visible,
-  v => {
+  async v => {
     if (!v) return
     submitError.value = null
     currentStep.value = 0
+    await store.fetchNodes(true)
     if (props.job) {
       form.value = hydrateFromJob(props.job)
     } else {
@@ -660,6 +666,26 @@ watch(
     if (form.value.vm_id && form.value.source_node_id) loadDisks()
   }
 )
+
+function onDestNodeChange() {
+  form.value.dest_pool = null
+  form.value.registration.dest_storage = null
+  form.value.restore_storage = null
+}
+
+function onDestStoragesLoaded(storages: Array<{ storage?: string; type?: string }>) {
+  if (form.value.kind !== 'syncoid' || form.value.dest_pool) return
+  const zfs = storages
+    .filter(s => ['zfs', 'zfspool'].includes((s.type || '').toLowerCase()))
+    .map(s => s.storage)
+    .filter(Boolean) as string[]
+  if (zfs.includes('ZFS-LARGE')) {
+    form.value.dest_pool = 'ZFS-LARGE'
+    if (!form.value.dest_subfolder) form.value.dest_subfolder = 'replica'
+    return
+  }
+  if (zfs.length === 1) form.value.dest_pool = zfs[0]
+}
 
 const filteredVMs = computed(() => {
   const list = form.value.source_node_id
