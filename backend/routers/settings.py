@@ -531,16 +531,12 @@ import os
 import subprocess
 from pathlib import Path
 
-def get_certs_dir() -> Path:
-    """Directory persistente per certificati SSL (scrivibile in produzione)."""
-    env_dir = os.environ.get("DAPX_CERTS_DIR")
-    if env_dir:
-        return Path(env_dir)
-    state_dir = Path("/var/lib/dapx-unified/certs")
-    if state_dir.parent.exists():
-        return state_dir
-    return Path(__file__).parent.parent / "certs"
-
+from services.dapx_systemd import (
+    certs_dir as get_certs_dir,
+    load_server_config,
+    save_server_config,
+    sync_systemd_unit,
+)
 
 CERTS_DIR = get_certs_dir()
 
@@ -752,34 +748,6 @@ async def delete_ssl_certificate(
 
 # ============== Server Configuration (Port, HTTPS) ==============
 
-CONFIG_FILE = Path(__file__).parent.parent / "server_config.json"
-
-
-def load_server_config() -> dict:
-    """Carica la configurazione del server"""
-    default_config = {
-        "port": int(os.environ.get("DAPX_PORT", 8420)),
-        "ssl_enabled": os.environ.get("DAPX_SSL", "false").lower() == "true"
-    }
-    
-    if CONFIG_FILE.exists():
-        try:
-            import json
-            with open(CONFIG_FILE, "r") as f:
-                saved_config = json.load(f)
-                default_config.update(saved_config)
-        except Exception:
-            pass
-    
-    return default_config
-
-
-def save_server_config(config: dict):
-    """Salva la configurazione del server"""
-    import json
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(config, f, indent=2)
-
 
 @router.get("/server/config", response_model=ServerConfigResponse)
 async def get_server_config(
@@ -850,7 +818,7 @@ async def update_server_config(
         save_server_config(config)
         
         # Aggiorna anche il file di servizio systemd se possibile
-        await update_systemd_service(config)
+        sync_systemd_unit(config)
         
         log_audit(
             db, user.id, "server_config_updated", "server",
@@ -872,48 +840,6 @@ async def update_server_config(
         "restart_required": False,
         "config": config
     }
-
-
-async def update_systemd_service(config: dict):
-    """Aggiorna il file di servizio systemd con la nuova configurazione"""
-    service_file = Path("/etc/systemd/system/dapx-unified.service")
-    
-    if not service_file.exists():
-        return
-    
-    try:
-        content = service_file.read_text()
-        lines = content.split('\n')
-        new_lines = []
-        
-        port = config.get("port", 8420)
-        ssl_enabled = config.get("ssl_enabled", False)
-        cert_dir = str(get_certs_dir())
-        
-        # Costruisci il comando ExecStart
-        if ssl_enabled:
-            exec_start = f'ExecStart=/usr/bin/python3 -m uvicorn main:app --host 0.0.0.0 --port {port} --ssl-keyfile {cert_dir}/server.key --ssl-certfile {cert_dir}/server.crt'
-        else:
-            exec_start = f'ExecStart=/usr/bin/python3 -m uvicorn main:app --host 0.0.0.0 --port {port}'
-        
-        for line in lines:
-            if line.strip().startswith('ExecStart='):
-                new_lines.append(exec_start)
-            elif line.strip().startswith('Environment="DAPX_PORT='):
-                new_lines.append(f'Environment="DAPX_PORT={port}"')
-            elif line.strip().startswith('Environment="DAPX_SSL='):
-                new_lines.append(f'Environment="DAPX_SSL={str(ssl_enabled).lower()}"')
-            else:
-                new_lines.append(line)
-        
-        # Scrivi il file aggiornato
-        service_file.write_text('\n'.join(new_lines))
-        
-        # Ricarica systemd
-        subprocess.run(['systemctl', 'daemon-reload'], check=False, capture_output=True)
-        
-    except Exception as e:
-        logger.warning(f"Impossibile aggiornare servizio systemd: {e}")
 
 
 @router.post("/server/restart")

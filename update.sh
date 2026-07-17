@@ -489,6 +489,17 @@ if [ -f "$INSTALL_DIR/backend/update_db_schema.py" ] && [ -d "$INSTALL_DIR/venv"
     fi
 fi
 
+# Ripara ExecStart systemd (venv + SSL) — l'UI SSL legacy usava /usr/bin/python3
+# e dopo update/restart il servizio non partiva.
+if [ -f "$INSTALL_DIR/backend/scripts/repair_systemd_unit.py" ] && [ -d "$INSTALL_DIR/venv" ]; then
+    log_info "Allineamento unit systemd (venv, HTTPS)..."
+    if (cd "$INSTALL_DIR/backend" && "$INSTALL_DIR/venv/bin/python3" scripts/repair_systemd_unit.py); then
+        log_success "Unit systemd allineato"
+    else
+        log_warn "Riparazione unit systemd non riuscita (proseguo con unit esistente)"
+    fi
+fi
+
 # ============== RESTART ==============
 
 echo -e "\n${BOLD}Avvio Servizio${NC}\n"
@@ -511,9 +522,29 @@ if systemctl is-active --quiet dapx-unified 2>/dev/null; then
     echo -e "  Versione: ${YELLOW}$CURRENT_VERSION${NC} → ${GREEN}$NEW_VERSION${NC}"
     echo ""
     
-    # Mostra URL
+    # Mostra URL (HTTP o HTTPS se certificati presenti)
     LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "localhost")
-    echo -e "  Accesso: ${CYAN}http://${LOCAL_IP}:8420${NC}"
+    ACCESS_SCHEME="http"
+    ACCESS_PORT="8420"
+    if [ -f "/var/lib/dapx-unified/server_config.json" ]; then
+        SCHEME_PORT=$("$INSTALL_DIR/venv/bin/python3" -c "
+import json
+from pathlib import Path
+cfg=json.loads(Path('/var/lib/dapx-unified/server_config.json').read_text())
+port=int(cfg.get('port') or 8420)
+ssl=bool(cfg.get('ssl_enabled'))
+certs=Path('/var/lib/dapx-unified/certs')
+if ssl and (certs/'server.crt').exists() and (certs/'server.key').exists():
+    print(f'https {port}')
+else:
+    print(f'http {port}')
+" 2>/dev/null || echo "http 8420")
+        ACCESS_SCHEME=$(echo "$SCHEME_PORT" | awk '{print $1}')
+        ACCESS_PORT=$(echo "$SCHEME_PORT" | awk '{print $2}')
+    else
+        ACCESS_PORT=8420
+    fi
+    echo -e "  Accesso: ${CYAN}${ACCESS_SCHEME}://${LOCAL_IP}:${ACCESS_PORT}${NC}"
     echo ""
 else
     log_error "Errore avvio servizio"

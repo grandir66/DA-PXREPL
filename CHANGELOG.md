@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.12] - 2026-07-17
+
+### Correzioni
+- HTTPS/UI certificati: `ExecStart` systemd usa `venv/bin/uvicorn` (non `/usr/bin/python3`); `update.sh` ripara l'unit a ogni update; config server persistita in `/var/lib/dapx-unified/server_config.json` (`dapx_systemd.py`, `repair_systemd_unit.py`, `settings.py`).
+
 ## [3.17.11] - 2026-07-17
 
 ### Correzioni
