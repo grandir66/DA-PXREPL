@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import logging
 import xml.etree.ElementTree as ET
 from typing import Any, Optional
@@ -15,6 +16,34 @@ from services.file_replication_schemas import BrowseEntryOut, ConnectionTestResu
 logger = logging.getLogger(__name__)
 
 DEFAULT_EXCLUDE_PRESETS = ["nas_snapshots", "system_files"]
+
+
+def _encode_qnap_password(password: str) -> str:
+    """QNAP authLogin.cgi richiede pwd base64 (File Station API v5)."""
+    return base64.b64encode(password.encode("utf-8")).decode("ascii")
+
+
+def _parse_auth_response(text: str) -> ET.Element:
+    try:
+        return ET.fromstring(text)
+    except ET.ParseError as exc:
+        raise RuntimeError("Risposta QNAP non valida") from exc
+
+
+def _auth_failure_message(root: ET.Element) -> str:
+    err = root.findtext("errorValue") or "?"
+    need_2sv = root.findtext("need_2sv")
+    if need_2sv == "1":
+        return (
+            "Autenticazione QNAP fallita: account con verifica in 2 passaggi (2FA). "
+            "Usa un utente dedicato senza 2FA oppure disabilita 2FA per questo account."
+        )
+    if err == "-1":
+        return (
+            "Autenticazione QNAP fallita: username o password errati, oppure account "
+            "bloccato/scaduto. Verifica le credenziali sul pannello QNAP e reinserisci la password nell'endpoint."
+        )
+    return f"Autenticazione QNAP fallita (errorValue={err})"
 
 
 def _qnap_base_url(host: str, port: int, use_https: bool) -> str:
@@ -84,23 +113,29 @@ class QnapClient:
             raise RuntimeError(format_connection_error(self.host, self.port, exc)) from exc
 
     async def login(self) -> str:
-        resp = await self._post(
-            "/cgi-bin/authLogin.cgi",
-            {"user": self.username, "pwd": self.password},
+        attempts = (
+            ("base64", _encode_qnap_password(self.password)),
+            ("plain", self.password),
         )
-        try:
-            root = ET.fromstring(resp.text)
-        except ET.ParseError as exc:
-            raise RuntimeError(f"Risposta QNAP non valida da {self._base}") from exc
-        auth_passed = root.findtext("authPassed")
-        if auth_passed != "1":
-            err = root.findtext("errorValue") or "?"
-            raise RuntimeError(f"Autenticazione QNAP fallita (errorValue={err})")
-        sid = root.findtext("authSid")
-        if not sid:
-            raise RuntimeError("SID QNAP mancante")
-        self._sid = sid
-        return sid
+        last_root: ET.Element | None = None
+        for mode, pwd in attempts:
+            resp = await self._post(
+                "/cgi-bin/authLogin.cgi",
+                {"user": self.username, "pwd": pwd},
+            )
+            root = _parse_auth_response(resp.text)
+            if root.findtext("authPassed") == "1":
+                sid = root.findtext("authSid")
+                if not sid:
+                    raise RuntimeError("SID QNAP mancante")
+                self._sid = sid
+                if mode == "plain":
+                    logger.debug("QNAP login riuscito con password plain (legacy)")
+                return sid
+            last_root = root
+            logger.debug("QNAP login %s failed errorValue=%s", mode, root.findtext("errorValue"))
+
+        raise RuntimeError(_auth_failure_message(last_root) if last_root is not None else "Autenticazione QNAP fallita")
 
     async def logout(self) -> None:
         if not self._sid:

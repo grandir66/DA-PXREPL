@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.10] - 2026-07-17
+
+### Correzioni
+- QNAP File Station: password inviata in base64 su `authLogin.cgi` come da API ufficiale; messaggi errore espliciti per credenziali errate e 2FA (`qnap_client.py`).
+
 ## [3.17.9] - 2026-07-17
 
 ### Correzioni
