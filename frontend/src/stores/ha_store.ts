@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { ref } from 'vue';
 import haService, { type ClusterEntryInfo } from '../services/ha';
+import nodesService from '../services/nodes';
 
 export const useHAStore = defineStore('ha_store', () => {
     // State
@@ -21,25 +22,19 @@ export const useHAStore = defineStore('ha_store', () => {
     const clusterEntry = ref<ClusterEntryInfo | null>(null);
 
     const resolveEntryNodeId = async (): Promise<number | null> => {
-        const token = localStorage.getItem('access_token');
-        if (!token) return null;
         try {
             const res = await haService.getClusterEntry();
             clusterEntry.value = res.data;
             if (res.data.entry_node_id) return res.data.entry_node_id;
-        } catch (e) {
+        } catch {
             // fallback sotto
         }
         try {
-            const nodesRes = await fetch('/api/nodes/', {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            if (nodesRes.ok) {
-                const nodes = await nodesRes.json();
-                const pve = nodes.find((n: { node_type?: string }) => n.node_type === 'pve' || !n.node_type);
-                if (pve) return pve.id;
-                if (nodes.length > 0) return nodes[0].id;
-            }
+            const nodesRes = await nodesService.getNodes();
+            const nodes = nodesRes.data;
+            const pve = nodes.find((n) => n.node_type === 'pve' || !n.node_type);
+            if (pve) return pve.id;
+            if (nodes.length > 0) return nodes[0].id;
         } catch {
             /* ignore */
         }
@@ -58,10 +53,6 @@ export const useHAStore = defineStore('ha_store', () => {
             return;
         }
 
-        const token = localStorage.getItem('access_token');
-        if (!token) return;
-
-        // Recupera entry point cluster (preferisce nodi membri pvecm)
         const nodeId = await resolveEntryNodeId();
         if (!nodeId) return;
 
@@ -69,24 +60,16 @@ export const useHAStore = defineStore('ha_store', () => {
         error.value = null;
 
         try {
-            const response = await fetch(`/api/ha/node/${nodeId}/complete-data`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                haResources.value = data.ha_resources || [];
-                haGroups.value = data.ha_groups || [];
-                availableGuests.value = data.guests || [];
-                clusterNodes.value = data.cluster_nodes || [];
-                clusterStatus.value = data.cluster_status || null;
-                lastUpdated.value = new Date();
-            } else {
-                error.value = 'Failed to load HA data';
-            }
-        } catch (err) {
+            const response = await haService.getCompleteData(nodeId);
+            const data = response.data;
+            haResources.value = data.ha_resources || [];
+            haGroups.value = data.ha_groups || [];
+            availableGuests.value = data.guests || [];
+            clusterNodes.value = data.cluster_nodes || [];
+            clusterStatus.value = data.cluster_status || null;
+            lastUpdated.value = new Date();
+        } catch {
             error.value = 'Network error loading HA data';
-            console.error(err);
         } finally {
             if (!background) loading.value = false;
         }

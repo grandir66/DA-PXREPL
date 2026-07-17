@@ -84,6 +84,10 @@ def update_schema():
             _ensure_column(conn, "sync_jobs", "pve_compress", "VARCHAR(10)")
             _ensure_column(conn, "sync_jobs", "cleanup_after", "BOOLEAN")
             _ensure_column(conn, "sync_jobs", "replace_existing", "BOOLEAN")
+            _ensure_column(conn, "sync_jobs", "force_cpu_host", "BOOLEAN")
+
+            _ensure_column(conn, "recovery_jobs", "notify_on_each_run", "BOOLEAN")
+            _ensure_column(conn, "backup_jobs", "notify_on_each_run", "BOOLEAN")
 
             conn.commit()
         except Exception as e:

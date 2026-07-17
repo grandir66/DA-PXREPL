@@ -6,6 +6,9 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 ## [Unreleased]
 
 ### Fix
+- **job_logs lifecycle**: monitor syncoid segna `failed` dopo timeout (~6h); reconcile PVE native/BTRFS; correzione automatica log con `completed_at` ma status `started`/`running` (`sync_job_execution.py`, `sync_job_reconciliation.py`, `scripts/db_maintenance.py`).
+- **Schema DB**: migrazioni per `sync_jobs.force_cpu_host`, `recovery_jobs.notify_on_each_run`, `backup_jobs.notify_on_each_run` (`update_db_schema.py`).
+- **ha_store**: fetch HA/nodi via `apiClient` (JWT refresh) invece di `fetch` raw (`frontend/src/stores/ha_store.ts`).
 - **VM → Backup PBS**: elenco backup dalla view Virtual Machines allineato all'inventario PBS (API + pvesh); corretto bug `storage_id` nel fallback e formato timestamp per la UI.
 - **Tabella VM**: rimossa colonna "Backup PBS" sempre in *Checking…* (conteggio non caricato per performance); backup accessibili dal pulsante **Backup PBS** nella riga.
 
@@ -24,7 +27,7 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 - **Layout repository**: `scripts/README.md`, `scripts/dev/run_dev.py`; rimossi progetti/script obsoleti annidati.
 - **Stato live sync**: modulo `sync_job_live_state.py` estratto da `sync_jobs.py`.
 - **Dashboard replica in corso**: elenco job `running` nel widget salute replica.
-- **Test VM group + reconcile scheduler**: `test_vm_group_sync.py`, fix import reconcile periodico.
+- **Test VM group + reconcile scheduler**: `test_vm_group_sync.py`, `test_job_log_lifecycle.py`.
 
 ### Rimozioni
 - Documentazione obsoleta (`gemini.md`, template Vite), script debug one-off (`scripts/debug/`), componenti Vue orfani, CLI standalone ProxLB non usata, workflow agent `.agent/`.

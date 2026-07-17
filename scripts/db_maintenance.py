@@ -60,6 +60,31 @@ def main() -> int:
     else:
         print("Nessun job_log orfano.")
 
+    mismatched = cur.execute(
+        """
+        SELECT id, job_id, status
+        FROM job_logs
+        WHERE status IN ('running', 'started')
+          AND completed_at IS NOT NULL
+        """
+    ).fetchall()
+    if mismatched:
+        print(
+            f"Allineo status su {len(mismatched)} job_log con completed_at: {mismatched}"
+        )
+        cur.execute(
+            """
+            UPDATE job_logs
+            SET status = CASE
+                WHEN error IS NOT NULL AND TRIM(error) != '' THEN 'failed'
+                ELSE 'success'
+            END,
+            message = COALESCE(message, '') || ' [status allineato a completed_at]'
+            WHERE status IN ('running', 'started')
+              AND completed_at IS NOT NULL
+            """
+        )
+
     stale_running = cur.execute(
         "SELECT id, job_id, status FROM job_logs WHERE status IN ('running', 'started')"
     ).fetchall()
@@ -69,6 +94,7 @@ def main() -> int:
             """
             UPDATE job_logs
             SET status = 'failed',
+                completed_at = COALESCE(completed_at, datetime('now')),
                 message = COALESCE(message, '') || ' [reset manutenzione]'
             WHERE status IN ('running', 'started')
             """

@@ -253,6 +253,69 @@ async def _try_register_vm_after_sync(job_id: int, log_entry_id: int) -> None:
         db.close()
 
 
+def repair_terminal_job_log(log, job) -> bool:
+    """Allinea status del log se completed_at è valorizzato ma lo status è ancora aperto."""
+    status = (log.status or "").lower()
+    if status in ("success", "failed"):
+        return False
+    if not log.completed_at:
+        return False
+    job_status = (job.last_status or "").lower() if job else ""
+    if job_status in ("success", "failed"):
+        log.status = job_status
+    elif log.error:
+        log.status = "failed"
+    else:
+        log.status = "success"
+    note = " [status corretto automaticamente]"
+    if note not in (log.message or ""):
+        log.message = (log.message or "") + note
+    return True
+
+
+async def _apply_sync_monitor_timeout(
+    job_id: int,
+    log_entry_id: int,
+    still_active: bool,
+) -> None:
+    """Segna failed un job syncoid il cui monitor ha esaurito il budget (~6h)."""
+    from database import SessionLocal, SyncJob, JobLog
+
+    db = SessionLocal()
+    try:
+        job = db.query(SyncJob).filter(SyncJob.id == job_id).first()
+        log = db.query(JobLog).filter(JobLog.id == log_entry_id).first()
+        if not job or not log or log.completed_at:
+            return
+        log.status = "failed"
+        log.completed_at = datetime.utcnow()
+        suffix = (
+            " | Monitor timeout (~6h) — replica ancora attiva sui nodi"
+            if still_active
+            else " | Monitor timeout (~6h) — replica non più rilevata"
+        )
+        log.message = (log.message or "") + suffix
+        log.error = (log.error or "") + "Monitor timeout (~6h)"
+        job.last_status = "failed"
+        if hasattr(job, "current_status"):
+            try:
+                job.current_status = "idle"
+            except Exception:
+                pass
+        job.error_count = (job.error_count or 0) + 1
+        job.consecutive_failures = (job.consecutive_failures or 0) + 1
+        job.last_run = datetime.utcnow()
+        db.commit()
+    except Exception as e:
+        logger.warning(f"Timeout monitor job {job_id} fallito: {e}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
 async def _finalize_sync_job(
     job_id: int,
     log_entry_id: int,
@@ -271,13 +334,15 @@ async def _finalize_sync_job(
         if not job or not log:
             return False
         if log.completed_at:
+            repair_terminal_job_log(log, job)
             if hasattr(job, "current_status"):
                 try:
                     job.current_status = "idle"
                 except Exception:
                     pass
             if (job.last_status or "").lower() == "running":
-                job.last_status = log.status or "success"
+                ls = (log.status or "").lower()
+                job.last_status = ls if ls in ("success", "failed") else "success"
             db.commit()
             return (log.status or "").lower() == "success"
 
@@ -405,6 +470,25 @@ async def _monitor_sync_job_completion(
                 job_id, log_entry_id, dest_node, dest_dataset, job_key
             )
             return
+
+        still_active = await syncoid_service.is_replication_active(
+            executor_host=source_node.hostname,
+            executor_port=source_node.ssh_port,
+            executor_user=source_node.ssh_user,
+            executor_key=source_node.ssh_key_path,
+            source_dataset=source_dataset,
+            dest_host=dest_node.hostname,
+            dest_port=dest_node.ssh_port,
+            dest_user=dest_node.ssh_user,
+            dest_key=dest_node.ssh_key_path,
+            dest_dataset=dest_dataset,
+        )
+        if still_active:
+            await _apply_sync_monitor_timeout(job_id, log_entry_id, still_active=True)
+        else:
+            await _finalize_sync_job(
+                job_id, log_entry_id, dest_node, dest_dataset, job_key
+            )
     except Exception as e:
         logger.warning(f"Monitor job {job_id} interrotto: {e}")
     finally:
