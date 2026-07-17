@@ -5,6 +5,9 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+### Correzioni
+- Browse Synology/QNAP: messaggi errore espliciti su timeout/rete irraggiungibile e dettaglio API mostrato in UI (`connection_errors.py`, `FolderBrowser.vue`).
+
 ## [3.17.5] - 2026-07-17
 
 ### Aggiunte

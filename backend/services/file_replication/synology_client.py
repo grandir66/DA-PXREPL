@@ -8,6 +8,7 @@ from urllib.parse import quote
 
 import httpx
 
+from services.file_replication.connection_errors import format_connection_error
 from services.file_replication.path_utils import is_excluded_name, sanitize_path
 from services.file_replication_schemas import BrowseEntryOut, ConnectionTestResult
 
@@ -34,15 +35,18 @@ class SynologyClient:
         self._base = f"https://{host}:{self.port}" if verify_ssl else f"http://{host}:{self.port}"
 
     async def _api_get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
-        async with httpx.AsyncClient(verify=self.verify_ssl, timeout=30.0) as client:
-            resp = await client.get(f"{self._base}{path}", params=params)
-            resp.raise_for_status()
-            data = resp.json()
-            if not data.get("success"):
-                err = data.get("error", {})
-                code = err.get("code", "unknown")
-                raise RuntimeError(f"Synology API error {code}")
-            return data
+        try:
+            async with httpx.AsyncClient(verify=self.verify_ssl, timeout=30.0) as client:
+                resp = await client.get(f"{self._base}{path}", params=params)
+                resp.raise_for_status()
+                data = resp.json()
+        except httpx.HTTPError as exc:
+            raise RuntimeError(format_connection_error(self.host, self.port, exc)) from exc
+        if not data.get("success"):
+            err = data.get("error", {})
+            code = err.get("code", "unknown")
+            raise RuntimeError(f"Synology API error {code}")
+        return data
 
     async def login(self) -> str:
         data = await self._api_get(

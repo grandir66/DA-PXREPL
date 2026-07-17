@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import axios from 'axios'
 import { computed, ref, watch } from 'vue'
 import { fileEndpointsApi, type BrowseEntry } from '../../services/fileEndpoints'
 
@@ -36,7 +37,17 @@ async function load(path: string) {
       childrenCache.value[path] = data
     }
   } catch (e: unknown) {
-    error.value = e instanceof Error ? e.message : 'Errore browse'
+    if (axios.isAxiosError(e)) {
+      const detail = e.response?.data?.detail
+      error.value =
+        typeof detail === 'string'
+          ? detail
+          : Array.isArray(detail)
+            ? detail.map((d) => d.msg || String(d)).join('; ')
+            : e.message
+    } else {
+      error.value = e instanceof Error ? e.message : 'Errore browse'
+    }
   } finally {
     loading.value = false
   }

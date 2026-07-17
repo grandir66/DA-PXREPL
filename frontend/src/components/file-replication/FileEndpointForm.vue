@@ -88,6 +88,7 @@ async function testSaved(id: number) {
       <div class="form-group">
         <label>Host</label>
         <input v-model="form.host" class="form-input" placeholder="192.168.1.10" />
+        <small class="text-muted">Deve essere raggiungibile dal server dapx (192.168.4.199), non solo dal tuo PC.</small>
       </div>
       <div class="form-group">
         <label>Porta</label>
