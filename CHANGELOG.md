@@ -5,6 +5,14 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.9] - 2026-07-17
+
+### Correzioni
+- Allineamento versione su `/api/health` e sui 5 punti di versione del progetto (`backend/main.py`, `version.json`).
+
+### Note rilascio
+- Include fix Synology (certificati auto-firmati, v3.17.7) e QNAP (HTTPS/443, fallback da :8080, v3.17.8) per replica file NAS.
+
 ## [3.17.8] - 2026-07-17
 
 ### Correzioni
