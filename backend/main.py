@@ -158,7 +158,7 @@ async def health_check():
     from datetime import datetime as _dt
     payload: dict = {
         "status": "healthy",
-        "version": "3.17.7",
+        "version": "3.17.8",
         "auth_enabled": True,
         "mode": dapx_mode,
         "checks": {},
