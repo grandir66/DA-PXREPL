@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.17] - 2026-07-17
+
+### Correzioni
+- Synology SMB pull con **smbclient** (no mount CIFS): compatibile con **LXC unprivileged** Proxmox (`synology_smb.py`).
+
 ## [3.17.16] - 2026-07-17
 
 ### Correzioni

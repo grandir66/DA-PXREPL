@@ -16,10 +16,8 @@ from services.file_replication.exclude_presets import build_exclude_lines
 from services.file_replication.file_sync_service import build_sync_plan, parse_rsync_progress
 from services.file_replication.synology_smb import (
     describe_synology_pull,
-    local_source_dir,
-    mount_synology_share,
     preflight_synology_smb,
-    unmount_synology_share,
+    pull_synology_share,
 )
 from services.notification_service import notification_service
 
@@ -103,8 +101,6 @@ async def execute_file_replication_job(job_id: int) -> None:
     staging_dir: Optional[str] = None
     source: Optional[FileEndpoint] = None
     dest: Optional[FileEndpoint] = None
-    smb_mounts: list[str] = []
-    smb_cred_files: list[str] = []
 
     try:
         job = db.query(FileReplicationJob).filter(FileReplicationJob.id == job_id).first()
@@ -196,23 +192,12 @@ async def execute_file_replication_job(job_id: int) -> None:
         for step in sync_plan:
             if step["type"] == "synology_smb":
                 share, subpath, desc = describe_synology_pull(step["src_path"])
-                mount_point = f"{step['mount_root']}/{share}"
-                creds_fd, creds_path = tempfile.mkstemp(prefix="dapx-fr-cifs-", suffix=".cred")
-                os.close(creds_fd)
-                smb_cred_files.append(creds_path)
                 logger.info("FileReplicationJob %s pull Synology SMB %s", job_id, desc)
-                await mount_synology_share(source, share, mount_point, creds_path)
-                smb_mounts.append(mount_point)
-                pull_cmd = [
-                    "rsync",
-                    "-a",
-                    "--info=progress2",
-                    "--exclude-from",
-                    step["exclude_file"],
-                    local_source_dir(mount_point, subpath),
-                    step["local_dir"],
-                ]
-                await _run_rsync(pull_cmd)
+                out, err = await pull_synology_share(
+                    source, share, subpath, step["local_dir"]
+                )
+                combined_stdout.extend(out)
+                combined_stderr.extend(err)
             elif step["type"] == "rsync":
                 await _run_rsync(step["cmd"])
 
@@ -283,17 +268,6 @@ async def execute_file_replication_job(job_id: int) -> None:
             except Exception as notify_err:
                 logger.warning("Notifica failure fallita: %s", notify_err)
     finally:
-        for mount_point in reversed(smb_mounts):
-            try:
-                await unmount_synology_share(mount_point)
-            except Exception as umount_err:
-                logger.warning("Unmount SMB fallito %s: %s", mount_point, umount_err)
-        for cred_path in smb_cred_files:
-            if os.path.exists(cred_path):
-                try:
-                    os.unlink(cred_path)
-                except OSError:
-                    pass
         if exclude_path and os.path.exists(exclude_path):
             try:
                 os.unlink(exclude_path)

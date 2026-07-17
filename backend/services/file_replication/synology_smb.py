@@ -1,10 +1,11 @@
-"""Pull sorgente Synology via mount SMB/CIFS (rsync SSH Synology non supporta lettura)."""
+"""Pull sorgente Synology via SMB (smbclient — funziona anche in LXC unprivileged)."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
 import os
+import tempfile
 
 from database import FileEndpoint
 from services.file_replication.endpoint_crypto import decrypt_password
@@ -14,72 +15,84 @@ logger = logging.getLogger(__name__)
 
 
 def preflight_synology_smb() -> None:
-    if not os.path.exists("/sbin/mount.cifs") and not os.path.exists("/usr/sbin/mount.cifs"):
+    from shutil import which
+
+    if not which("smbclient"):
         raise RuntimeError(
-            "cifs-utils non installato sul server dapx (pull Synology via SMB). "
-            "Installare con: apt install cifs-utils"
+            "smbclient non installato sul server dapx (pull Synology via SMB). "
+            "Installare con: apt install smbclient"
         )
 
 
-def _write_credentials_file(path: str, username: str, password: str) -> None:
+def _write_smb_credentials(path: str, username: str, password: str) -> None:
     with open(path, "w", encoding="utf-8") as fh:
-        fh.write(f"username={username}\n")
-        fh.write(f"password={password}\n")
+        fh.write("[global]\n")
+        fh.write(f"username = {username}\n")
+        fh.write(f"password = {password}\n")
     os.chmod(path, 0o600)
 
 
-async def _run_mount(cmd: list[str]) -> None:
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout_b, stderr_b = await proc.communicate()
-    if proc.returncode != 0:
-        err = stderr_b.decode(errors="replace").strip() or stdout_b.decode(errors="replace").strip()
-        raise RuntimeError(f"mount CIFS fallito: {err}")
-
-
-async def mount_synology_share(
+async def pull_synology_share(
     source: FileEndpoint,
     share: str,
-    mount_point: str,
-    creds_file: str,
-) -> None:
+    subpath: str,
+    local_dir: str,
+) -> tuple[list[str], list[str]]:
+    """Scarica share/cartella Synology in local_dir con smbclient mget."""
     password = decrypt_password(source.password_enc or "")
     if not password:
         raise RuntimeError(f"Password mancante per endpoint Synology {source.name}")
-    os.makedirs(mount_point, exist_ok=True)
-    _write_credentials_file(creds_file, source.username, password)
-    unc = f"//{source.host}/{share}"
-    opts = f"credentials={creds_file},vers=3.0,ro,iocharset=utf8"
-    await _run_mount(["mount", "-t", "cifs", unc, mount_point, "-o", opts])
-    logger.info("Synology SMB montato: %s -> %s", unc, mount_point)
 
+    os.makedirs(local_dir, exist_ok=True)
+    fd, creds_file = tempfile.mkstemp(prefix="dapx-fr-smb-", suffix=".cred")
+    os.close(fd)
+    stdout_lines: list[str] = []
+    stderr_lines: list[str] = []
 
-async def unmount_synology_share(mount_point: str) -> None:
-    if not os.path.ismount(mount_point):
-        return
-    proc = await asyncio.create_subprocess_exec(
-        "umount",
-        mount_point,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    await proc.communicate()
+    try:
+        _write_smb_credentials(creds_file, source.username, password)
+        remote = f"//{source.host}/{share}"
+        smb_cmd = "prompt OFF; recurse ON; mget *"
+        cmd = ["smbclient", remote]
+        if subpath:
+            cmd.extend(["-D", subpath])
+        cmd.extend(["-A", creds_file, "-c", smb_cmd])
 
+        logger.info(
+            "Synology SMB pull %s/%s -> %s",
+            share,
+            subpath or ".",
+            local_dir,
+        )
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            cwd=local_dir,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout_b, stderr_b = await proc.communicate()
+        if stdout_b:
+            stdout_lines.append(stdout_b.decode(errors="replace"))
+        if stderr_b:
+            stderr_lines.append(stderr_b.decode(errors="replace"))
 
-def local_source_dir(mount_point: str, subpath: str) -> str:
-    base = mount_point.rstrip("/")
-    if subpath:
-        return f"{base}/{subpath.strip('/')}/"
-    return f"{base}/"
+        if proc.returncode != 0:
+            err = "".join(stderr_lines)[-2000:] or "".join(stdout_lines)[-2000:]
+            raise RuntimeError(f"smbclient exit {proc.returncode}: {err}")
+
+        return stdout_lines, stderr_lines
+    finally:
+        if os.path.exists(creds_file):
+            try:
+                os.unlink(creds_file)
+            except OSError:
+                pass
 
 
 def describe_synology_pull(src_path: str) -> tuple[str, str, str]:
     """Ritorna share, subpath, descrizione per log."""
     share, subpath = parse_synology_share_path(src_path)
-    desc = f"//share/{share}"
+    desc = f"//{share}"
     if subpath:
         desc += f"/{subpath}"
     return share, subpath, desc

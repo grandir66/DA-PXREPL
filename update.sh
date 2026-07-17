@@ -358,13 +358,13 @@ else
 fi
 
 # Binari per replica file NAS (rsync over SSH)
-if ! command -v rsync >/dev/null 2>&1 || ! command -v sshpass >/dev/null 2>&1 || ! command -v mount.cifs >/dev/null 2>&1; then
-    log_info "Installazione rsync/sshpass/cifs-utils per replica file..."
+if ! command -v rsync >/dev/null 2>&1 || ! command -v sshpass >/dev/null 2>&1 || ! command -v smbclient >/dev/null 2>&1; then
+    log_info "Installazione rsync/sshpass/smbclient per replica file..."
     apt-get update -qq >/dev/null 2>&1 || true
-    if DEBIAN_FRONTEND=noninteractive apt-get install -y -qq rsync openssh-client sshpass cifs-utils >/dev/null 2>&1; then
+    if DEBIAN_FRONTEND=noninteractive apt-get install -y -qq rsync openssh-client sshpass cifs-utils smbclient >/dev/null 2>&1; then
         log_success "Dipendenze replica file installate"
     else
-        log_warn "Impossibile installare dipendenze replica file — eseguire: apt install rsync openssh-client sshpass cifs-utils"
+        log_warn "Impossibile installare dipendenze replica file — eseguire: apt install rsync openssh-client sshpass cifs-utils smbclient"
     fi
 fi
 

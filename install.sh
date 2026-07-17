@@ -296,6 +296,7 @@ install_system_dependencies() {
         rsync
         sshpass
         cifs-utils
+        smbclient
         # Build
         build-essential
         libffi-dev
