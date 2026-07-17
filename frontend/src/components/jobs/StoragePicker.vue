@@ -16,6 +16,8 @@
 
     <div v-if="!nodeId" class="sp-empty">Seleziona prima un nodo.</div>
 
+    <div v-else-if="loading" class="sp-empty">Caricamento storage…</div>
+
     <div v-else-if="error" class="sp-error">{{ error }}</div>
 
     <div v-else-if="filtered.length === 0 && !loading" class="sp-empty">

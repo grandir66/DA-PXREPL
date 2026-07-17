@@ -199,10 +199,16 @@
             </div>
 
             <div class="field field-full" v-if="form.kind === 'pve_native'">
+              <label>Storage destinazione (restore VM)</label>
+              <StoragePicker
+                :model-value="form.registration.dest_storage"
+                :node-id="form.dest_node_id"
+                :node-name="destNodeName"
+                type="any"
+                @update:model-value="(v: string) => { form.registration.dest_storage = v || null }"
+              />
               <small class="jm-note">
-                Per la modalità nativa Proxmox lo storage di destinazione si imposta nello step
-                successivo "Registrazione VM". Funziona con qualunque tipo di storage che
-                supporta snapshot (qcow2-su-dir, LVM-thin, ZFS, btrfs, RBD/Ceph, NFS).
+                Storage Proxmox dove verrà ripristinata la VM (ZFS, LVM-thin, dir, NFS, Ceph, …).
               </small>
             </div>
 
@@ -234,7 +240,7 @@
             :source-vmid="form.vm_id"
             :source-vm-name="form.vm_name"
             :storage-type="form.kind === 'syncoid' ? 'zfs' : 'any'"
-            :hide-storage="form.kind === 'syncoid'"
+            :hide-storage="form.kind === 'syncoid' || form.kind === 'pve_native'"
             :show-start-vm="form.kind === 'recovery_pbs'"
             :show-overwrite="form.kind === 'recovery_pbs'"
           />
@@ -400,6 +406,9 @@
             <span v-else>{{ isEdit ? 'Salva modifiche' : 'Crea job' }}</span>
           </button>
         </div>
+        <p v-if="!canAdvance && advanceBlockReason" class="jm-advance-hint">
+          {{ advanceBlockReason }}
+        </p>
       </footer>
 
       <div v-if="submitError" class="jm-error">
@@ -678,6 +687,8 @@ const modeLabel = computed(() => {
   switch (form.value.kind) {
     case 'syncoid':
       return 'ZFS / syncoid'
+    case 'pve_native':
+      return 'Proxmox nativo'
     case 'backup_pbs':
       return 'PBS · backup'
     case 'recovery_pbs':
@@ -688,6 +699,8 @@ const kindLabel = computed(() => {
   switch (form.value.kind) {
     case 'syncoid':
       return 'replica ZFS'
+    case 'pve_native':
+      return 'replica nativa Proxmox'
     case 'backup_pbs':
       return 'backup PBS'
     case 'recovery_pbs':
@@ -709,6 +722,30 @@ const canAdvance = computed(() => {
       return !!(form.value.dest_node_id && form.value.pbs_node_id)
   }
   return true
+})
+
+const advanceBlockReason = computed(() => {
+  if (canAdvance.value) return null
+  if (currentStep.value === 0) {
+    if (!form.value.source_node_id) return 'Seleziona il nodo sorgente.'
+    return 'Seleziona la VM da replicare.'
+  }
+  if (currentStep.value === 1) {
+    if (form.value.kind === 'backup_pbs') {
+      return form.value.pbs_node_id ? null : 'Seleziona il server PBS.'
+    }
+    if (!form.value.dest_node_id) return 'Seleziona il nodo destinazione.'
+    if (form.value.kind === 'syncoid' && !form.value.dest_pool) {
+      return 'Seleziona lo storage ZFS destinazione (o digitalo manualmente).'
+    }
+    if (form.value.kind === 'pve_native' && !form.value.registration.dest_storage) {
+      return 'Seleziona lo storage destinazione per il restore.'
+    }
+    if (form.value.kind === 'recovery_pbs' && !form.value.pbs_node_id) {
+      return 'Seleziona il server PBS.'
+    }
+  }
+  return null
 })
 const canSubmit = computed(() => canAdvance.value && !!form.value.vm_id)
 
@@ -1344,6 +1381,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
 .jm-foot {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   padding: var(--space-3) var(--space-5);
@@ -1384,6 +1422,13 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   color: var(--color-danger-fg);
   border-radius: var(--radius-md);
   font-size: 0.82rem;
+}
+.jm-advance-hint {
+  flex: 1 1 100%;
+  margin: var(--space-2) 0 0;
+  font-size: 0.8rem;
+  color: var(--color-warning-fg);
+  text-align: right;
 }
 
 @media (max-width: 720px) {

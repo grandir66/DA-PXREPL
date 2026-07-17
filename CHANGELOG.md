@@ -6,7 +6,7 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 ## [Unreleased]
 
 ### Fix
-- **job_logs lifecycle**: monitor syncoid segna `failed` dopo timeout (~6h); reconcile PVE native/BTRFS; correzione automatica log con `completed_at` ma status `started`/`running` (`sync_job_execution.py`, `sync_job_reconciliation.py`, `scripts/db_maintenance.py`).
+- **Wizard replica (pve_native)**: storage destinazione visibile nello step Destinazione; risolto blocco con "Avanti" disabilitato senza picker (`JobModal.vue`, `StoragePicker.vue`). monitor syncoid segna `failed` dopo timeout (~6h); reconcile PVE native/BTRFS; correzione automatica log con `completed_at` ma status `started`/`running` (`sync_job_execution.py`, `sync_job_reconciliation.py`, `scripts/db_maintenance.py`).
 - **Schema DB**: migrazioni per `sync_jobs.force_cpu_host`, `recovery_jobs.notify_on_each_run`, `backup_jobs.notify_on_each_run` (`update_db_schema.py`).
 - **ha_store**: fetch HA/nodi via `apiClient` (JWT refresh) invece di `fetch` raw (`frontend/src/stores/ha_store.ts`).
 - **VM → Backup PBS**: elenco backup dalla view Virtual Machines allineato all'inventario PBS (API + pvesh); corretto bug `storage_id` nel fallback e formato timestamp per la UI.
