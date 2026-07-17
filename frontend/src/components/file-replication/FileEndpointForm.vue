@@ -24,6 +24,7 @@ const form = reactive({
   domain: '',
   base_path: '',
   verify_ssl: false,
+  use_https: false,
 })
 
 const saving = ref(false)
@@ -45,6 +46,7 @@ function resetForm() {
   form.domain = ''
   form.base_path = ''
   form.verify_ssl = false
+  form.use_https = false
   testMsg.value = ''
   testOk.value = null
   errorMsg.value = ''
@@ -62,7 +64,9 @@ function loadFromEndpoint(ep: FileEndpoint) {
   form.ssh_key_path = ep.ssh_key_path || ''
   form.domain = ep.domain || ''
   form.base_path = ep.base_path || ''
-  form.verify_ssl = Boolean((ep.extra_config as { verify_ssl?: boolean } | null)?.verify_ssl)
+  const extra = (ep.extra_config || {}) as { verify_ssl?: boolean; use_https?: boolean }
+  form.verify_ssl = Boolean(extra.verify_ssl)
+  form.use_https = Boolean(extra.use_https)
   testMsg.value = ep.last_test_message || ''
   testOk.value = ep.last_test_status === 'success' ? true : ep.last_test_status === 'failed' ? false : null
   errorMsg.value = ''
@@ -107,6 +111,9 @@ async function save() {
     }
     if (form.endpoint_type === 'synology') {
       payload.extra_config = { verify_ssl: form.verify_ssl }
+    }
+    if (form.endpoint_type === 'qnap') {
+      payload.extra_config = { verify_ssl: form.verify_ssl, use_https: form.use_https }
     }
     if (form.password) payload.password = form.password
 
@@ -204,6 +211,12 @@ async function testConnection() {
       <div class="form-group">
         <label>Porta</label>
         <input v-model.number="form.port" type="number" class="form-input" />
+        <small v-if="form.endpoint_type === 'qnap'" class="text-muted">
+          QNAP: 8080 = HTTP, 443 = HTTPS (consigliato se accedi al NAS via https).
+        </small>
+        <small v-else-if="form.endpoint_type === 'synology'" class="text-muted">
+          Synology: 5001 = HTTPS, 5000 = HTTP.
+        </small>
       </div>
       <div class="form-group">
         <label>Utente</label>
@@ -218,10 +231,16 @@ async function testConnection() {
           :placeholder="isEdit ? 'Lascia vuoto per non cambiare' : ''"
         />
       </div>
-      <div v-if="form.endpoint_type === 'synology'" class="form-group span-2">
+      <div v-if="form.endpoint_type === 'qnap'" class="form-group span-2">
+        <label class="checkbox-label">
+          <input v-model="form.use_https" type="checkbox" />
+          Usa HTTPS (porta 443 o forza HTTPS su porta custom)
+        </label>
+      </div>
+      <div v-if="form.endpoint_type === 'synology' || form.endpoint_type === 'qnap'" class="form-group span-2">
         <label class="checkbox-label">
           <input v-model="form.verify_ssl" type="checkbox" />
-          Verifica certificato SSL (disabilita per Synology con certificato auto-firmato)
+          Verifica certificato SSL (disabilita per certificato auto-firmato del NAS)
         </label>
       </div>
       <div v-if="form.endpoint_type === 'linux'" class="form-group">

@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.8] - 2026-07-17
+
+### Correzioni
+- QNAP File Station: supporto HTTPS (porta 443 / stunnel), `verify_ssl=false` di default, fallback automatico HTTP:8080 → HTTPS:443, messaggi errore chiari (`qnap_client.py`, `FileEndpointForm.vue`).
+
 ## [3.17.7] - 2026-07-17
 
 ### Correzioni

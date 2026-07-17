@@ -41,7 +41,15 @@ def get_browser(endpoint: FileEndpoint):
             verify_ssl=bool(verify_ssl),
         )
     if et == FileEndpointType.QNAP:
-        return QnapClient(endpoint.host, endpoint.port or 8080, endpoint.username, password)
+        extra = endpoint.extra_config or {}
+        return QnapClient(
+            endpoint.host,
+            endpoint.port or 8080,
+            endpoint.username,
+            password,
+            verify_ssl=bool(extra.get("verify_ssl", False)),
+            use_https=bool(extra.get("use_https", False)),
+        )
     if et == FileEndpointType.LINUX:
         return LinuxSshBrowser(
             endpoint.host,
