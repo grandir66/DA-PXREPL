@@ -5,6 +5,16 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.14] - 2026-07-17
+
+### Correzioni
+- Replica file rsync: SSH usa porta **22** su endpoint Synology/QNAP (porta API 5001/443/8080 resta solo per browse/test); fix `rsync exit 255` su porta 5001 (`file_sync_service.py`).
+
+### Modifiche
+- UI replica file: pulsante **Log**, anteprima errore in tabella, polling dopo Run (`FileReplLogModal.vue`, `FileReplication.vue`).
+- Preflight e messaggi chiari se mancano `rsync`/`sshpass`; log fallimento sempre scritto in `job_logs` (`file_replication_execution.py`).
+- `install.sh` / `update.sh`: installazione automatica `rsync`, `sshpass`, `openssh-client`.
+
 ## [3.17.13] - 2026-07-17
 
 ### Modifiche

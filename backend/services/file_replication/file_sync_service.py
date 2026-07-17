@@ -29,8 +29,20 @@ def parse_rsync_progress(line: str) -> Optional[dict]:
     }
 
 
+def _ssh_port(endpoint: FileEndpoint) -> int:
+    """Porta SSH per rsync: distinta dalla porta API (5001/8080/443) su Synology/QNAP."""
+    extra = endpoint.extra_config or {}
+    if extra.get("ssh_port") is not None:
+        return int(extra["ssh_port"])
+    if endpoint.protocol == "ssh":
+        return endpoint.port or 22
+    if endpoint.endpoint_type in (FileEndpointType.SYNOLOGY, FileEndpointType.QNAP):
+        return 22
+    return endpoint.port or 22
+
+
 def _ssh_transport(endpoint: FileEndpoint) -> str:
-    port = endpoint.port or 22
+    port = _ssh_port(endpoint)
     if endpoint.ssh_key_path:
         return f"ssh -p {port} -o StrictHostKeyChecking=no -i {endpoint.ssh_key_path}"
     password = decrypt_password(endpoint.password_enc or "")

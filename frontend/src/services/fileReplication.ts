@@ -23,6 +23,7 @@ export interface FileReplicationJob {
   last_run_status?: string | null
   last_run_duration_sec?: number | null
   last_bytes_transferred?: number | null
+  last_run_error?: string | null
   source_endpoint_name?: string | null
   dest_endpoint_name?: string | null
   notify_mode?: string

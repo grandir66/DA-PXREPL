@@ -357,6 +357,17 @@ else
     log_success "Virtual environment creato e configurato"
 fi
 
+# Binari per replica file NAS (rsync over SSH)
+if ! command -v rsync >/dev/null 2>&1 || ! command -v sshpass >/dev/null 2>&1; then
+    log_info "Installazione rsync/sshpass per replica file..."
+    apt-get update -qq >/dev/null 2>&1 || true
+    if DEBIAN_FRONTEND=noninteractive apt-get install -y -qq rsync openssh-client sshpass >/dev/null 2>&1; then
+        log_success "Dipendenze replica file installate"
+    else
+        log_warn "Impossibile installare rsync/sshpass automaticamente — eseguire: apt install rsync openssh-client sshpass"
+    fi
+fi
+
 # Frontend rebuild — best effort.
 # Se npm manca o la build fallisce (es. Node troppo vecchio per Vite),
 # usiamo il frontend/dist precompilato gia' presente nel repo, che e'

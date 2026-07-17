@@ -154,6 +154,7 @@ class FileReplicationJobOut(BaseModel):
     notify_subject: Optional[str] = None
     source_endpoint_name: Optional[str] = None
     dest_endpoint_name: Optional[str] = None
+    last_run_error: Optional[str] = None
 
     class Config:
         from_attributes = True

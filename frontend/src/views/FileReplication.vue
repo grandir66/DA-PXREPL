@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import FileEndpointForm from '../components/file-replication/FileEndpointForm.vue'
 import FileReplJobModal from '../components/file-replication/FileReplJobModal.vue'
+import FileReplLogModal from '../components/file-replication/FileReplLogModal.vue'
 import { fileEndpointsApi, type FileEndpoint } from '../services/fileEndpoints'
 import { fileReplicationApi, type FileReplicationJob } from '../services/fileReplication'
 
@@ -10,6 +11,9 @@ const endpoints = ref<FileEndpoint[]>([])
 const stats = ref({ total: 0, active: 0, running: 0, failed: 0 })
 const showJobModal = ref(false)
 const editingJob = ref<FileReplicationJob | null>(null)
+const showLogModal = ref(false)
+const logJob = ref<FileReplicationJob | null>(null)
+const runError = ref('')
 const showEndpointForm = ref(false)
 const editingEndpoint = ref<FileEndpoint | null>(null)
 const endpointError = ref('')
@@ -35,9 +39,42 @@ async function refresh() {
   }
 }
 
-async function runJob(id: number) {
-  await fileReplicationApi.run(id)
-  await refresh()
+async function runJob(job: FileReplicationJob) {
+  runError.value = ''
+  try {
+    await fileReplicationApi.run(job.id)
+    logJob.value = job
+    showLogModal.value = true
+    await refresh()
+    for (let i = 0; i < 90; i++) {
+      await new Promise((r) => setTimeout(r, 2000))
+      const { data } = await fileReplicationApi.progress(job.id)
+      if (data.status !== 'running') break
+      await refresh()
+    }
+    await refresh()
+  } catch (e: unknown) {
+    const msg =
+      typeof e === 'object' &&
+      e !== null &&
+      'response' in e &&
+      typeof (e as { response?: { data?: { detail?: string } } }).response?.data?.detail === 'string'
+        ? (e as { response: { data: { detail: string } } }).response.data.detail
+        : e instanceof Error
+          ? e.message
+          : 'Avvio job fallito'
+    runError.value = msg
+  }
+}
+
+function openJobLogs(job: FileReplicationJob) {
+  logJob.value = job
+  showLogModal.value = true
+}
+
+function closeLogModal() {
+  showLogModal.value = false
+  logJob.value = null
 }
 
 async function toggleJob(id: number) {
@@ -232,6 +269,7 @@ onMounted(refresh)
         <button class="btn btn-sm btn-secondary" :disabled="loading" @click="refresh">Aggiorna</button>
       </div>
       <div class="card-body p-0">
+        <p v-if="runError" class="p-3 text-danger">{{ runError }}</p>
         <table class="data-table" v-if="jobs.length">
           <thead>
             <tr>
@@ -255,10 +293,14 @@ onMounted(refresh)
                 <span :class="job.last_run_status === 'success' ? 'text-success' : job.last_run_status === 'failed' ? 'text-danger' : ''">
                   {{ job.current_status || job.last_run_status || 'idle' }}
                 </span>
+                <small v-if="job.last_run_error" class="muted d-block text-danger" :title="job.last_run_error">
+                  {{ job.last_run_error.length > 120 ? job.last_run_error.slice(0, 120) + '…' : job.last_run_error }}
+                </small>
               </td>
               <td class="actions">
                 <button class="btn btn-sm btn-secondary" @click="openEditJob(job)">Modifica</button>
-                <button class="btn btn-sm btn-primary" @click="runJob(job.id)">Run</button>
+                <button class="btn btn-sm btn-secondary" @click="openJobLogs(job)">Log</button>
+                <button class="btn btn-sm btn-primary" @click="runJob(job)">Run</button>
                 <button class="btn btn-sm btn-secondary" @click="toggleJob(job.id)">
                   {{ job.is_active ? 'Off' : 'On' }}
                 </button>
@@ -270,6 +312,13 @@ onMounted(refresh)
         <p v-else class="p-4">Nessun job. Crea un endpoint e un job per iniziare.</p>
       </div>
     </div>
+
+    <FileReplLogModal
+      v-if="showLogModal && logJob"
+      :job-id="logJob.id"
+      :job-name="logJob.name"
+      @close="closeLogModal"
+    />
 
     <FileReplJobModal
       v-if="showJobModal"

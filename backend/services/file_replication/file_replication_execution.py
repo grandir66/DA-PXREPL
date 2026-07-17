@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Optional
 
 from database import FileEndpoint, FileEndpointType, FileReplicationJob, JobLog, SessionLocal
+from services.file_replication.endpoint_crypto import decrypt_password
 from services.file_replication.exclude_presets import build_exclude_lines
 from services.file_replication.file_sync_service import build_rsync_legs, parse_rsync_progress
 from services.notification_service import notification_service
@@ -19,6 +20,58 @@ logger = logging.getLogger(__name__)
 
 _running: set[int] = set()
 _progress: dict[int, dict] = {}
+
+
+def _preflight_rsync_tools(source: FileEndpoint, dest: FileEndpoint) -> None:
+    if not shutil.which("rsync"):
+        raise RuntimeError(
+            "rsync non installato sul server dapx. Installare con: apt install rsync openssh-client"
+        )
+
+    def _needs_sshpass(ep: FileEndpoint) -> bool:
+        if ep.ssh_key_path:
+            return False
+        return bool(decrypt_password(ep.password_enc or ""))
+
+    if _needs_sshpass(source) or _needs_sshpass(dest):
+        if not shutil.which("sshpass"):
+            raise RuntimeError(
+                "sshpass non installato sul server dapx (password SSH sugli endpoint). "
+                "Installare con: apt install sshpass"
+            )
+
+
+def _write_failure_log(
+    db,
+    *,
+    job_id: int,
+    log_row: Optional[JobLog],
+    job: Optional[FileReplicationJob],
+    dest: Optional[FileEndpoint],
+    error: str,
+    duration: int,
+) -> None:
+    if log_row:
+        log_row.status = "failed"
+        log_row.error = error
+        log_row.duration = duration
+        log_row.completed_at = datetime.utcnow()
+        return
+    if not job:
+        return
+    db.add(
+        JobLog(
+            job_type="file_replication",
+            job_id=job_id,
+            node_name=dest.name if dest else None,
+            dataset=job.dest_staging_path,
+            status="failed",
+            message=f"Replica fallita: {job.name}",
+            error=error,
+            duration=duration,
+            completed_at=datetime.utcnow(),
+        )
+    )
 
 
 def is_job_running(job_id: int) -> bool:
@@ -57,6 +110,8 @@ async def execute_file_replication_job(job_id: int) -> None:
         if dest.endpoint_type != FileEndpointType.QNAP:
             raise RuntimeError("La destinazione deve essere un endpoint QNAP")
 
+        _preflight_rsync_tools(source, dest)
+
         job.current_status = "running"
         db.commit()
 
@@ -84,11 +139,18 @@ async def execute_file_replication_job(job_id: int) -> None:
 
         for cmd in commands:
             logger.info("FileReplicationJob %s rsync: %s", job_id, " ".join(cmd[:8]))
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+            except FileNotFoundError as exc:
+                missing = cmd[0] if cmd else "rsync"
+                raise RuntimeError(
+                    f"'{missing}' non trovato sul server dapx. "
+                    "Installare con: apt install rsync openssh-client sshpass"
+                ) from exc
             assert proc.stderr is not None
             while True:
                 line_b = await proc.stderr.readline()
@@ -153,18 +215,24 @@ async def execute_file_replication_job(job_id: int) -> None:
     except Exception as exc:
         logger.error("FileReplicationJob %s fallito: %s", job_id, exc, exc_info=True)
         duration = int((datetime.utcnow() - started).total_seconds())
+        err_text = str(exc)
         job = db.query(FileReplicationJob).filter(FileReplicationJob.id == job_id).first()
         if job:
             job.last_run_at = datetime.utcnow()
             job.last_run_status = "failed"
             job.last_run_duration_sec = duration
             job.current_status = "failed"
-            db.commit()
-        if log_row:
-            log_row.status = "failed"
-            log_row.error = str(exc)
-            db.commit()
-        _progress[job_id] = {"status": "failed", "error": str(exc)}
+        _write_failure_log(
+            db,
+            job_id=job_id,
+            log_row=log_row,
+            job=job,
+            dest=dest,
+            error=err_text,
+            duration=duration,
+        )
+        db.commit()
+        _progress[job_id] = {"status": "failed", "error": err_text}
         if job and job.notify_mode in ("always", "failure", "daily"):
             try:
                 await notification_service.send_job_notification(

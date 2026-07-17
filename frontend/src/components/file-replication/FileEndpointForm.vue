@@ -215,7 +215,7 @@ async function testConnection() {
           QNAP: 8080 = HTTP, 443 = HTTPS (consigliato se accedi al NAS via https).
         </small>
         <small v-else-if="form.endpoint_type === 'synology'" class="text-muted">
-          Synology: 5001 = HTTPS, 5000 = HTTP.
+          Porta API DSM (browse/test): 5001 = HTTPS, 5000 = HTTP. Il job rsync via SSH usa porta 22.
         </small>
       </div>
       <div class="form-group">

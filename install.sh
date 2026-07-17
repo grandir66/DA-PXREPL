@@ -291,8 +291,10 @@ install_system_dependencies() {
         zstd
         gzip
         xz-utils
-        # SSH
+        # SSH + replica file NAS
         openssh-client
+        rsync
+        sshpass
         # Build
         build-essential
         libffi-dev

@@ -29,7 +29,27 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _job_out(job: FileReplicationJob) -> FileReplicationJobOut:
+def _latest_log_errors(db: Session, job_ids: list[int]) -> dict[int, str]:
+    if not job_ids:
+        return {}
+    logs = (
+        db.query(JobLog)
+        .filter(JobLog.job_type == "file_replication", JobLog.job_id.in_(job_ids))
+        .order_by(JobLog.job_id, JobLog.id.desc())
+        .all()
+    )
+    out: dict[int, str] = {}
+    for log in logs:
+        if log.job_id in out:
+            continue
+        if log.error:
+            out[log.job_id] = log.error
+        elif log.status == "failed" and log.message:
+            out[log.job_id] = log.message
+    return out
+
+
+def _job_out(job: FileReplicationJob, last_run_error: Optional[str] = None) -> FileReplicationJobOut:
     hint = job.snapshot_policy_hint
     if hasattr(hint, "model_dump"):
         hint = hint.model_dump()
@@ -63,6 +83,7 @@ def _job_out(job: FileReplicationJob) -> FileReplicationJobOut:
         notify_subject=job.notify_subject,
         source_endpoint_name=job.source_endpoint.name if job.source_endpoint else None,
         dest_endpoint_name=job.dest_endpoint.name if job.dest_endpoint else None,
+        last_run_error=last_run_error,
     )
 
 
@@ -96,7 +117,8 @@ def list_jobs(
     _user: User = Depends(get_current_user),
 ):
     jobs = db.query(FileReplicationJob).order_by(FileReplicationJob.name).all()
-    return [_job_out(j) for j in jobs]
+    errors = _latest_log_errors(db, [j.id for j in jobs])
+    return [_job_out(j, errors.get(j.id)) for j in jobs]
 
 
 @router.post("", response_model=FileReplicationJobOut)
