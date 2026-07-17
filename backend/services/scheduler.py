@@ -10,7 +10,7 @@ import logging
 from croniter import croniter
 from sqlalchemy.orm import Session
 
-from database import SessionLocal, SyncJob, JobLog, Node, NotificationConfig, SystemConfig, HostBackupJob, MigrationJob
+from database import SessionLocal, SyncJob, JobLog, Node, NotificationConfig, SystemConfig, HostBackupJob, MigrationJob, FileReplicationJob
 from services.notification_service import notification_service
 from services.host_backup_service import host_backup_service
 from services.host_info_service import host_info_service
@@ -533,6 +533,45 @@ class SchedulerService:
                         
                 except Exception as e:
                     logger.error(f"Errore scheduling HostBackupJob {job.id}: {e}")
+
+            # === FILE REPLICATION JOBS ===
+            file_replication_jobs = db.query(FileReplicationJob).filter(
+                FileReplicationJob.is_active == True,
+                FileReplicationJob.schedule.isnot(None),
+                FileReplicationJob.schedule != "",
+            ).all()
+
+            for job in file_replication_jobs:
+                try:
+                    job_key = f"file_replication_{job.id}"
+                    if job_key not in self._jobs:
+                        self._jobs[job_key] = compute_initial_next_run(
+                            job.schedule, job.last_run_at, now
+                        )
+
+                    next_run = self._jobs[job_key]
+
+                    if now >= next_run:
+                        if self._try_lock(job_key):
+                            logger.info(
+                                f"Esecuzione FileReplicationJob schedulato: {job.name} (ID: {job.id})"
+                            )
+                            asyncio.create_task(
+                                self._guarded_execute(
+                                    job_key,
+                                    self._execute_file_replication_job,
+                                    job.id,
+                                )
+                            )
+                            cron = croniter(job.schedule, now)
+                            self._jobs[job_key] = cron.get_next(datetime)
+                        else:
+                            logger.info(
+                                f"FileReplicationJob {job.id} ancora in esecuzione: skip fire schedulato"
+                            )
+
+                except Exception as e:
+                    logger.error(f"Errore scheduling FileReplicationJob {job.id}: {e}")
             
             # === MIGRATION JOBS ===
             migration_jobs = db.query(MigrationJob).filter(
@@ -709,6 +748,12 @@ class SchedulerService:
         
         # Usa la funzione già definita nel router
         await execute_migration_job_task(job_id, triggered_by=None)
+
+    async def _execute_file_replication_job(self, job_id: int):
+        """Esegue un job replica file schedulato."""
+        from services.file_replication.file_replication_execution import execute_file_replication_job
+
+        await execute_file_replication_job(job_id)
     
     def _sync_job_scheduler_key(self, job_id: int, vm_group_id: Optional[str] = None) -> str:
         if vm_group_id:
@@ -754,6 +799,21 @@ class SchedulerService:
         if vm_group_id:
             # La chiave vmgroup_ resta finché non si chiama remove_vm_group_schedule.
             pass
+
+    def update_file_replication_schedule(
+        self,
+        job_id: int,
+        schedule: str,
+        last_run: Optional[datetime] = None,
+    ) -> None:
+        key = f"file_replication_{job_id}"
+        if schedule:
+            self._jobs[key] = compute_initial_next_run(schedule, last_run, datetime.utcnow())
+        elif key in self._jobs:
+            del self._jobs[key]
+
+    def remove_file_replication_schedule(self, job_id: int) -> None:
+        self._jobs.pop(f"file_replication_{job_id}", None)
 
 
 # Singleton

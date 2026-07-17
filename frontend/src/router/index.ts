@@ -42,6 +42,11 @@ const router = createRouter({
                     component: () => import('../views/Replication.vue')
                 },
                 {
+                    path: 'file-replication',
+                    name: 'file-replication',
+                    component: () => import('../views/FileReplication.vue')
+                },
+                {
                     path: 'sanoid-syncoid',
                     name: 'sanoid-syncoid',
                     component: () => import('../views/SanoidSyncoid.vue')

@@ -17,6 +17,7 @@ from database import engine, Base, get_db, init_default_config, SessionLocal
 from routers import nodes, snapshots, sync_jobs, vms, logs, settings, auth, ssh_keys
 from routers import recovery_jobs, backup_jobs, host_info, host_backup, migration_jobs, updates, pve_replication_jobs
 from routers import ha, clusters
+from routers import file_endpoints, file_replication_jobs
 from routers import schedule as schedule_router
 from services.scheduler import SchedulerService
 from services.logging_config import setup_logging, get_logger
@@ -73,7 +74,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="DAPX-backandrepl",
     description="Sistema centralizzato di backup e replica per Proxmox VE. Supporta ZFS (Sanoid/Syncoid), BTRFS (btrfs send/receive) e PBS (Proxmox Backup Server).",
-    version="3.17.4",
+    version="3.17.5",
     lifespan=lifespan
 )
 
@@ -143,6 +144,8 @@ if dapx_mode == "full":
     app.include_router(host_backup.router, prefix="/api/host-backup", tags=["Host Config Backup"])
     app.include_router(migration_jobs.router, prefix="/api/migration-jobs", tags=["Migration Jobs"])
     app.include_router(pve_replication_jobs.router, prefix="/api/pve-replication", tags=["PVE Replication"])
+    app.include_router(file_endpoints.router, prefix="/api/file-endpoints", tags=["File Endpoints"])
+    app.include_router(file_replication_jobs.router, prefix="/api/file-replication", tags=["File Replication"])
     app.include_router(schedule_router.router, prefix="/api/schedule", tags=["Schedule"])
 
 
@@ -155,7 +158,7 @@ async def health_check():
     from datetime import datetime as _dt
     payload: dict = {
         "status": "healthy",
-        "version": "3.17.4",
+        "version": "3.17.5",
         "auth_enabled": True,
         "mode": dapx_mode,
         "checks": {},

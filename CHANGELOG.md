@@ -5,6 +5,12 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.5] - 2026-07-17
+
+### Aggiunte
+- Modulo **replica file monodirezionale** verso QNAP QuTS hero h6.0: endpoint Synology/QNAP/Linux/Windows, browse cartelle, job rsync schedulati, hint snapshot immutabili (`backend/routers/file_endpoints.py`, `backend/routers/file_replication_jobs.py`, `frontend/src/views/FileReplication.vue`).
+- Documentazione design e setup QNAP h6.0 (`docs/superpowers/specs/2026-07-17-nas-worm-replication-design.md`, `docs/file-replication-setup-qnap-h6.md`).
+
 ### Fix
 - **Wizard replica (syncoid → PX-NAS)**: caricamento nodi all'apertura modale, dropdown storage ZFS, auto-selezione `ZFS-LARGE/replica` (`JobModal.vue`, `StoragePicker.vue`).
 - **Dischi ISO/CD-ROM**: esclusi dalla replica syncoid per default; checkbox disabilitati nel wizard; config VM destinazione senza ISO montate (`proxmox_service.py`, `JobModal.vue`, `sync_jobs.py`).

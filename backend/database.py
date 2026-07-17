@@ -125,6 +125,21 @@ class SyncMethod(str, enum.Enum):
     PVE_NATIVE = "pve_native"  # vzdump --mode snapshot + scp + qmrestore (nessun requisito ZFS/BTRFS/PBS)
 
 
+class FileEndpointType(str, enum.Enum):
+    """Tipi endpoint per replica file"""
+    SYNOLOGY = "synology"
+    QNAP = "qnap"
+    LINUX = "linux"
+    WINDOWS = "windows"
+
+
+class FileEndpointRole(str, enum.Enum):
+    """Ruolo endpoint replica file"""
+    SOURCE = "source"
+    DESTINATION = "destination"
+    BOTH = "both"
+
+
 class RecoveryJobStatus(str, enum.Enum):
     """Stati del recovery job"""
     PENDING = "pending"
@@ -733,6 +748,88 @@ class HostBackupJob(Base):
     
     # Relationships
     node = relationship("Node", foreign_keys=[node_id])
+
+
+class FileEndpoint(Base):
+    """Endpoint remoto per replica file (Synology, QNAP, Linux, Windows)."""
+    __tablename__ = "file_endpoints"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    endpoint_type = Column(Enum(FileEndpointType), nullable=False)
+    role = Column(Enum(FileEndpointRole), nullable=False, default=FileEndpointRole.SOURCE)
+    host = Column(String(255), nullable=False)
+    port = Column(Integer, nullable=False, default=22)
+    protocol = Column(String(20), nullable=False, default="ssh")
+    username = Column(String(100), nullable=False)
+    password_enc = Column(String(500), nullable=True)
+    ssh_key_path = Column(String(500), nullable=True)
+    domain = Column(String(100), nullable=True)
+    base_path = Column(String(500), nullable=True)
+    extra_config = Column(JSON, nullable=True, default=dict)
+    last_test_at = Column(DateTime, nullable=True)
+    last_test_status = Column(String(20), nullable=True)
+    last_test_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    source_jobs = relationship(
+        "FileReplicationJob",
+        foreign_keys="FileReplicationJob.source_endpoint_id",
+        back_populates="source_endpoint",
+    )
+    dest_jobs = relationship(
+        "FileReplicationJob",
+        foreign_keys="FileReplicationJob.dest_endpoint_id",
+        back_populates="dest_endpoint",
+    )
+
+
+class FileReplicationJob(Base):
+    """Job replica file monodirezionale verso QNAP QuTS hero staging."""
+    __tablename__ = "file_replication_jobs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    description = Column(Text, nullable=True)
+    source_endpoint_id = Column(Integer, ForeignKey("file_endpoints.id"), nullable=False)
+    dest_endpoint_id = Column(Integer, ForeignKey("file_endpoints.id"), nullable=False)
+    source_paths = Column(JSON, nullable=False, default=list)
+    dest_staging_path = Column(String(500), nullable=False)
+    sync_method = Column(String(30), nullable=False, default="rsync_ssh")
+    delete_on_dest = Column(Boolean, default=True)
+    on_source_delete = Column(String(20), default="keep")
+    exclude_presets = Column(JSON, nullable=False, default=list)
+    exclude_patterns = Column(JSON, nullable=False, default=list)
+    bandwidth_limit_kb = Column(Integer, nullable=True)
+    extra_rsync_args = Column(String(500), nullable=True)
+    immutability_strategy = Column(String(50), default="qnap_immutable_snapshot")
+    snapshot_policy_hint = Column(JSON, nullable=True, default=dict)
+    schedule = Column(String(100), nullable=True)
+    schedule_config = Column(JSON, nullable=True)
+    is_active = Column(Boolean, default=True)
+    current_status = Column(String(20), nullable=True)
+    last_run_at = Column(DateTime, nullable=True)
+    last_run_status = Column(String(20), nullable=True)
+    last_run_duration_sec = Column(Integer, nullable=True)
+    last_bytes_transferred = Column(BigInteger, nullable=True)
+    last_files_transferred = Column(Integer, nullable=True)
+    next_run_at = Column(DateTime, nullable=True)
+    notify_mode = Column(String(20), default="daily")
+    notify_subject = Column(String(200), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    source_endpoint = relationship(
+        "FileEndpoint",
+        foreign_keys=[source_endpoint_id],
+        back_populates="source_jobs",
+    )
+    dest_endpoint = relationship(
+        "FileEndpoint",
+        foreign_keys=[dest_endpoint_id],
+        back_populates="dest_jobs",
+    )
 
 
 class MigrationJob(Base):

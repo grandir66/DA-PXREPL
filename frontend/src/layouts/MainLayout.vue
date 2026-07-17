@@ -39,6 +39,10 @@
             <Icon name="archive" :size="16" />
             <span>Repliche</span>
           </router-link>
+          <router-link :to="{ name: 'file-replication' }" class="nav-item" active-class="active">
+            <Icon name="folder" :size="16" />
+            <span>Replica file NAS</span>
+          </router-link>
           <router-link :to="{ name: 'pbs-inventory' }" class="nav-item" active-class="active">
             <Icon name="database" :size="16" />
             <span>Inventario PBS</span>
