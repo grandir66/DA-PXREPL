@@ -23,6 +23,7 @@ const form = reactive({
   ssh_key_path: '',
   domain: '',
   base_path: '',
+  verify_ssl: false,
 })
 
 const saving = ref(false)
@@ -43,6 +44,7 @@ function resetForm() {
   form.ssh_key_path = ''
   form.domain = ''
   form.base_path = ''
+  form.verify_ssl = false
   testMsg.value = ''
   testOk.value = null
   errorMsg.value = ''
@@ -60,6 +62,7 @@ function loadFromEndpoint(ep: FileEndpoint) {
   form.ssh_key_path = ep.ssh_key_path || ''
   form.domain = ep.domain || ''
   form.base_path = ep.base_path || ''
+  form.verify_ssl = Boolean((ep.extra_config as { verify_ssl?: boolean } | null)?.verify_ssl)
   testMsg.value = ep.last_test_message || ''
   testOk.value = ep.last_test_status === 'success' ? true : ep.last_test_status === 'failed' ? false : null
   errorMsg.value = ''
@@ -101,6 +104,9 @@ async function save() {
       ssh_key_path: form.ssh_key_path || null,
       domain: form.domain || null,
       base_path: form.base_path || null,
+    }
+    if (form.endpoint_type === 'synology') {
+      payload.extra_config = { verify_ssl: form.verify_ssl }
     }
     if (form.password) payload.password = form.password
 
@@ -211,6 +217,12 @@ async function testConnection() {
           class="form-input"
           :placeholder="isEdit ? 'Lascia vuoto per non cambiare' : ''"
         />
+      </div>
+      <div v-if="form.endpoint_type === 'synology'" class="form-group span-2">
+        <label class="checkbox-label">
+          <input v-model="form.verify_ssl" type="checkbox" />
+          Verifica certificato SSL (disabilita per Synology con certificato auto-firmato)
+        </label>
       </div>
       <div v-if="form.endpoint_type === 'linux'" class="form-group">
         <label>Chiave SSH (Linux/OpenSSH)</label>

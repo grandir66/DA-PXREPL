@@ -32,7 +32,7 @@ def get_browser(endpoint: FileEndpoint):
     password = decrypt_password(endpoint.password_enc or "")
     et = endpoint.endpoint_type
     if et == FileEndpointType.SYNOLOGY:
-        verify_ssl = (endpoint.extra_config or {}).get("verify_ssl", True)
+        verify_ssl = (endpoint.extra_config or {}).get("verify_ssl", False)
         return SynologyClient(
             endpoint.host,
             endpoint.port or 5001,

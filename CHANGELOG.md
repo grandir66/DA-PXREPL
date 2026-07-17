@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.7] - 2026-07-17
+
+### Correzioni
+- Synology File Station: default `verify_ssl=false` per certificati auto-firmati; HTTPS su porta 5001 indipendente dalla verifica SSL; messaggio errore esplicito su certificato (`synology_client.py`, `browser_factory.py`).
+
 ## [3.17.6] - 2026-07-17
 
 ### Correzioni

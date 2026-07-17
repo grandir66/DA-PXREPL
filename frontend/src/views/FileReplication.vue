@@ -190,10 +190,12 @@ onMounted(refresh)
                 <span
                   v-if="ep.last_test_status"
                   :class="ep.last_test_status === 'success' ? 'text-success' : 'text-danger'"
+                  :title="ep.last_test_message || ''"
                 >
                   {{ ep.last_test_status }}
                 </span>
-                <span v-else class="muted">—</span>
+                <small v-if="ep.last_test_message" class="muted d-block">{{ ep.last_test_message }}</small>
+                <span v-else-if="!ep.last_test_status" class="muted">—</span>
               </td>
               <td class="actions">
                 <button class="btn btn-sm btn-secondary" @click="openEditEndpoint(ep)">Modifica</button>
@@ -266,7 +268,7 @@ onMounted(refresh)
 .actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .badge { font-size: 0.75rem; background: #333; padding: 2px 8px; border-radius: 4px; }
 .muted { opacity: 0.65; font-size: 0.85rem; }
-.mb-4 { margin-bottom: 16px; }
+.d-block { display: block; margin-top: 2px; max-width: 280px; }
 .mr-2 { margin-right: 8px; }
 .mt-4 { margin-top: 16px; }
 .p-4 { padding: 16px; }

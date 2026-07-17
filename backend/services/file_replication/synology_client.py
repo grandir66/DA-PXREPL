@@ -17,6 +17,12 @@ logger = logging.getLogger(__name__)
 DEFAULT_EXCLUDE_PRESETS = ["nas_snapshots", "system_files"]
 
 
+def _synology_base_url(host: str, port: int) -> str:
+    """Porta 5000 = HTTP DSM, 5001 (default) = HTTPS."""
+    scheme = "http" if port == 5000 else "https"
+    return f"{scheme}://{host}:{port}"
+
+
 class SynologyClient:
     def __init__(
         self,
@@ -24,7 +30,7 @@ class SynologyClient:
         port: int,
         username: str,
         password: str,
-        verify_ssl: bool = True,
+        verify_ssl: bool = False,
     ):
         self.host = host
         self.port = port or 5001
@@ -32,7 +38,7 @@ class SynologyClient:
         self.password = password
         self.verify_ssl = verify_ssl
         self._sid: Optional[str] = None
-        self._base = f"https://{host}:{self.port}" if verify_ssl else f"http://{host}:{self.port}"
+        self._base = _synology_base_url(host, self.port)
 
     async def _api_get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
         try:

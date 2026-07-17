@@ -10,13 +10,18 @@ def format_connection_error(host: str, port: int, exc: Exception) -> str:
     if isinstance(exc, httpx.ConnectTimeout):
         return (
             f"Timeout connessione a {target}: il server dapx non raggiunge il NAS "
-            f"(rete, routing o firewall). Verifica che l'host sia raggiungibile da "
-            f"192.168.4.199."
+            f"(rete, routing o firewall)."
         )
     if isinstance(exc, httpx.ConnectError):
+        msg = str(exc).lower()
+        if "certificate" in msg or "ssl" in msg or "tls" in msg:
+            return (
+                f"Errore certificato SSL su {target}: il Synology usa un certificato "
+                f"auto-firmato. Disabilita «Verifica certificato SSL» nell'endpoint."
+            )
         return (
             f"Host {target} non raggiungibile dal server dapx. "
-            f"Controlla IP, porta e routing tra le VLAN."
+            f"Controlla IP, porta e firewall."
         )
     if isinstance(exc, httpx.HTTPStatusError):
         return f"HTTP {exc.response.status_code} da {target}"
