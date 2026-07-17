@@ -53,12 +53,19 @@ const router = createRouter({
                 },
                 // Legacy routes → modulo unificato Repliche
                 { path: 'sync-jobs', redirect: { name: 'replication' } },
-                { path: 'backup-jobs', redirect: { name: 'replication' } },
+                { path: 'backup-jobs', redirect: { name: 'pbs-backup', query: { tab: 'jobs' } } },
                 { path: 'recovery-jobs', redirect: { name: 'replication' } },
                 {
+                    path: 'pbs-backup',
+                    name: 'pbs-backup',
+                    component: () => import('../views/PBSBackup.vue')
+                },
+                {
                     path: 'pbs-inventory',
-                    name: 'pbs-inventory',
-                    component: () => import('../views/PBSInventory.vue')
+                    redirect: to => ({
+                        name: 'pbs-backup',
+                        query: { ...to.query, tab: to.query.tab || 'inventory' },
+                    }),
                 },
                 {
                     path: 'host-backup',

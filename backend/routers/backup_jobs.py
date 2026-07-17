@@ -18,6 +18,7 @@ from database import (
 from routers.auth import get_current_user, require_operator, User, log_audit
 from services import ssh_service
 from services.schedule_translator import to_cron as _sched_to_cron, from_cron as _sched_from_cron
+from services.scheduler import scheduler_service
 
 
 def _resolve_schedule_pair(schedule: Optional[str], schedule_config: Optional[Dict[str, Any]]):
@@ -220,6 +221,30 @@ async def list_backup_jobs(
     return [job_to_response(job, db) for job in jobs if _job_visible_to(user, job)]
 
 
+@router.get("/stats")
+async def backup_job_stats(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Statistiche job backup PBS per hub UI."""
+    jobs = db.query(BackupJob).all()
+    visible = [j for j in jobs if _job_visible_to(user, j)]
+    running = sum(
+        1 for j in visible if (j.current_status or "").lower() in ("running",)
+    )
+    failed = sum(
+        1 for j in visible if (j.last_status or "").lower() in ("failed", "error")
+    )
+    scheduled = sum(1 for j in visible if j.is_active and j.schedule)
+    return {
+        "total": len(visible),
+        "active": sum(1 for j in visible if j.is_active),
+        "running": running,
+        "failed": failed,
+        "scheduled": scheduled,
+    }
+
+
 @router.get("/{job_id}", response_model=BackupJobResponse)
 async def get_backup_job(
     job_id: int,
@@ -287,6 +312,9 @@ async def create_backup_job(
     log_audit(db, user.id, "backup_job_created", "backup_job", 
               resource_id=job.id, details=f"Created backup job: {job.name}")
     
+    if job.is_active and job.schedule:
+        scheduler_service.update_backup_pbs_schedule(job.id, job.schedule, job.last_run)
+
     return job_to_response(job, db)
 
 
@@ -320,6 +348,11 @@ async def update_backup_job(
     log_audit(db, user.id, "backup_job_updated", "backup_job",
               resource_id=job.id, details=f"Updated backup job: {job.name}")
     
+    if job.is_active and job.schedule:
+        scheduler_service.update_backup_pbs_schedule(job.id, job.schedule, job.last_run)
+    else:
+        scheduler_service.remove_backup_pbs_schedule(job.id)
+
     return job_to_response(job, db)
 
 
@@ -335,6 +368,7 @@ async def delete_backup_job(
         raise HTTPException(status_code=404, detail="Backup job non trovato")
     
     job_name = job.name
+    scheduler_service.remove_backup_pbs_schedule(job_id)
     db.delete(job)
     db.commit()
     

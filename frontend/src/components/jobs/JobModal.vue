@@ -28,6 +28,11 @@
         <!-- ===== Step 1: Identità & sorgente ===== -->
         <div v-show="currentStep === 0" class="jm-section">
           <h3>Origine</h3>
+          <div v-if="presetPvesr && !isEdit" class="jm-note jm-note-warn mb-3">
+            Import da replica Proxmox <code>{{ presetPvesr.id }}</code>:
+            completa storage ZFS destinazione e verifica schedule.
+            Disabilita il job pvesr su Proxmox prima di attivare Syncoid dapx per evitare doppie repliche.
+          </div>
 
           <div class="jm-grid">
             <div class="field field-full">
@@ -153,6 +158,20 @@
                 </tbody>
               </table>
               <div v-else class="jm-empty">Nessun disco rilevato (la VM potrebbe non esistere o avere storage non supportato).</div>
+              <div
+                v-if="replicationStorageHint && !isEdit"
+                class="jm-note jm-note-warn jm-storage-hint"
+              >
+                {{ replicationStorageHint.message }}
+                <button
+                  v-if="replicationStorageHint.suggestKind && replicationStorageHint.suggestKind !== form.kind"
+                  type="button"
+                  class="btn btn-xs btn-secondary ml-2"
+                  @click="form.kind = replicationStorageHint.suggestKind!"
+                >
+                  Passa a {{ kindShortLabel(replicationStorageHint.suggestKind) }}
+                </button>
+              </div>
               <small v-if="form.kind === 'syncoid' && vmDisks.length" class="jm-note">
                 ISO/CD-ROM e cloud-init sono esclusi dalla replica per default.
               </small>
@@ -520,17 +539,30 @@ interface PresetVm {
   node_id?: number | string
 }
 
+interface PresetPvesr {
+  vm: number | null
+  vm_name?: string | null
+  vm_type?: string | null
+  source_node_id?: number | null
+  target_node_id?: number | null
+  schedule?: string | null
+  comment?: string | null
+  id?: string
+}
+
 const props = withDefaults(
   defineProps<{
     visible: boolean
-    mode?: JobKind             // create mode iniziale
-    job?: UnifiedJob | null    // se presente -> edit
-    presetVm?: PresetVm | null // pre-compila step "Origine" da una VM
+    mode?: JobKind
+    job?: UnifiedJob | null
+    presetVm?: PresetVm | null
+    presetPvesr?: PresetPvesr | null
   }>(),
   {
     mode: 'syncoid',
     job: null,
     presetVm: null,
+    presetPvesr: null,
   }
 )
 const emit = defineEmits<{
@@ -541,6 +573,7 @@ const emit = defineEmits<{
 const store = useReplicationStore()
 
 const isEdit = computed(() => !!props.job)
+const presetPvesr = computed(() => props.presetPvesr)
 const lockSource = computed(() => isEdit.value)
 
 const steps = [
@@ -558,6 +591,47 @@ const vmFilter = ref('')
 const vmDisks = ref<DiskInfo[]>([])
 const selectedDisks = ref<Set<string>>(new Set())
 const loadingDisks = ref(false)
+
+const replicationStorageHint = computed(() => {
+  if (isEdit.value || !vmDisks.value.length) return null
+  if (!['syncoid', 'recovery_pbs', 'pve_native'].includes(form.value.kind)) return null
+  const disks = vmDisks.value.filter(
+    d => d.replicable !== false && !d.is_iso && d.kind !== 'cloudinit',
+  )
+  if (!disks.length) return null
+  const zfsDisks = disks.filter(d => !!d.dataset)
+  const nonZfs = disks.length - zfsDisks.length
+  if (nonZfs > 0 && form.value.kind === 'syncoid') {
+    return {
+      message:
+        'Almeno un disco non è su dataset ZFS: Syncoid non può replicarlo. Consigliato: Replica via PBS.',
+      suggestKind: 'recovery_pbs' as JobKind,
+    }
+  }
+  if (zfsDisks.length === disks.length && disks.length > 0 && form.value.kind === 'recovery_pbs') {
+    return {
+      message:
+        'Tutti i dischi sono su ZFS: per replica incrementale efficiente preferisci Syncoid.',
+      suggestKind: 'syncoid' as JobKind,
+    }
+  }
+  if (nonZfs > 0 && form.value.kind === 'pve_native') {
+    return {
+      message:
+        'Storage non ZFS: la replica PVE-native è full ad ogni run. Valuta Replica via PBS (incrementale).',
+      suggestKind: 'recovery_pbs' as JobKind,
+    }
+  }
+  return null
+})
+
+function kindShortLabel(k: JobKind): string {
+  if (k === 'syncoid') return 'Syncoid ZFS'
+  if (k === 'recovery_pbs') return 'Replica via PBS'
+  if (k === 'pve_native') return 'PVE-native'
+  return k
+}
+
 const saving = ref(false)
 const submitError = ref<string | null>(null)
 
@@ -689,6 +763,17 @@ watch(
         form.value.vm_id = Number(props.presetVm.vmid) as any
         form.value.vm_name = props.presetVm.name || null
         form.value.vm_type = (props.presetVm.type as any) || 'qemu'
+      } else if (props.presetPvesr?.vm && props.presetPvesr.source_node_id) {
+        form.value.kind = 'syncoid'
+        form.value.source_node_id = props.presetPvesr.source_node_id
+        form.value.vm_id = props.presetPvesr.vm
+        form.value.vm_name = props.presetPvesr.vm_name || null
+        form.value.vm_type = (props.presetPvesr.vm_type as any) || 'qemu'
+        form.value.dest_node_id = props.presetPvesr.target_node_id ?? null
+        form.value.schedule = props.presetPvesr.schedule || null
+        form.value.name =
+          props.presetPvesr.comment?.trim() ||
+          `VM-${props.presetPvesr.vm} (da pvesr ${props.presetPvesr.id || ''})`.trim()
       }
     }
     if (form.value.source_node_id) reloadVMs()

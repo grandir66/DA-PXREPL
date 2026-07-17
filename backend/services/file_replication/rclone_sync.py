@@ -279,7 +279,7 @@ async def rclone_sync_synology_to_qnap(
     dest_dir: str,
     *,
     delete_on_dest: bool,
-    exclude_file: str | None = None,
+    filter_file: str | None = None,
     bandwidth_limit_kb: int | None = None,
     on_line: Callable[[str], None] | None = None,
 ) -> tuple[list[str], list[str]]:
@@ -298,8 +298,9 @@ async def rclone_sync_synology_to_qnap(
     ]
     if delete_on_dest:
         cmd.append("--delete-after")
-    if exclude_file and os.path.isfile(exclude_file):
-        cmd.extend(["--exclude-from", exclude_file])
+    if filter_file and os.path.isfile(filter_file):
+        cmd.extend(["--filter-from", filter_file])
+        cmd.append("--ignore-case")
     if bandwidth_limit_kb:
         cmd.extend(["--bwlimit", f"{bandwidth_limit_kb}K"])
 

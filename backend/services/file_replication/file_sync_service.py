@@ -69,6 +69,8 @@ def build_sync_plan(
     dest: FileEndpoint,
     exclude_file: str,
     staging_dir: str,
+    *,
+    filter_file: str | None = None,
 ) -> list[dict]:
     """Piano sync per path: pull (SMB su Synology, rsync altrove) + push QNAP."""
     steps: list[dict] = []
@@ -93,7 +95,7 @@ def build_sync_plan(
                     "type": "rclone_sync",
                     "src_path": src_path,
                     "dest_dir": dest_remote,
-                    "exclude_file": exclude_file,
+                    "filter_file": filter_file,
                     "delete_on_dest": job.delete_on_dest,
                     "bandwidth_limit_kb": job.bandwidth_limit_kb,
                 }

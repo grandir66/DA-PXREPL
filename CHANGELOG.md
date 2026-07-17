@@ -5,6 +5,20 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.21] - 2026-07-18
+
+### Aggiunte
+- Hub **PBS Backup** (`PBSBackup.vue`): tab Panoramica, Job backup, Inventario & restore, Alert & log; route `pbs-backup` (redirect da `pbs-inventory`).
+- Scheduler: esecuzione automatica job `BackupJob` e `RecoveryJob` PBS (`scheduler.py`).
+- **Replica Proxmox (pvesr)**: discovery job cluster con merge stato `pvesr status`, collegamento job dapx e import wizard Syncoid (`pve_sr_discovery.py`, `PVEReplicationJobs.vue`).
+
+### Modifiche
+- **Repliche**: menu unificato per Syncoid, PVE-native e **Replica via PBS** (senza job backup PBS); hint storage ZFS vs non-ZFS nel wizard (`JobModal.vue`, `Replication.vue`).
+- Job backup PBS spostati in PBS Backup; `backup-jobs` legacy redirect al nuovo hub.
+
+### Correzioni
+- Replica file rclone: esclusione `#snapshot` — righe filter `#…` erano commenti rclone; uso `--filter-from` (`exclude_presets.py`, `rclone_sync.py`).
+
 ## [3.17.20] - 2026-07-18
 
 ### Modifiche

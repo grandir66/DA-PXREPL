@@ -5,6 +5,8 @@ import pytest
 from services.file_replication.exclude_presets import (
     MANDATORY_EXCLUDE_PRESETS,
     build_exclude_lines,
+    build_rclone_filter_lines,
+    build_rsync_exclude_lines,
 )
 from services.file_replication.path_utils import is_excluded_name, sanitize_path
 
@@ -15,14 +17,39 @@ def test_build_exclude_lines_merges_presets_and_custom():
     assert "#snapshot" in lines
     assert ".DS_Store" in lines
     assert "*.bak" in lines
-    assert "**/#snapshot/**" in lines
 
 
 def test_build_exclude_lines_always_includes_mandatory():
     lines = build_exclude_lines([], [])
     assert "#snapshot" in lines
     assert ".DS_Store" in lines
-    assert "**/@eaDir/**" in lines
+
+
+def test_build_rclone_filter_lines_excludes_hash_snapshots():
+    lines = build_rclone_filter_lines([], [])
+    assert any("**/#snapshot/**" in line for line in lines)
+    assert any("**/#Snapshot/**" in line for line in lines)
+    assert any("**/@Snapshot/**" in line for line in lines)
+    assert all(line.startswith("- ") for line in lines)
+    for line in lines:
+        body = line[2:].lstrip()
+        assert not body.startswith("#") and not body.startswith(";")
+
+
+def test_build_rclone_filter_lines_no_comment_lines():
+    """Rclone ignora righe filter che iniziano con # — non devono esserci."""
+    lines = build_rclone_filter_lines(["nas_snapshots"], ["#recycle"])
+    for line in lines:
+        assert line.startswith("- ")
+        assert not line.startswith("- #")
+        assert not line.startswith("- ;")
+
+
+def test_rsync_and_rclone_builders_share_presets():
+    rsync = build_rsync_exclude_lines([], [])
+    rclone = build_rclone_filter_lines([], [])
+    assert "#snapshot" in rsync
+    assert any("#snapshot" in line for line in rclone)
 
 
 def test_mandatory_presets_constant():

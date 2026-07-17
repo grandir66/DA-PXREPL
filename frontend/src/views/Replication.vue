@@ -4,13 +4,13 @@
       <div class="repl-head-left">
         <h1>Repliche &amp; Backup</h1>
         <p class="repl-sub">
-          Gestione unificata di repliche ZFS (Syncoid) e backup/restore via PBS,
-          a livello VM.
+          Replica ZFS (Syncoid), replica nativa PVE e replica via PBS quando lo storage non è ZFS.
+          I backup di protezione su PBS sono in <router-link :to="{ name: 'pbs-backup' }">PBS Backup</router-link>.
         </p>
       </div>
       <div class="repl-head-actions">
-        <router-link :to="{ name: 'pbs-inventory' }" class="btn btn-secondary mr-2">
-          Inventario PBS
+        <router-link :to="{ name: 'pbs-backup' }" class="btn btn-secondary mr-2">
+          PBS Backup
         </router-link>
         <div class="repl-new-wrap" v-click-outside="closeNewMenu">
           <button class="btn btn-primary" @click="newMenuOpen = !newMenuOpen">
@@ -32,18 +32,18 @@
                 <small>vzdump+scp+qmrestore — qualunque storage (full ad ogni run)</small>
               </div>
             </li>
-            <li @click="openCreate('backup_pbs')">
-              <span class="kind-dot pbs"></span>
-              <div>
-                <strong>Backup verso PBS</strong>
-                <small>solo backup su Proxmox Backup Server</small>
-              </div>
-            </li>
             <li @click="openCreate('recovery_pbs')">
               <span class="kind-dot pbs"></span>
               <div>
                 <strong>Replica via PBS</strong>
-                <small>backup + restore automatico su nodo destinazione</small>
+                <small>backup + restore su nodo dest — ideale senza ZFS (LVM, local, NFS…)</small>
+              </div>
+            </li>
+            <li class="repl-new-menu-link" @click="goPbsBackup">
+              <span class="kind-dot pbs"></span>
+              <div>
+                <strong>Backup verso PBS</strong>
+                <small>protezione/retention su PBS → apri PBS Backup</small>
               </div>
             </li>
           </ul>
@@ -54,7 +54,7 @@
     <section class="repl-stats">
       <div class="repl-stat">
         <span class="repl-stat-label">Job totali</span>
-        <span class="repl-stat-val">{{ store.jobs.length }}</span>
+        <span class="repl-stat-val">{{ replicationJobs.length }}</span>
       </div>
       <div class="repl-stat">
         <span class="repl-stat-label">Attivi</span>
@@ -83,9 +83,21 @@
       </button>
     </nav>
 
+    <div v-if="activeTab === 'recovery_pbs'" class="info-banner mb-4">
+      <div class="icon">🔄</div>
+      <div class="content">
+        <strong>Replica via PBS</strong>
+        <p>
+          Pipeline backup → restore → registrazione VM sul nodo destinazione.
+          Usala quando sorgente e destinazione <em>non</em> condividono dataset ZFS (LVM-thin, local, NFS, Ceph…).
+          Con ZFS preferisci la tab <strong>Repliche ZFS</strong>.
+        </p>
+      </div>
+    </div>
+
     <main class="repl-main">
       <!-- Tab "PVE Native" è read-only e usa la view legacy -->
-      <PVELegacy v-if="activeTab === 'pve'" />
+      <PVELegacy v-if="activeTab === 'pve'" @import="onImportPvesr" />
 
       <JobsList
         v-else
@@ -104,6 +116,7 @@
       v-model:visible="modalVisible"
       :mode="createKind"
       :job="editingJob"
+      :preset-pvesr="presetPvesr"
       @saved="onSaved"
     />
 
@@ -116,7 +129,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { confirmDangerous, confirmDelete } from '../stores/confirm';
 import { useToast, errorMessage } from '../stores/toast'
 import { useReplicationStore, type UnifiedJob, type JobKind } from '../stores/replication'
@@ -125,13 +139,15 @@ import JobModal from '../components/jobs/JobModal.vue'
 import JobLogViewer from '../components/jobs/JobLogViewer.vue'
 import PVELegacy from './replication/PVEReplicationJobs.vue'
 import syncJobsService from '../services/syncJobs'
-import backupJobsService from '../services/backupJobs'
 import recoveryJobsService from '../services/recoveryJobs'
+import { pveReplicationService, type PVEReplicationJob, type PVEReplicationSummary } from '../services/pveReplication'
 
 const store = useReplicationStore()
 const toast = useToast()
+const route = useRoute()
+const router = useRouter()
 
-const activeTab = ref<'all' | 'syncoid' | 'pve_native' | 'backup_pbs' | 'recovery_pbs' | 'pve'>('all')
+const activeTab = ref<'all' | 'syncoid' | 'pve_native' | 'recovery_pbs' | 'pve'>('all')
 const newMenuOpen = ref(false)
 
 const modalVisible = ref(false)
@@ -142,49 +158,81 @@ const logVisible = ref(false)
 const logJobId = ref<number | string | null>(null)
 const logJobName = ref<string>('')
 
+const pvesrSummary = ref<PVEReplicationSummary | null>(null)
+const presetPvesr = ref<PVEReplicationJob | null>(null)
+
+const replicationJobs = computed(() => store.jobs.filter(j => j.kind !== 'backup_pbs'))
+
 const tabs = computed(() => [
-  { id: 'all', label: 'Tutti', count: store.jobs.length },
-  { id: 'syncoid', label: 'Repliche ZFS', count: store.jobs.filter(j => j.kind === 'syncoid').length },
-  { id: 'pve_native', label: 'Replica PVE-native', count: store.jobs.filter(j => j.kind === 'pve_native').length },
-  { id: 'backup_pbs', label: 'Backup PBS', count: store.jobs.filter(j => j.kind === 'backup_pbs').length },
-  { id: 'recovery_pbs', label: 'Replica PBS', count: store.jobs.filter(j => j.kind === 'recovery_pbs').length },
-  { id: 'pve', label: 'PVE nativa', count: null },
+  { id: 'all', label: 'Tutti', count: replicationJobs.value.length },
+  { id: 'syncoid', label: 'Repliche ZFS', count: replicationJobs.value.filter(j => j.kind === 'syncoid').length },
+  { id: 'pve_native', label: 'Replica PVE-native', count: replicationJobs.value.filter(j => j.kind === 'pve_native').length },
+  { id: 'recovery_pbs', label: 'Replica via PBS', count: replicationJobs.value.filter(j => j.kind === 'recovery_pbs').length },
+  { id: 'pve', label: 'Replica Proxmox (pvesr)', count: pvesrSummary.value?.total ?? null },
 ])
 
 const filteredJobs = computed(() => {
-  if (activeTab.value === 'all') return store.jobs
+  if (activeTab.value === 'all') return replicationJobs.value
   if (activeTab.value === 'pve') return []
-  return store.jobs.filter(j => j.kind === activeTab.value)
+  return replicationJobs.value.filter(j => j.kind === activeTab.value)
 })
 
-const activeCount = computed(() => store.jobs.filter(j => j.is_active !== false).length)
+const activeCount = computed(() => replicationJobs.value.filter(j => j.is_active !== false).length)
 function isJobRunning(j: UnifiedJob): boolean {
   const cur = (j.current_status || '').toLowerCase()
   if (['running', 'backing_up', 'restoring', 'registering'].includes(cur)) return true
   const last = (j.last_status || '').toLowerCase()
   return last === 'running' || last === 'started'
 }
-const runningCount = computed(() => store.jobs.filter(isJobRunning).length)
+const runningCount = computed(() => replicationJobs.value.filter(isJobRunning).length)
 const failedCount = computed(() =>
-  store.jobs.filter(j => ['error', 'failed'].includes((j.last_status || '').toLowerCase())).length
+  replicationJobs.value.filter(j => ['error', 'failed'].includes((j.last_status || '').toLowerCase())).length
 )
 
 let pollHandle: number | null = null
 
 async function reload() {
   await store.fetchAll()
+  try {
+    pvesrSummary.value = await pveReplicationService.getSummary()
+  } catch {
+    pvesrSummary.value = null
+  }
+}
+
+function onImportPvesr(job: PVEReplicationJob) {
+  presetPvesr.value = job
+  createKind.value = 'syncoid'
+  editingJob.value = null
+  modalVisible.value = true
 }
 
 onMounted(() => {
+  const qtab = route.query.tab as string
+  if (['all', 'syncoid', 'pve_native', 'recovery_pbs', 'pve'].includes(qtab)) {
+    activeTab.value = qtab as typeof activeTab.value
+  }
   reload()
-  // Light polling ogni 10s per refresh stato
   pollHandle = window.setInterval(() => store.fetchJobs().catch(() => {}), 10_000)
+})
+
+watch(activeTab, tab => {
+  if (tab !== 'pve') router.replace({ query: { tab } })
 })
 onUnmounted(() => {
   if (pollHandle) window.clearInterval(pollHandle)
 })
 
+function goPbsBackup() {
+  newMenuOpen.value = false
+  router.push({ name: 'pbs-backup', query: { tab: 'jobs', action: 'create' } })
+}
+
 function openCreate(k: JobKind) {
+  if (k === 'backup_pbs') {
+    goPbsBackup()
+    return
+  }
   createKind.value = k
   editingJob.value = null
   newMenuOpen.value = false
@@ -192,6 +240,10 @@ function openCreate(k: JobKind) {
 }
 
 function onEdit(j: UnifiedJob) {
+  if (j.kind === 'backup_pbs') {
+    router.push({ name: 'pbs-backup', query: { tab: 'jobs' } })
+    return
+  }
   editingJob.value = j
   createKind.value = j.kind
   modalVisible.value = true
@@ -218,8 +270,6 @@ async function onRun(j: UnifiedJob, group?: { jobs: UnifiedJob[] }) {
     } else if (j.kind === 'syncoid' || j.kind === 'pve_native') {
       // pve_native vive nello stesso endpoint /api/sync-jobs
       await syncJobsService.runJob(String(j.id))
-    } else if (j.kind === 'backup_pbs') {
-      await backupJobsService.runJob(String(j.id))
     } else if (j.kind === 'recovery_pbs') {
       await recoveryJobsService.runJob(String(j.id))
     }
@@ -240,8 +290,6 @@ async function onToggleActive(j: UnifiedJob) {
   try {
     if (j.kind === 'syncoid' || j.kind === 'pve_native') {
       await syncJobsService.toggleJob(String(j.id))
-    } else if (j.kind === 'backup_pbs') {
-      await backupJobsService.updateJob(String(j.id), { is_active: newActive })
     } else if (j.kind === 'recovery_pbs') {
       await recoveryJobsService.updateJob(String(j.id), { is_active: newActive })
     }
@@ -256,7 +304,6 @@ async function onDelete(j: UnifiedJob) {
   if (!await confirmDangerous(`Eliminare il job "${j.name}"?`)) return
   try {
     if (j.kind === 'syncoid' || j.kind === 'pve_native') await syncJobsService.deleteJob(String(j.id))
-    else if (j.kind === 'backup_pbs') await backupJobsService.deleteJob(String(j.id))
     else if (j.kind === 'recovery_pbs') await recoveryJobsService.deleteJob(String(j.id))
     await reload()
   } catch (e) {
@@ -266,6 +313,7 @@ async function onDelete(j: UnifiedJob) {
 
 function onSaved() {
   modalVisible.value = false
+  presetPvesr.value = null
   reload()
 }
 
@@ -447,4 +495,15 @@ const vClickOutside = {
   border-radius: var(--radius-lg);
   padding: var(--space-4);
 }
+
+.info-banner {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-bg-element);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+.info-banner .icon { font-size: 1.5rem; }
+.info-banner p { margin: 0.25rem 0 0; font-size: 0.9rem; color: var(--color-text-secondary); }
 </style>

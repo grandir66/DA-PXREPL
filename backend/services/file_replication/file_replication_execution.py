@@ -12,7 +12,10 @@ from typing import Optional
 
 from database import FileEndpoint, FileEndpointType, FileReplicationJob, JobLog, SessionLocal
 from services.file_replication.endpoint_crypto import decrypt_password
-from services.file_replication.exclude_presets import build_exclude_lines
+from services.file_replication.exclude_presets import (
+    build_rclone_filter_lines,
+    build_rsync_exclude_lines,
+)
 from services.file_replication.file_sync_service import build_sync_plan, parse_rsync_progress
 from services.file_replication.file_replication_notifications import notify_file_replication_result
 from services.file_replication.file_replication_report import (
@@ -112,6 +115,7 @@ async def execute_file_replication_job(job_id: int) -> None:
     log_row: Optional[JobLog] = None
     started = datetime.utcnow()
     exclude_path: Optional[str] = None
+    filter_path: Optional[str] = None
     staging_dir: Optional[str] = None
     source: Optional[FileEndpoint] = None
     dest: Optional[FileEndpoint] = None
@@ -150,13 +154,29 @@ async def execute_file_replication_job(job_id: int) -> None:
         db.add(log_row)
         db.commit()
 
-        exclude_lines = build_exclude_lines(job.exclude_presets or [], job.exclude_patterns or [])
+        exclude_lines = build_rsync_exclude_lines(
+            job.exclude_presets or [], job.exclude_patterns or []
+        )
+        filter_lines = build_rclone_filter_lines(
+            job.exclude_presets or [], job.exclude_patterns or []
+        )
         fd, exclude_path = tempfile.mkstemp(prefix="dapx-fr-exclude-", suffix=".txt")
         with os.fdopen(fd, "w") as fh:
             fh.write("\n".join(exclude_lines) + "\n")
 
+        fd2, filter_path = tempfile.mkstemp(prefix="dapx-fr-rclone-filter-", suffix=".txt")
+        with os.fdopen(fd2, "w") as fh:
+            fh.write("\n".join(filter_lines) + "\n")
+
         staging_dir = tempfile.mkdtemp(prefix=f"dapx-fr-{job_id}-")
-        sync_plan = build_sync_plan(job, source, dest, exclude_path, staging_dir)
+        sync_plan = build_sync_plan(
+            job,
+            source,
+            dest,
+            exclude_path,
+            staging_dir,
+            filter_file=filter_path,
+        )
         combined_stdout: list[str] = []
         combined_stderr: list[str] = []
         total_bytes = 0
@@ -229,7 +249,7 @@ async def execute_file_replication_job(job_id: int) -> None:
                     step["src_path"],
                     step["dest_dir"],
                     delete_on_dest=bool(step.get("delete_on_dest")),
-                    exclude_file=step.get("exclude_file"),
+                    filter_file=step.get("filter_file"),
                     bandwidth_limit_kb=step.get("bandwidth_limit_kb"),
                     on_line=_on_rclone_line,
                 )
@@ -336,6 +356,11 @@ async def execute_file_replication_job(job_id: int) -> None:
         if exclude_path and os.path.exists(exclude_path):
             try:
                 os.unlink(exclude_path)
+            except OSError:
+                pass
+        if filter_path and os.path.exists(filter_path):
+            try:
+                os.unlink(filter_path)
             except OSError:
                 pass
         if staging_dir and os.path.isdir(staging_dir):

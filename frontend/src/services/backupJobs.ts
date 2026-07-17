@@ -32,6 +32,12 @@ export default {
     return apiClient.get<BackupJob[]>('/backup-jobs')
   },
 
+  getStats() {
+    return apiClient.get<{ total: number; active: number; running: number; failed: number; scheduled: number }>(
+      '/backup-jobs/stats',
+    )
+  },
+
   updateJob(id: number | string, job: Record<string, unknown>) {
     return apiClient.put(`/backup-jobs/${id}`, job)
   },

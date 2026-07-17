@@ -36,6 +36,7 @@ from services.recovery_job_helpers import (
     require_recovery_node as _require_recovery_node,
 )
 from services.recovery_job_execution import execute_recovery_job_task
+from services.scheduler import scheduler_service
 from services.recovery_pbs_inventory import resolve_pbs_inventory_context
 
 logger = logging.getLogger(__name__)
@@ -181,6 +182,8 @@ async def create_recovery_job(
     
     db.commit()
     db.refresh(job)
+    if job.is_active and job.schedule:
+        scheduler_service.update_recovery_pbs_schedule(job.id, job.schedule, job.last_run)
     return job
 
 
@@ -918,6 +921,10 @@ async def update_recovery_job(
     
     db.commit()
     db.refresh(job)
+    if job.is_active and job.schedule:
+        scheduler_service.update_recovery_pbs_schedule(job.id, job.schedule, job.last_run)
+    else:
+        scheduler_service.remove_recovery_pbs_schedule(job.id)
     return job
 
 
@@ -935,6 +942,7 @@ async def delete_recovery_job(
     assert_recovery_job_access(user, job, db)
     
     job_name = job.name
+    scheduler_service.remove_recovery_pbs_schedule(job_id)
     db.delete(job)
     
     log_audit(
