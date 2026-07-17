@@ -46,6 +46,45 @@ def _auth_failure_message(root: ET.Element) -> str:
     return f"Autenticazione QNAP fallita (errorValue={err})"
 
 
+def _parse_file_station_items(data: Any) -> list[dict[str, Any]]:
+    """Normalizza risposte File Station QNAP (formato varia per API/QuTS hero)."""
+    if isinstance(data, list):
+        return [item for item in data if isinstance(item, dict)]
+
+    if not isinstance(data, dict):
+        raise RuntimeError("Risposta File Station QNAP non riconosciuta")
+
+    status = data.get("status")
+    if status is not None and str(status) not in ("1", "true", "True"):
+        try:
+            status_int = int(status)
+        except (TypeError, ValueError):
+            status_int = None
+        if status_int != 1:
+            if status_int == 4:
+                raise RuntimeError("Permesso negato su File Station QNAP")
+            raise RuntimeError(data.get("detail") or f"Errore File Station QNAP (status={status})")
+
+    items = data.get("datas") or []
+    if isinstance(items, list):
+        return [item for item in items if isinstance(item, dict)]
+    if isinstance(items, dict):
+        children = items.get("children")
+        if isinstance(children, list):
+            return [item for item in children if isinstance(item, dict)]
+    return []
+
+
+def _tree_node_name(node: dict[str, Any]) -> str:
+    for key in ("text", "filename", "name", "id"):
+        value = node.get(key)
+        if isinstance(value, str) and value.strip():
+            name = value.strip().lstrip("/")
+            if name:
+                return name
+    return ""
+
+
 def _qnap_base_url(host: str, port: int, use_https: bool) -> str:
     """Porta 443 = HTTPS (stunnel QNAP), 8080 = HTTP di default."""
     if port == 443 or use_https:
@@ -171,7 +210,7 @@ class QnapClient:
             logger.warning("QNAP test_connection failed: %s", exc)
             return ConnectionTestResult(success=False, message=str(exc))
 
-    async def _file_station(self, params: dict[str, Any]) -> dict[str, Any]:
+    async def _file_station(self, params: dict[str, Any]) -> list[dict[str, Any]]:
         if not self._sid:
             await self.login()
         params = {**params, "sid": self._sid}
@@ -180,9 +219,7 @@ class QnapClient:
             data = resp.json()
         except ValueError as exc:
             raise RuntimeError("Risposta File Station QNAP non JSON") from exc
-        if data.get("status") != 1:
-            raise RuntimeError(data.get("detail") or "Errore File Station QNAP")
-        return data
+        return _parse_file_station_items(data)
 
     async def list_children(
         self,
@@ -195,11 +232,12 @@ class QnapClient:
             await self.login()
 
         if path in ("/", ""):
-            data = await self._file_station({"func": "get_tree", "node": "share_root"})
-            nodes = data.get("datas") or []
+            nodes = await self._file_station(
+                {"func": "get_tree", "node": "share_root", "is_iso": 0},
+            )
             entries: list[BrowseEntryOut] = []
             for node in nodes:
-                name = node.get("text") or node.get("filename") or ""
+                name = _tree_node_name(node)
                 if not name:
                     continue
                 share_path = f"/{name}"
@@ -216,17 +254,18 @@ class QnapClient:
             return sorted(entries, key=lambda e: e.name.lower())
 
         folder = path if path.startswith("/") else f"/{path}"
-        data = await self._file_station(
+        items = await self._file_station(
             {
                 "func": "get_list",
                 "path": folder,
+                "list_mode": "all",
+                "is_iso": 0,
                 "limit": 500,
                 "start": 0,
                 "sort": "filename",
                 "dir": "ASC",
             }
         )
-        items = data.get("datas") or []
         entries = []
         for item in items:
             name = item.get("filename") or item.get("name") or ""

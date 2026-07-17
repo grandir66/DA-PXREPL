@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.11] - 2026-07-17
+
+### Correzioni
+- QNAP File Station: parsing `get_tree` quando la risposta è un array JSON (non oggetto con `status`/`datas`); parametri `is_iso` e `list_mode` per browse share/cartelle (`qnap_client.py`).
+
 ## [3.17.10] - 2026-07-17
 
 ### Correzioni
