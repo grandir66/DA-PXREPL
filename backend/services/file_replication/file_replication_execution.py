@@ -181,14 +181,19 @@ async def execute_file_replication_job(job_id: int) -> None:
         combined_stderr: list[str] = []
         total_bytes = 0
 
-        async def _run_rsync(cmd: list[str]) -> None:
+        async def _run_rsync(cmd: list[str], env_extra: dict | None = None) -> None:
             nonlocal total_bytes
+            # Log solo argv senza password: SSHPASS resta in env, non in cmd.
             logger.info("FileReplicationJob %s rsync: %s", job_id, " ".join(cmd[:8]))
+            run_env = None
+            if env_extra:
+                run_env = {**os.environ, **env_extra}
             try:
                 proc = await asyncio.create_subprocess_exec(
                     *cmd,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
+                    env=run_env,
                 )
             except FileNotFoundError as exc:
                 missing = cmd[0] if cmd else "rsync"
@@ -264,7 +269,7 @@ async def execute_file_replication_job(job_id: int) -> None:
                         "message": step_msg,
                     }
             elif step["type"] == "rsync":
-                await _run_rsync(step["cmd"])
+                await _run_rsync(step["cmd"], step.get("env") or None)
 
         duration = int((datetime.utcnow() - started).total_seconds())
         final_progress = dict(_progress.get(job_id) or {})

@@ -5,6 +5,9 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+### Correzioni
+- **Sicurezza replica file**: password SSH non più in argv (`sshpass -p`) — passaggio a `sshpass -e` + env `SSHPASS` in rsync e stream tar (`file_sync_service.py`, `direct_stream.py`, `file_replication_execution.py`).
+
 ## [3.17.22] - 2026-07-20
 
 ### Aggiunte

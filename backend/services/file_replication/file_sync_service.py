@@ -46,16 +46,27 @@ def _ssh_port(endpoint: FileEndpoint) -> int:
 
 
 def _ssh_transport(endpoint: FileEndpoint) -> str:
+    """Comando trasporto SSH per rsync -e. Mai password in argv: usare _ssh_env + sshpass -e."""
     port = _ssh_port(endpoint)
     if endpoint.ssh_key_path:
         return f"ssh -p {port} -o StrictHostKeyChecking=no -i {endpoint.ssh_key_path}"
     password = decrypt_password(endpoint.password_enc or "")
     if password:
         return (
-            f"sshpass -p {password!r} ssh -p {port} "
+            f"sshpass -e ssh -p {port} "
             f"-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
         )
     return f"ssh -p {port} -o StrictHostKeyChecking=no"
+
+
+def _ssh_env(endpoint: FileEndpoint) -> dict[str, str]:
+    """Env extra per il processo rsync (SSHPASS se autenticazione a password)."""
+    if endpoint.ssh_key_path:
+        return {}
+    password = decrypt_password(endpoint.password_enc or "")
+    if password:
+        return {"SSHPASS": password}
+    return {}
 
 
 def _remote_spec(endpoint: FileEndpoint, remote_path: str) -> str:
@@ -123,16 +134,18 @@ def build_sync_plan(
         module = (source.extra_config or {}).get("rsync_module", "")
         if source.endpoint_type in (FileEndpointType.SYNOLOGY, FileEndpointType.QNAP) and module:
             pull.append(f"rsync://{source.username}@{source.host}/{module}/{src_path.strip('/')}/")
+            pull_env: dict[str, str] = {}
         else:
             pull.extend(["-e", _ssh_transport(source)])
             pull.append(_remote_spec(source, src_remote))
+            pull_env = _ssh_env(source)
         pull.append(local_dir)
-        steps.append({"type": "rsync", "cmd": pull})
+        steps.append({"type": "rsync", "cmd": pull, "env": pull_env})
 
         push.extend(["-e", _ssh_transport(dest)])
         push.append(local_dir)
         push.append(_remote_spec(dest, dest_remote))
-        steps.append({"type": "rsync", "cmd": push})
+        steps.append({"type": "rsync", "cmd": push, "env": _ssh_env(dest)})
 
     return steps
 
