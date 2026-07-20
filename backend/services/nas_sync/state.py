@@ -67,6 +67,108 @@ def catalog_summary(state: dict) -> dict:
     }
 
 
+def _format_bytes_human(n: int | None) -> str | None:
+    if n is None or n < 0:
+        return None
+    value = float(n)
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+        if value < 1024 or unit == "TiB":
+            if unit == "B":
+                return f"{int(value)} B"
+            return f"{value:.1f} {unit}"
+        value /= 1024
+    return f"{value:.1f} TiB"
+
+
+def folder_progress_fields(
+    state: dict,
+    current_folder_path: str | None = None,
+    *,
+    step_percent: int | None = None,
+    step_eta_seconds: int | None = None,
+) -> dict:
+    """Campi UI: lista cartelle, indici, % complessivo ed ETA da catalogo du."""
+    catalog = state.get("catalog") or {}
+    if not catalog:
+        return {}
+
+    items: list[dict] = []
+    done_bytes = 0
+    current_folder_bytes = 0
+    current_idx = None
+    for root, cat in catalog.items():
+        done = set((state.get("done") or {}).get(root) or [])
+        for folder in cat.get("folders") or []:
+            path = folder.get("path") or ""
+            nbytes = int(folder.get("bytes") or 0)
+            if path == current_folder_path:
+                status = "in_progress"
+                current_folder_bytes = nbytes
+                current_idx = len(items) + 1
+            elif path in done:
+                status = "done"
+                done_bytes += nbytes
+            else:
+                status = "pending"
+            items.append({
+                "path": path,
+                "name": folder.get("name") or path.rsplit("/", 1)[-1],
+                "bytes": nbytes,
+                "size_human": _format_bytes_human(nbytes),
+                "status": status,
+            })
+
+    if not items:
+        return {}
+
+    done_count = sum(1 for it in items if it["status"] == "done")
+    pending_count = sum(1 for it in items if it["status"] == "pending")
+    total_bytes = sum(int(c.get("total_bytes") or 0) for c in catalog.values())
+    out: dict = {
+        "folder_catalog": items,
+        "folders_done": done_count,
+        "folders_pending": pending_count,
+        "current_folder_total": len(items),
+    }
+    if current_folder_path:
+        name = current_folder_path.rsplit("/", 1)[-1]
+        out["current_folder_path"] = current_folder_path
+        out["current_folder_name"] = name
+        if current_idx is not None:
+            out["current_folder_index"] = current_idx
+        if current_folder_bytes:
+            out["current_folder_size_human"] = _format_bytes_human(current_folder_bytes)
+            out["folder_activity_label"] = (
+                f"In lavorazione: {name} ({current_idx}/{len(items)})"
+                f" (~{_format_bytes_human(current_folder_bytes)})"
+            )
+        else:
+            out["folder_activity_label"] = f"In lavorazione: {name}"
+    elif current_folder_path is None and items:
+        # Step file sciolti a root (dopo le cartelle catalogate)
+        out["folder_activity_label"] = "File sciolti a root (+ cartelle nuove)"
+
+    if total_bytes > 0:
+        current_contrib = 0.0
+        if current_folder_bytes and step_percent is not None:
+            current_contrib = current_folder_bytes * max(0, min(100, int(step_percent))) / 100.0
+        overall_done = done_bytes + current_contrib
+        overall_pct = min(99, int(100 * overall_done / total_bytes)) if overall_done < total_bytes else 100
+        out["percent"] = f"{overall_pct}%"
+        out["progress_percent"] = out["percent"]
+        out["transferred_total_human"] = _format_bytes_human(total_bytes)
+        out["catalog_bytes_est"] = total_bytes
+
+        remaining = max(0.0, total_bytes - overall_done)
+        if step_eta_seconds and current_folder_bytes and step_percent is not None:
+            step_remaining = current_folder_bytes * (100 - max(0, min(100, int(step_percent)))) / 100.0
+            if step_remaining > 0 and step_eta_seconds > 0:
+                rate = step_remaining / float(step_eta_seconds)
+                if rate > 0:
+                    out["eta_seconds_overall"] = int(remaining / rate)
+    return out
+
+
 def pending_folders(state: dict, root: str) -> list[dict]:
     catalog = (state.get("catalog") or {}).get(root) or {}
     done = set((state.get("done") or {}).get(root) or [])

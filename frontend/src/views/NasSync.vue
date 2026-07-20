@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import NasSyncEndpointForm from '../components/nas-sync/NasSyncEndpointForm.vue'
 import NasSyncJobModal from '../components/nas-sync/NasSyncJobModal.vue'
 import NasSyncLogModal from '../components/nas-sync/NasSyncLogModal.vue'
+import FileReplFolderCatalog from '../components/file-replication/FileReplFolderCatalog.vue'
 import FileReplPathMapping from '../components/file-replication/FileReplPathMapping.vue'
 import { fileEndpointsApi, type FileEndpoint } from '../services/fileEndpoints'
 import { nasSyncApi, type NasSyncJob } from '../services/nasSync'
@@ -61,17 +62,44 @@ async function refresh(silent = false) {
 }
 
 function jobIsRunning(job: NasSyncJob) {
-  return job.current_status === 'running'
+  if (job.current_status === 'running') return true
+  const prog = progressByJob.value[job.id]
+  return prog?.status === 'running' || prog?.status === 'cancelling'
+}
+
+function jobIsCatalogRefreshing(job: NasSyncJob) {
+  return progressByJob.value[job.id]?.status === 'catalog_refresh'
+}
+
+function jobIsBusy(job: NasSyncJob) {
+  return jobIsRunning(job) || jobIsCatalogRefreshing(job)
+}
+
+function sourceHasSsh(job: NasSyncJob) {
+  const caps = endpointCaps.value[job.source_endpoint_id]
+  return Boolean(caps?.rsync_source)
 }
 
 async function refreshProgressForRunning() {
-  const running = jobs.value.filter((j) => jobIsRunning(j))
+  const toPoll = jobs.value.filter(
+    (j) =>
+      j.current_status === 'running' ||
+      progressByJob.value[j.id]?.status === 'running' ||
+      progressByJob.value[j.id]?.status === 'cancelling' ||
+      progressByJob.value[j.id]?.status === 'catalog_refresh',
+  )
   await Promise.all(
-    running.map(async (j) => {
+    toPoll.map(async (j) => {
       try {
         const { data } = await nasSyncApi.progress(j.id)
-        if (data.status === 'running') {
+        const status = data.status as string | undefined
+        if (status === 'running' || status === 'cancelling' || status === 'catalog_refresh') {
           progressByJob.value[j.id] = data as FileReplProgress
+        } else if (status === 'success' || status === 'failed' || status === 'cancelled') {
+          if (progressByJob.value[j.id]?.status === 'catalog_refresh') {
+            await refresh(true)
+          }
+          delete progressByJob.value[j.id]
         } else {
           delete progressByJob.value[j.id]
         }
@@ -92,7 +120,14 @@ function startLivePoll() {
     await refresh(true)
     await refreshProgressForRunning()
     const anyRunning =
-      stats.value.running > 0 || jobs.value.some((j) => jobIsRunning(j))
+      stats.value.running > 0 ||
+      jobs.value.some((j) => jobIsRunning(j) || jobIsCatalogRefreshing(j)) ||
+      Object.values(progressByJob.value).some(
+        (p) =>
+          p?.status === 'running' ||
+          p?.status === 'cancelling' ||
+          p?.status === 'catalog_refresh',
+      )
     if (!anyRunning) stopLivePoll()
   }, 3000)
 }
@@ -104,21 +139,47 @@ function stopLivePoll() {
   }
 }
 
+async function refreshCatalogJob(job: NasSyncJob) {
+  runError.value = ''
+  if (
+    !confirm(
+      `Aggiornare catalogo du per "${job.name}"?\n\nScansione SSH sulla sorgente (1° livello) per dimensioni cartelle e stima tempi. Non avvia la copia.`,
+    )
+  ) {
+    return
+  }
+  try {
+    await nasSyncApi.refreshCatalog(job.id)
+    progressByJob.value[job.id] = {
+      status: 'catalog_refresh',
+      phase_label: 'Catalogo du sorgente',
+      message: 'Avvio…',
+    }
+    startLivePoll()
+  } catch (e: unknown) {
+    const msg =
+      typeof e === 'object' &&
+      e !== null &&
+      'response' in e &&
+      typeof (e as { response?: { data?: { detail?: string } } }).response?.data?.detail === 'string'
+        ? (e as { response: { data: { detail: string } } }).response.data.detail
+        : e instanceof Error
+          ? e.message
+          : 'Aggiornamento catalogo fallito'
+    runError.value = msg
+  }
+}
+
 async function runJob(job: NasSyncJob) {
   runError.value = ''
   try {
     await nasSyncApi.run(job.id)
+    progressByJob.value[job.id] = { status: 'running', message: 'Avvio…' }
     logJob.value = job
     showLogModal.value = true
     await refresh()
+    await refreshProgressForRunning()
     startLivePoll()
-    for (let i = 0; i < 90; i++) {
-      await new Promise((r) => setTimeout(r, 2000))
-      const { data } = await nasSyncApi.progress(job.id)
-      if (data.status !== 'running') break
-      await refresh()
-    }
-    await refresh()
   } catch (e: unknown) {
     const msg =
       typeof e === 'object' &&
@@ -133,10 +194,31 @@ async function runJob(job: NasSyncJob) {
   }
 }
 
+async function stopJob(job: NasSyncJob) {
+  runError.value = ''
+  if (!confirm(`Mettere in pausa il job "${job.name}"?`)) return
+  try {
+    await nasSyncApi.stop(job.id)
+    await refresh()
+    await refreshProgressForRunning()
+  } catch (e: unknown) {
+    const msg =
+      typeof e === 'object' &&
+      e !== null &&
+      'response' in e &&
+      typeof (e as { response?: { data?: { detail?: string } } }).response?.data?.detail === 'string'
+        ? (e as { response: { data: { detail: string } } }).response.data.detail
+        : e instanceof Error
+          ? e.message
+          : 'Stop job fallito'
+    runError.value = msg
+  }
+}
+
 function openJobLogs(job: NasSyncJob) {
   logJob.value = job
   showLogModal.value = true
-  if (jobIsRunning(job)) {
+  if (jobIsRunning(job) || jobIsCatalogRefreshing(job)) {
     void refreshProgressForRunning()
     startLivePoll()
   }
@@ -253,7 +335,10 @@ function formatBytes(n?: number | null) {
 
 onMounted(async () => {
   await refresh()
-  if (stats.value.running > 0 || jobs.value.some((j) => jobIsRunning(j))) {
+  if (
+    stats.value.running > 0 ||
+    jobs.value.some((j) => jobIsRunning(j) || jobIsCatalogRefreshing(j))
+  ) {
     await refreshProgressForRunning()
     startLivePoll()
   }
@@ -270,6 +355,7 @@ onUnmounted(stopLivePoll)
         <p class="repl-sub">
           Replica cartelle NAS→NAS: motore diretto rsync (i dati non passano dal server dapx)
           o rclone SMB come fallback. Sorgenti Synology, QNAP, Linux, Windows; destinazioni QNAP e Synology.
+          Usa «Catalogo du» per dimensioni e stima tempi più affidabile.
         </p>
       </div>
       <div class="repl-head-actions">
@@ -404,10 +490,10 @@ onUnmounted(stopLivePoll)
                   <span v-if="job.last_bytes_transferred"> · {{ formatBytes(job.last_bytes_transferred) }}</span>
                 </small>
               </td>
-              <td>
+              <td class="fr-job-status">
                 <span
                   :class="
-                    jobIsRunning(job)
+                    jobIsRunning(job) || jobIsCatalogRefreshing(job)
                       ? 'text-warning'
                       : job.current_status === 'failed' || job.last_run_status === 'failed'
                         ? 'text-danger'
@@ -416,8 +502,52 @@ onUnmounted(stopLivePoll)
                           : ''
                   "
                 >
-                  {{ jobIsRunning(job) ? 'running' : job.current_status || job.last_run_status || 'idle' }}
+                  {{
+                    jobIsCatalogRefreshing(job)
+                      ? 'catalogo'
+                      : jobIsRunning(job)
+                        ? 'running'
+                        : job.current_status || job.last_run_status || 'idle'
+                  }}
                 </span>
+                <small v-if="job.catalog_has_du && job.catalog_bytes_est" class="muted d-block">
+                  Catalogo du: {{ job.catalog_folder_count || '?' }} cartelle ·
+                  {{ formatBytes(job.catalog_bytes_est) }}
+                  <span v-if="job.catalog_updated_at">
+                    · {{ new Date(job.catalog_updated_at).toLocaleString() }}
+                  </span>
+                </small>
+                <small
+                  v-else-if="sourceHasSsh(job) && !jobIsCatalogRefreshing(job)"
+                  class="muted d-block text-warning"
+                >
+                  Catalogo du assente — consigliato per % e ETA
+                </small>
+                <small v-if="jobIsCatalogRefreshing(job)" class="muted d-block">
+                  {{ progressByJob[job.id]?.message || 'Aggiornamento catalogo du…' }}
+                </small>
+                <FileReplFolderCatalog
+                  v-if="jobIsCatalogRefreshing(job) && progressByJob[job.id]?.folder_catalog?.length"
+                  compact
+                  :folders="progressByJob[job.id]!.folder_catalog!"
+                  :folders-done="0"
+                />
+                <small
+                  v-if="jobIsRunning(job) && progressByJob[job.id]?.folder_activity_label"
+                  class="muted d-block"
+                >
+                  {{ progressByJob[job.id]?.folder_activity_label }}
+                </small>
+                <FileReplFolderCatalog
+                  v-if="jobIsRunning(job) && progressByJob[job.id]?.folder_catalog?.length"
+                  compact
+                  :folders="progressByJob[job.id]!.folder_catalog!"
+                  :activity-label="progressByJob[job.id]?.folder_activity_label"
+                  :current-name="progressByJob[job.id]?.current_folder_name"
+                  :current-index="progressByJob[job.id]?.current_folder_index"
+                  :current-total="progressByJob[job.id]?.current_folder_total"
+                  :folders-done="progressByJob[job.id]?.folders_done"
+                />
                 <small v-if="jobIsRunning(job) && progressLabel(job.id)" class="muted d-block">
                   {{ progressLabel(job.id) }}
                 </small>
@@ -426,9 +556,31 @@ onUnmounted(stopLivePoll)
                 </small>
               </td>
               <td class="actions">
+                <button
+                  v-if="jobIsRunning(job)"
+                  class="btn btn-sm btn-warning"
+                  @click="stopJob(job)"
+                >
+                  Pausa
+                </button>
+                <button
+                  v-else
+                  class="btn btn-sm btn-primary"
+                  :disabled="jobIsBusy(job)"
+                  @click="runJob(job)"
+                >
+                  Run
+                </button>
+                <button
+                  class="btn btn-sm btn-secondary"
+                  :disabled="jobIsBusy(job) || !sourceHasSsh(job)"
+                  title="Scansione du SSH per dimensioni cartelle e stima tempi"
+                  @click="refreshCatalogJob(job)"
+                >
+                  {{ jobIsCatalogRefreshing(job) ? 'Catalogo…' : 'Catalogo du' }}
+                </button>
                 <button class="btn btn-sm btn-secondary" @click="openEditJob(job)">Modifica</button>
                 <button class="btn btn-sm btn-secondary" @click="openJobLogs(job)">Log</button>
-                <button class="btn btn-sm btn-primary" @click="runJob(job)">Run</button>
                 <button class="btn btn-sm btn-secondary" @click="toggleJob(job.id)">
                   {{ job.is_active ? 'Off' : 'On' }}
                 </button>
@@ -468,9 +620,10 @@ onUnmounted(stopLivePoll)
 .repl-stat-val { font-size: 1.5rem; font-weight: 700; }
 .actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .fr-job-structure { min-width: 240px; max-width: 380px; vertical-align: top; }
+.fr-job-status { min-width: 220px; max-width: 360px; vertical-align: top; }
 .badge { font-size: 0.75rem; background: #333; padding: 2px 8px; border-radius: 4px; }
 .muted { opacity: 0.65; font-size: 0.85rem; }
-.d-block { display: block; margin-top: 2px; max-width: 280px; }
+.d-block { display: block; margin-top: 2px; max-width: 320px; }
 .mr-2 { margin-right: 8px; }
 .mt-4 { margin-top: 16px; }
 .p-4 { padding: 16px; }

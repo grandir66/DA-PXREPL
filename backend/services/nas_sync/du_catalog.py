@@ -11,7 +11,8 @@ from database import FileEndpoint, SessionLocal
 from services.file_replication.path_utils import sanitize_path
 from services.nas_sync.engine_direct_rsync import build_source_fs_path, build_ssh_argv
 from services.nas_sync.models import NasSyncJob
-from services.nas_sync.state import assign_run_state, get_run_state, set_du_catalog
+from services.nas_sync.state import assign_run_state, folder_progress_fields, get_run_state, set_du_catalog
+
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +68,12 @@ async def refresh_job_du_catalog(job_id: int) -> None:
     if job_id in _catalog_running:
         return
     _catalog_running.add(job_id)
-    _catalog_progress[job_id] = {"status": "running", "message": "Catalogo du in corso…"}
+    _catalog_progress[job_id] = {
+        "status": "catalog_refresh",
+        "phase": "starting",
+        "phase_label": "Catalogo du sorgente",
+        "message": "Catalogo du in corso…",
+    }
     db = SessionLocal()
     try:
         job = db.query(NasSyncJob).filter(NasSyncJob.id == job_id).first()
@@ -82,6 +88,13 @@ async def refresh_job_du_catalog(job_id: int) -> None:
         for src_path in job.source_paths or []:
             fs_root = build_source_fs_path(source, src_path)
             script = build_du_script(fs_root)
+            _catalog_progress[job_id] = {
+                "status": "catalog_refresh",
+                "phase": "starting",
+                "phase_label": "Catalogo du sorgente",
+                "message": f"du {src_path}…",
+                **folder_progress_fields(state),
+            }
             proc = await asyncio.create_subprocess_exec(
                 *argv,
                 script,
@@ -98,12 +111,21 @@ async def refresh_job_du_catalog(job_id: int) -> None:
                 datetime.utcnow().isoformat(timespec="seconds"),
             )
             _catalog_progress[job_id] = {
-                "status": "running",
-                "message": f"Catalogo aggiornato: {src_path}",
+                "status": "catalog_refresh",
+                "phase": "starting",
+                "phase_label": "Catalogo du sorgente",
+                "message": f"Catalogo aggiornato: {src_path} ({len(folders)} cartelle)",
+                **folder_progress_fields(state),
             }
         assign_run_state(job, state)
         db.commit()
-        _catalog_progress[job_id] = {"status": "success", "message": "Catalogo du aggiornato"}
+        _catalog_progress[job_id] = {
+            "status": "success",
+            "phase": "done",
+            "phase_label": "Catalogo du completato",
+            "message": "Catalogo du aggiornato",
+            **folder_progress_fields(state),
+        }
     except Exception as exc:  # noqa: BLE001 — task fire-and-forget, errore in progress
         logger.error("nas_sync du catalog %s fallito: %s", job_id, exc, exc_info=True)
         _catalog_progress[job_id] = {"status": "failed", "error": str(exc)}

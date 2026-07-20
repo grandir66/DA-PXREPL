@@ -76,6 +76,7 @@ def build_rclone_cmd(
     size_only: bool,
     bandwidth_limit_kb: int | None,
     filter_file: str | None,
+    extra_excludes: list[str] | None = None,
 ) -> list[str]:
     cmd = [
         "rclone",
@@ -99,6 +100,10 @@ def build_rclone_cmd(
         cmd.extend(["--bwlimit", f"{int(bandwidth_limit_kb)}K"])
     if filter_file:
         cmd.extend(["--filter-from", filter_file, "--ignore-case"])
+    for name in extra_excludes or []:
+        # Esclude cartella di 1° livello già gestita da uno step dedicato.
+        cmd.extend(["--exclude", f"/{name}/**"])
+        cmd.extend(["--exclude", f"/{name}"])
     return cmd
 
 
@@ -159,6 +164,7 @@ async def run_rclone_step(
     on_event: Optional[Callable[[SyncEvent], None]],
     cancel_check: Optional[Callable[[], bool]],
     process_registry: list,
+    extra_excludes: list[str] | None = None,
 ) -> StepResult:
     cfg_path, src_name, dest_name = build_rclone_config(source, dest)
     share, subpath = parse_synology_share_path(src_path)
@@ -174,6 +180,7 @@ async def run_rclone_step(
         size_only=size_only,
         bandwidth_limit_kb=bandwidth_limit_kb,
         filter_file=filter_file,
+        extra_excludes=extra_excludes,
     )
     env = {**os.environ, "RCLONE_CONFIG": cfg_path}
     logger.info("nas_sync rclone: %s %s -> %s", cmd[1], src_remote, dest_remote)

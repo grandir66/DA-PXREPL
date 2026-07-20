@@ -35,6 +35,8 @@ def test_build_view_copying_labels():
     assert any("3 nuovi" in line for line in view["detail_lines"])
     assert view["progress_percent"] == "25%"
     assert view["eta_human"] == "1 minuto e 30 secondi"
+    assert view["eta"] == "1 minuto e 30 secondi"
+    assert view["percent"] == "25%"
     assert view["transferred_human"] == "1.0 MiB"
 
 

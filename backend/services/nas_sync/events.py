@@ -119,13 +119,19 @@ def build_view(progress: dict) -> dict:
             detail_lines.append(f"Trasferiti: {human_bytes(int(bytes_done))}")
 
     if view.get("percent") is not None:
-        view["progress_percent"] = f"{int(view['percent'])}%"
+        pct = view["percent"]
+        view["progress_percent"] = f"{int(pct)}%" if isinstance(pct, int) else str(pct)
+        if isinstance(pct, int):
+            view["percent"] = view["progress_percent"]
     if view.get("speed"):
         detail_lines.append(f"Velocità attuale: {view['speed']}")
     eta = eta_human(view.get("eta_seconds"))
     if eta:
         view["eta_human"] = eta
+        view["eta"] = eta
         detail_lines.append(f"Tempo restante stimato: ~{eta}")
+    elif view.get("eta_human"):
+        view["eta"] = view["eta_human"]
     if view.get("last_file") and phase == "copying":
         detail_lines.append(f"Ultimo file: {view['last_file']}")
 

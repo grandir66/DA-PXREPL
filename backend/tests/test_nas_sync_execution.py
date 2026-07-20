@@ -96,3 +96,38 @@ def test_double_run_guard(db_session):
         check.close()
     finally:
         execution._running.discard(job_id)
+
+
+def test_build_steps_with_catalog_includes_root_loose_files(db_session):
+    db, _TestSession, job_id = db_session
+    job = db.query(NasSyncJob).get(job_id)
+    from services.nas_sync.state import set_du_catalog
+
+    state = set_du_catalog(
+        {},
+        "/Condivisa/docs",
+        [
+            {"path": "/Condivisa/docs/a", "name": "a", "bytes": 10},
+            {"path": "/Condivisa/docs/b", "name": "b", "bytes": 20},
+        ],
+        30,
+        None,
+        "t",
+    )
+    steps = execution._build_steps(job, state)
+    assert [s["src_path"] for s in steps] == [
+        "/Condivisa/docs/a",
+        "/Condivisa/docs/b",
+        "/Condivisa/docs",
+    ]
+    assert steps[-1]["folder_path"] is None
+    assert steps[-1]["exclude_dirs"] == ["a", "b"]
+
+
+def test_build_steps_without_catalog_is_single_root(db_session):
+    db, _TestSession, job_id = db_session
+    job = db.query(NasSyncJob).get(job_id)
+    steps = execution._build_steps(job, {})
+    assert len(steps) == 1
+    assert steps[0]["src_path"] == "/Condivisa/docs"
+    assert "exclude_dirs" not in steps[0]

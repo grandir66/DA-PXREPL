@@ -3,6 +3,7 @@
 from services.nas_sync.state import (
     catalog_summary,
     clear_pause,
+    folder_progress_fields,
     get_pause,
     mark_folder_done,
     pending_folders,
@@ -54,3 +55,22 @@ def test_pause_roundtrip():
     assert pause == {"source_path": "/SHARE", "folder_path": "/SHARE/b", "last_file": "b/file.txt"}
     state = clear_pause(state)
     assert get_pause(state) is None
+
+
+def test_folder_progress_fields_overall_percent_and_eta():
+    state = set_du_catalog({}, "/SHARE", FOLDERS, 300, None, "t")
+    state = mark_folder_done(state, "/SHARE", "/SHARE/a")
+    fields = folder_progress_fields(
+        state,
+        "/SHARE/b",
+        step_percent=50,
+        step_eta_seconds=100,
+    )
+    assert fields["folders_done"] == 1
+    assert fields["folders_pending"] == 0
+    assert fields["current_folder_name"] == "b"
+    assert fields["percent"] == "66%"  # (100 + 100) / 300
+    assert fields["eta_seconds_overall"] == 100  # remaining 100 B at 1 B/s (step: 100 B / 100 s)
+    assert len(fields["folder_catalog"]) == 2
+    assert fields["folder_catalog"][0]["status"] == "done"
+    assert fields["folder_catalog"][1]["status"] == "in_progress"

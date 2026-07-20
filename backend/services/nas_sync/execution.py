@@ -22,13 +22,14 @@ from services.nas_sync.engine_direct_rsync import (
     run_direct_rsync,
 )
 from services.nas_sync.engine_rclone import run_rclone_step
-from services.nas_sync.events import SyncEvent, apply_event, build_view
+from services.nas_sync.events import SyncEvent, apply_event, build_view, eta_human
 from services.nas_sync.models import NasSyncJob
 from services.nas_sync.notifications import notify_nas_sync_result
 from services.nas_sync.state import (
     assign_run_state,
     catalog_summary,
     clear_pause,
+    folder_progress_fields,
     get_pause,
     get_run_state,
     mark_folder_done,
@@ -97,29 +98,49 @@ async def stop_nas_sync_job(job_id: int) -> dict:
     return {"ok": True, "message": "Interruzione richiesta"}
 
 
+def _catalog_dir_names(run_state: dict, root: str) -> list[str]:
+    entry = (run_state.get("catalog") or {}).get(root) or {}
+    names: list[str] = []
+    for folder in entry.get("folders") or []:
+        name = folder.get("name") or (folder.get("path") or "").rsplit("/", 1)[-1]
+        if name:
+            names.append(name)
+    return names
+
+
 def _build_steps(job: NasSyncJob, run_state: dict) -> list[dict]:
-    """Step di lavoro: per-cartella se il catalogo du esiste, altrimenti per source_path."""
+    """Step: per-cartella se c'è catalogo du, poi root (file sciolti / cartelle nuove)."""
     steps: list[dict] = []
-    pause = get_pause(run_state)
     for src_path in job.source_paths or []:
         root = sanitize_path(src_path)
-        folders = pending_folders(run_state, root)
-        if folders:
-            for folder in folders:
-                steps.append({"src_path": folder["path"], "root": root,
-                              "folder_path": folder["path"]})
+        catalog_entry = (run_state.get("catalog") or {}).get(root)
+        if catalog_entry is not None:
+            for folder in pending_folders(run_state, root):
+                steps.append({
+                    "src_path": folder["path"],
+                    "root": root,
+                    "folder_path": folder["path"],
+                })
+            # Sempre uno step root che esclude le cartelle già catalogate:
+            # copre file sciolti e directory apparse dopo il du.
+            steps.append({
+                "src_path": root,
+                "root": root,
+                "folder_path": None,
+                "exclude_dirs": _catalog_dir_names(run_state, root),
+            })
         else:
-            catalog_present = bool((run_state.get("catalog") or {}).get(root))
-            done_all = catalog_present and not folders
-            if done_all and not pause:
-                continue  # tutte le cartelle già replicate in run precedente
-            steps.append({"src_path": root, "root": root, "folder_path": None})
-    if not steps and (job.source_paths or []):
-        # catalogo completo ma nessun pending (es. resume completato): replica root per sicurezza delete
-        for src_path in job.source_paths or []:
-            root = sanitize_path(src_path)
             steps.append({"src_path": root, "root": root, "folder_path": None})
     return steps
+
+
+def _step_exclude_lines(base: list[str], step: dict) -> list[str]:
+    extra = list(base)
+    for name in step.get("exclude_dirs") or []:
+        # Esclude la directory di 1° livello (rsync e rclone accettano il nome).
+        extra.append(f"{name}/")
+        extra.append(name)
+    return extra
 
 
 async def _run_engine_step(
@@ -133,13 +154,14 @@ async def _run_engine_step(
     on_event,
     job_id: int,
 ) -> StepResult:
+    step_excludes = _step_exclude_lines(exclude_lines, step)
     if engine == ENGINE_DIRECT:
         result = await run_direct_rsync(
             source,
             dest,
             step["src_path"],
             (job.dest_base_path or "").strip(),
-            exclude_lines=exclude_lines,
+            exclude_lines=step_excludes,
             delete_on_dest=bool(job.delete_on_dest),
             bandwidth_limit_kb=job.bandwidth_limit_kb,
             on_event=on_event,
@@ -158,6 +180,7 @@ async def _run_engine_step(
         size_only=bool(job.rclone_size_only),
         bandwidth_limit_kb=job.bandwidth_limit_kb,
         filter_file=filter_file,
+        extra_excludes=list(step.get("exclude_dirs") or []),
         on_event=on_event,
         cancel_check=lambda: job_id in _cancel_requested,
         process_registry=_processes[job_id],
@@ -236,22 +259,55 @@ async def execute_nas_sync_job(job_id: int, *, fresh: bool = False, _engine_runn
             view = build_view(progress_state)
             view["status"] = "running"
             view.update(catalog_summary(run_state))
-            if current_step.get("folder_path"):
+            folder_fields = folder_progress_fields(
+                run_state,
+                current_step.get("folder_path"),
+                step_percent=progress_state.get("percent"),
+                step_eta_seconds=progress_state.get("eta_seconds"),
+            )
+            view.update(folder_fields)
+            # Alias UI (formatFileReplProgress legge eta / percent stringa)
+            if folder_fields.get("percent"):
+                view["percent"] = folder_fields["percent"]
+            elif view.get("progress_percent"):
+                view["percent"] = view["progress_percent"]
+            eta_overall = folder_fields.get("eta_seconds_overall")
+            if eta_overall:
+                human = eta_human(int(eta_overall))
+                if human:
+                    view["eta_human"] = human
+                    view["eta"] = human
+            elif view.get("eta_human"):
+                view["eta"] = view["eta_human"]
+            if current_step.get("folder_path") and not view.get("current_folder_path"):
                 view["current_folder_path"] = current_step["folder_path"]
                 view["current_folder_name"] = current_step["folder_path"].rsplit("/", 1)[-1]
             _progress[job_id] = view
 
         steps = _build_steps(job, run_state)
+        # Vista iniziale con catalogo (ETA/% più accurati dopo il du)
+        _progress[job_id] = {
+            **build_view({"status": "running", "phase": "starting"}),
+            "status": "running",
+            **catalog_summary(run_state),
+            **folder_progress_fields(run_state),
+        }
         for step in steps:
             current_step.clear()
             current_step.update(step)
+            _progress[job_id] = {
+                **(_progress.get(job_id) or {}),
+                **folder_progress_fields(run_state, step.get("folder_path")),
+                "status": "running",
+            }
             if job_id in _cancel_requested:
                 raise EngineCancelled("Interrotto dall'utente")
             if _engine_runner is not None:
                 result = await _engine_runner(
                     {"engine": engine, "src_path": step["src_path"],
                      "folder_path": step["folder_path"],
-                     "dest_subpath": job.dest_base_path or ""}
+                     "dest_subpath": job.dest_base_path or "",
+                     "exclude_dirs": step.get("exclude_dirs") or []}
                 )
             else:
                 result = await _run_engine_step(
@@ -264,6 +320,11 @@ async def execute_nas_sync_job(job_id: int, *, fresh: bool = False, _engine_runn
                 run_state = mark_folder_done(run_state, step["root"], step["folder_path"])
                 assign_run_state(job, run_state)
                 db.commit()
+                _progress[job_id] = {
+                    **(_progress.get(job_id) or {}),
+                    **folder_progress_fields(run_state),
+                    "status": "running",
+                }
 
         duration = int((datetime.utcnow() - started).total_seconds())
         final_view = build_view(progress_state)

@@ -30,6 +30,16 @@ def test_cmd_sync_mode_with_delete_and_bwlimit():
     assert "--filter-from" in cmd and "/tmp/f.txt" in cmd
 
 
+def test_cmd_extra_excludes_for_root_loose_files():
+    cmd = build_rclone_cmd(
+        "nas2_source:Share", "nas2_dest:DATI",
+        delete_on_dest=False, size_only=False, bandwidth_limit_kb=None, filter_file=None,
+        extra_excludes=["a", "b"],
+    )
+    assert cmd.count("--exclude") == 4
+    assert "/a/**" in cmd and "/b/**" in cmd
+
+
 def test_parse_copied_new():
     line = json.dumps({"level": "info", "msg": "Copied (new)", "object": "docs/a.txt"})
     ev = parse_rclone_json_line(line)

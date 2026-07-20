@@ -5,6 +5,14 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.25] - 2026-07-20
+
+### Aggiunte
+- **Repliche dati**: UI «Catalogo du» (pulsante + lista cartelle 1° livello con dimensioni); progresso per-cartella, % complessivo ed ETA stimata dai byte del catalogo.
+
+### Correzioni
+- **Repliche dati**: con catalogo attivo, dopo le cartelle viene eseguito anche uno step root che copia i file sciolti (e cartelle nuove), escludendo le directory già catalogate.
+
 ## [3.17.24] - 2026-07-20
 
 ### Correzioni
