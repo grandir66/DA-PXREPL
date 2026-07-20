@@ -62,9 +62,18 @@
  </td>
  <td>
  <div v-if="node.storage_total_gb && node.storage_total_gb > 0">
- <div>{{ formatSize(node.storage_total_gb * 1024 * 1024 * 1024) }}</div>
+ <div class="mini-metric-row">
+ <div class="mini-bar">
+ <div
+ class="mini-bar-fill"
+ :style="storageBarStyle(node.storage_used_gb || 0, node.storage_total_gb)"
+ />
+ </div>
+ <span class="mini-metric-pct">{{ storageUsedPct(node) }}%</span>
+ </div>
  <div class="text-sm text-secondary">
- Usato: {{ formatSize((node.storage_used_gb || 0) * 1024 * 1024 * 1024) }}
+ {{ formatSize((node.storage_used_gb || 0) * 1024 * 1024 * 1024) }} /
+ {{ formatSize(node.storage_total_gb * 1024 * 1024 * 1024) }}
  </div>
  </div>
  <span v-else class="text-secondary">N/A</span>
@@ -81,8 +90,8 @@
  </router-link>
  </td>
  <td>
- <span v-if="node.temperature_highest_c">
- {{ node.temperature_highest_c }}°C
+ <span v-if="nodeTemperature(node) != null" :class="tempClass(nodeTemperature(node)!)">
+ {{ nodeTemperature(node) }}°C
  </span>
  <span v-else class="text-secondary">N/A</span>
  </td>
@@ -133,6 +142,26 @@
  </div>
  </div>
  <div class="modal-body">
+ <div v-if="selectedNode.host_info" class="detail-tabs">
+ <button
+ type="button"
+ class="detail-tab"
+ :class="{ active: detailTab === 'overview' }"
+ @click="detailTab = 'overview'"
+ >Panoramica</button>
+ <button
+ type="button"
+ class="detail-tab"
+ :class="{ active: detailTab === 'storage' }"
+ @click="detailTab = 'storage'"
+ >Storage</button>
+ <button
+ type="button"
+ class="detail-tab"
+ :class="{ active: detailTab === 'network' }"
+ @click="detailTab = 'network'"
+ >Rete</button>
+ </div>
  <div v-if="refreshing" class="text-center p-6">
  <div class="spinner-lg mb-4"></div>
  <p>Aggiornamento dati dai nodi in corso...</p>
@@ -143,6 +172,7 @@
  <button class="btn btn-primary mt-2" @click="refreshData">Aggiorna Dati Ora</button>
  </div>
  <div v-else class="details-grid">
+ <template v-if="detailTab === 'overview'">
  <!-- CPU -->
  <div class="detail-card">
  <h4>🔲 CPU</h4>
@@ -183,7 +213,10 @@
  <div class="detail-card">
  <h4>🧠 Memoria</h4>
  <div class="progress-bar-container" v-if="selectedNode.memory">
- <div class="progress-bar" :style="{width: ((selectedNode.memory.used_gb / selectedNode.memory.total_gb) * 100) + '%'}"></div>
+ <div
+ class="progress-bar"
+ :style="memoryBarStyle(selectedNode.memory.used_gb, selectedNode.memory.total_gb)"
+ />
  </div>
  <div class="kpi-row mt-2">
  <div class="kpi small">
@@ -228,12 +261,12 @@
  </div>
 
  <!-- Temperature -->
- <div class="detail-card" v-if="selectedNode.temperature_highest_c || selectedNode.host_info.temperature?.highest">
+ <div class="detail-card" v-if="nodeTemperature(selectedNode) != null">
  <h4>🌡️ Temperatura</h4>
  <div class="kpi-row">
  <div class="kpi">
- <span class="val" :class="{'text-danger': (selectedNode.temperature_highest_c || selectedNode.host_info.temperature?.highest) > 80}">
- {{ selectedNode.temperature_highest_c || selectedNode.host_info.temperature?.highest || '-' }}°C
+ <span class="val" :class="tempClass(nodeTemperature(selectedNode)!)">
+ {{ nodeTemperature(selectedNode) }}°C
  </span>
  <span class="lbl">Max</span>
  </div>
@@ -253,6 +286,15 @@
  </table>
  </div>
 
+ <div class="detail-card full-width">
+ <details>
+ <summary class="cursor-pointer text-secondary">📋 Mostra dati raw JSON</summary>
+ <pre class="text-xs mt-2 raw-json">{{ JSON.stringify(selectedNode.host_info, null, 2) }}</pre>
+ </details>
+ </div>
+ </template>
+
+ <template v-else-if="detailTab === 'storage'">
  <!-- Storage (full width) -->
  <div class="detail-card full-width">
  <h4>💽 Storage / Datastores ({{ (selectedNode.host_info.storage || []).length }})</h4>
@@ -275,7 +317,9 @@
  </div>
  <div v-else class="text-secondary text-sm">Nessun storage rilevato</div>
  </div>
+ </template>
 
+ <template v-else-if="detailTab === 'network'">
  <!-- Network Topology -->
  <div class="detail-card full-width" v-if="selectedNode.host_info?.network?.length">
  <h4>🕸️ Network Topology</h4>
@@ -358,14 +402,8 @@
  </div>
  </details>
  </div>
-
- <!-- Raw Data Toggle -->
- <div class="detail-card full-width">
- <details>
- <summary class="cursor-pointer text-secondary">📋 Mostra dati raw JSON</summary>
- <pre class="text-xs mt-2" style="max-height: 300px; overflow: auto; background: var(--bg-secondary); padding: 8px; border-radius: 4px;">{{ JSON.stringify(selectedNode.host_info, null, 2) }}</pre>
- </details>
- </div>
+ <div v-else class="text-secondary text-sm p-4">Nessuna interfaccia di rete in cache.</div>
+ </template>
  </div>
  </div>
  </div>
@@ -473,7 +511,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, onMounted, onUnmounted } from 'vue';
 import { useRoute } from 'vue-router';
 import nodesService, { type Node } from '../services/nodes';
 import PageHeader from '../components/ui/PageHeader.vue';
@@ -489,6 +527,10 @@ const showDetailsModal = ref(false);
 const selectedNode = ref<Node | null>(null);
 const creating = ref(false);
 const editingNodeId = ref<number | null>(null);
+const detailTab = ref<'overview' | 'storage' | 'network'>('overview');
+
+const NODES_POLL_MS = 60_000;
+let nodesPollTimer: ReturnType<typeof setInterval> | null = null;
 
 // Diagnostic State
 const showDiagnosticModal = ref(false);
@@ -516,6 +558,7 @@ const route = useRoute();
 
 onMounted(async () => {
  await loadNodes();
+ nodesPollTimer = setInterval(() => loadNodes(true), NODES_POLL_MS);
  
  // Check for query param to auto-open node info modal
  const openInfo = route.query.openInfo as string;
@@ -528,15 +571,19 @@ onMounted(async () => {
  }
 });
 
-const loadNodes = async () => {
- loading.value = true;
+onUnmounted(() => {
+ if (nodesPollTimer) clearInterval(nodesPollTimer);
+});
+
+const loadNodes = async (silent = false) => {
+ if (!silent) loading.value = true;
  try {
  const res = await nodesService.getNodes();
  nodes.value = res.data;
  } catch (e) {
- console.error('Error loading nodes', e);
+ if (!silent) console.error('Error loading nodes', e);
  } finally {
- loading.value = false;
+ if (!silent) loading.value = false;
  }
 };
 
@@ -586,6 +633,7 @@ const refreshData = async () => {
 
 const showNodeDetails = (node: Node) => {
  selectedNode.value = node;
+ detailTab.value = 'overview';
  showDetailsModal.value = true;
 };
 
@@ -600,6 +648,51 @@ const formatUptime = (seconds: number) => {
  const m = Math.floor(seconds % 3600 / 60);
  return `${d}d ${h}h ${m}m`;
 };
+
+function storageUsedPct(node: Node): string {
+ if (!node.storage_total_gb) return '0';
+ return (((node.storage_used_gb || 0) / node.storage_total_gb) * 100).toFixed(0);
+}
+
+function storageBarStyle(usedGb: number, totalGb: number) {
+ const pct = totalGb > 0 ? Math.min(100, (usedGb / totalGb) * 100) : 0;
+ let color = 'var(--color-primary)';
+ if (pct >= 90) color = 'var(--color-danger-fg, #f87171)';
+ else if (pct >= 75) color = 'var(--color-warning-fg, #fbbf24)';
+ return { width: `${pct}%`, background: color };
+}
+
+function memoryBarStyle(usedGb?: number, totalGb?: number) {
+ if (!usedGb || !totalGb) return { width: '0%' };
+ const pct = Math.min(100, (usedGb / totalGb) * 100);
+ let color = 'var(--success)';
+ if (pct >= 90) color = 'var(--failure)';
+ else if (pct >= 75) color = 'var(--warning)';
+ return { width: `${pct}%`, background: color };
+}
+
+function sanitizeTemperatureC(value: unknown): number | null {
+ if (value == null || typeof value !== 'number' || !Number.isFinite(value)) return null;
+ let v = value;
+ if (v > 200 && v <= 200_000) v = v / 1000;
+ if (v < -40 || v > 125) return null;
+ return Math.round(v * 10) / 10;
+}
+
+function nodeTemperature(node: Node): number | null {
+ const fromField = sanitizeTemperatureC(node.temperature_highest_c);
+ if (fromField != null) return fromField;
+ const hostInfo = node.host_info as { temperature?: { highest_c?: number; highest?: number } } | undefined;
+ const t = hostInfo?.temperature;
+ if (!t) return null;
+ return sanitizeTemperatureC(t.highest_c) ?? sanitizeTemperatureC(t.highest);
+}
+
+function tempClass(temp: number): string {
+ if (temp >= 80) return 'text-danger';
+ if (temp >= 65) return 'text-warning';
+ return '';
+}
 
 const openModal = () => {
  editingNodeId.value = null;
@@ -830,7 +923,62 @@ const getGuestVlanOnBridge = (guest: any, bridgeName: string): string | null => 
 
 <style scoped>
 .text-secondary { color: var(--text-secondary); }
+.text-warning { color: var(--warning, #fbbf24); }
 .text-sm { font-size: 0.85em; }
+.mini-metric-row {
+ display: flex;
+ align-items: center;
+ gap: 8px;
+ margin-bottom: 4px;
+}
+.mini-bar {
+ flex: 1;
+ height: 6px;
+ border-radius: 999px;
+ background: rgba(255,255,255,0.08);
+ overflow: hidden;
+ min-width: 60px;
+}
+.mini-bar-fill {
+ height: 100%;
+ border-radius: 999px;
+ transition: width 0.3s ease;
+}
+.mini-metric-pct {
+ font-size: 0.75rem;
+ font-variant-numeric: tabular-nums;
+ color: var(--color-text-secondary);
+ min-width: 2.5rem;
+ text-align: right;
+}
+.detail-tabs {
+ display: flex;
+ gap: 8px;
+ margin-bottom: 16px;
+ border-bottom: 1px solid var(--border-color);
+ padding-bottom: 8px;
+}
+.detail-tab {
+ background: transparent;
+ border: 1px solid var(--border-color);
+ color: var(--text-secondary);
+ padding: 6px 12px;
+ border-radius: 6px;
+ cursor: pointer;
+ font-size: 0.82rem;
+}
+.detail-tab.active {
+ background: var(--accent-primary);
+ border-color: var(--accent-primary);
+ color: #fff;
+}
+.raw-json {
+ max-height: 300px;
+ overflow: auto;
+ background: var(--bg-secondary);
+ padding: 8px;
+ border-radius: 4px;
+}
 .empty-state-cell { text-align: center; padding: 30px; color: var(--text-secondary); }
 .spinner-sm {
  display: inline-block;

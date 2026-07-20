@@ -7,7 +7,7 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from database import FileEndpoint, FileEndpointType, FileReplicationJob, JobLog, get_db
@@ -15,9 +15,16 @@ from routers.auth import User, get_current_user, require_operator
 from services.file_replication.file_replication_execution import (
     execute_file_replication_job,
     get_job_progress,
+    is_job_busy,
     is_job_running,
+    stop_file_replication_job,
+)
+from services.file_replication.file_replication_du_catalog import (
+    get_catalog_progress,
+    refresh_job_du_catalog,
 )
 from services.file_replication.exclude_presets import _merge_presets
+from services.file_replication.file_replication_state import catalog_summary
 from services.file_replication.path_utils import (
     compact_source_paths,
     normalize_qnap_dest_share,
@@ -72,6 +79,7 @@ def _job_out(job: FileReplicationJob, last_run_error: Optional[str] = None) -> F
         dest_staging_path=job.dest_staging_path,
         sync_method=job.sync_method,
         delete_on_dest=job.delete_on_dest,
+        rclone_size_only=bool(getattr(job, "rclone_size_only", False)),
         on_source_delete=job.on_source_delete,
         exclude_presets=job.exclude_presets or [],
         exclude_patterns=job.exclude_patterns or [],
@@ -93,6 +101,7 @@ def _job_out(job: FileReplicationJob, last_run_error: Optional[str] = None) -> F
         source_endpoint_name=job.source_endpoint.name if job.source_endpoint else None,
         dest_endpoint_name=job.dest_endpoint.name if job.dest_endpoint else None,
         last_run_error=last_run_error,
+        **catalog_summary(getattr(job, "run_state", None) or {}),
     )
 
 
@@ -116,8 +125,9 @@ def stats_summary(
     total = db.query(FileReplicationJob).count()
     active = db.query(FileReplicationJob).filter(FileReplicationJob.is_active == True).count()
     running = db.query(FileReplicationJob).filter(FileReplicationJob.current_status == "running").count()
+    paused = db.query(FileReplicationJob).filter(FileReplicationJob.current_status == "paused").count()
     failed = db.query(FileReplicationJob).filter(FileReplicationJob.last_run_status == "failed").count()
-    return {"total": total, "active": active, "running": running, "failed": failed}
+    return {"total": total, "active": active, "running": running, "paused": paused, "failed": failed}
 
 
 @router.get("", response_model=list[FileReplicationJobOut])
@@ -158,6 +168,7 @@ def create_job(
         dest_staging_path=dest_path,
         sync_method=body.sync_method,
         delete_on_dest=body.delete_on_dest,
+        rclone_size_only=body.rclone_size_only,
         on_source_delete=body.on_source_delete,
         exclude_presets=_merge_presets(body.exclude_presets),
         exclude_patterns=body.exclude_patterns,
@@ -243,16 +254,73 @@ def delete_job(
 @router.post("/{job_id}/run")
 async def run_job(
     job_id: int,
+    fresh: bool = Query(False, description="Ignora checkpoint e riparti da capo"),
     db: Session = Depends(get_db),
     _user: User = Depends(require_operator),
 ):
     job = db.query(FileReplicationJob).filter(FileReplicationJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job non trovato")
-    if is_job_running(job_id):
-        raise HTTPException(status_code=409, detail="Job già in esecuzione")
-    asyncio.create_task(execute_file_replication_job(job_id))
-    return {"ok": True, "message": "Esecuzione avviata"}
+    if is_job_busy(job_id):
+        raise HTTPException(status_code=409, detail="Job già in esecuzione o catalogo in aggiornamento")
+    if job.current_status == "running":
+        raise HTTPException(
+            status_code=409,
+            detail="Job segnato in esecuzione (processo orphan?). Usa Stop prima di rilanciare.",
+        )
+    asyncio.create_task(execute_file_replication_job(job_id, fresh=fresh))
+    if fresh:
+        message = "Esecuzione avviata da capo"
+    elif job.current_status == "paused" or job.last_run_status == "paused":
+        message = "Ripresa esecuzione dal checkpoint"
+    else:
+        message = "Esecuzione avviata"
+    return {"ok": True, "message": message}
+
+
+@router.post("/{job_id}/refresh-catalog")
+async def refresh_catalog(
+    job_id: int,
+    db: Session = Depends(get_db),
+    _user: User = Depends(require_operator),
+):
+    """Aggiorna catalogo du Synology (job separato dalla replica)."""
+    job = db.query(FileReplicationJob).filter(FileReplicationJob.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job non trovato")
+    if is_job_busy(job_id):
+        raise HTTPException(
+            status_code=409,
+            detail="Replica o aggiornamento catalogo già in corso",
+        )
+    source = db.query(FileEndpoint).filter(FileEndpoint.id == job.source_endpoint_id).first()
+    if not source:
+        raise HTTPException(status_code=400, detail="Endpoint sorgente mancante")
+    if source.endpoint_type != FileEndpointType.SYNOLOGY:
+        raise HTTPException(
+            status_code=400,
+            detail="Il catalogo du è disponibile solo per sorgenti Synology",
+        )
+    asyncio.create_task(refresh_job_du_catalog(job_id))
+    return {"ok": True, "message": "Aggiornamento catalogo du avviato"}
+
+
+@router.post("/{job_id}/stop")
+async def stop_job(
+    job_id: int,
+    db: Session = Depends(get_db),
+    _user: User = Depends(require_operator),
+):
+    job = db.query(FileReplicationJob).filter(FileReplicationJob.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job non trovato")
+    try:
+        result = await stop_file_replication_job(job_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not result.get("ok"):
+        raise HTTPException(status_code=409, detail=result.get("message", "Job non in esecuzione"))
+    return result
 
 
 @router.post("/{job_id}/toggle", response_model=FileReplicationJobOut)
@@ -309,6 +377,9 @@ def job_progress(
     _user: User = Depends(get_current_user),
 ):
     prog = get_job_progress(job_id)
-    if not prog:
-        return {"status": "idle"}
-    return prog
+    if prog:
+        return prog
+    cat = get_catalog_progress(job_id)
+    if cat:
+        return cat
+    return {"status": "idle"}

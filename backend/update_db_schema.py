@@ -88,6 +88,9 @@ def update_schema():
 
             _ensure_column(conn, "recovery_jobs", "notify_on_each_run", "BOOLEAN")
             _ensure_column(conn, "backup_jobs", "notify_on_each_run", "BOOLEAN")
+            _ensure_column(conn, "backup_jobs", "vm_targets", "JSON")
+            _ensure_column(conn, "file_replication_jobs", "rclone_size_only", "BOOLEAN")
+            _ensure_column(conn, "file_replication_jobs", "run_state", "JSON")
 
             conn.commit()
         except Exception as e:

@@ -263,13 +263,23 @@ const groups = computed<JobGroup[]>(() => {
   const out: JobGroup[] = []
   const idx = new Map<string, JobGroup>()
   for (const j of filtered) {
-    const key =
-      j.vm_id != null
+    const multiBackup =
+      j.kind === 'backup_pbs' &&
+      ((j.raw?.vm_count ?? 0) > 1 || (j.raw?.vm_targets?.length ?? 0) > 1)
+    const key = multiBackup
+      ? `backup:${j.id}`
+      : j.vm_id != null
         ? `vm:${j.vm_id}:${(j.kind === 'syncoid' || j.kind === 'pve_native') && j.raw?.vm_group_id ? j.raw.vm_group_id : 'all'}`
         : `solo:${j.kind}:${j.id}`
     let g = idx.get(key)
     if (!g) {
-      g = { key, vm_id: j.vm_id, vm_name: j.vm_name, vm_type: j.vm_type, jobs: [] }
+      g = {
+        key,
+        vm_id: multiBackup ? undefined : j.vm_id,
+        vm_name: multiBackup ? (j.raw?.vm_summary || j.name) : j.vm_name,
+        vm_type: j.vm_type,
+        jobs: [],
+      }
       idx.set(key, g)
       out.push(g)
     }

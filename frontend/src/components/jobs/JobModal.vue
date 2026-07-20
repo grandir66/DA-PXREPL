@@ -33,6 +33,11 @@
             completa storage ZFS destinazione e verifica schedule.
             Disabilita il job pvesr su Proxmox prima di attivare Syncoid dapx per evitare doppie repliche.
           </div>
+          <div v-if="presetClusterBackup && !isEdit" class="jm-note jm-note-warn mb-3">
+            Import da backup Proxmox <code>{{ presetClusterBackup.id }}</code> (storage <code>{{ presetClusterBackup.storage }}</code>):
+            verifica schedule (Proxmox usa spesso formato calendario, non cron).
+            Disabilita il job Datacenter su Proxmox prima di attivare dapx per evitare doppi backup.
+          </div>
 
           <div class="jm-grid">
             <div class="field field-full">
@@ -60,7 +65,7 @@
               </small>
             </div>
 
-            <div class="field">
+            <div class="field" v-if="form.kind !== 'backup_pbs'">
               <label>Nodo sorgente (PVE)</label>
               <select
                 v-model.number="form.source_node_id"
@@ -75,6 +80,61 @@
               </select>
             </div>
 
+            <!-- Backup PBS: selezione multi-VM su tutto il cluster -->
+            <div v-if="form.kind === 'backup_pbs'" class="field field-full">
+              <label>VM da includere nel backup</label>
+              <p class="jm-note mb-2">
+                Seleziona una o più VM, anche su nodi PVE diversi dello stesso cluster.
+              </p>
+              <div class="jm-vm-pick">
+                <select v-model.number="clusterNodeFilter" class="form-input">
+                  <option :value="null">Tutti i nodi</option>
+                  <option v-for="n in store.pveNodes" :key="n.id" :value="n.id">
+                    {{ n.name }}
+                  </option>
+                </select>
+                <input
+                  v-model="vmFilter"
+                  type="text"
+                  class="form-input"
+                  placeholder="cerca VMID o nome…"
+                />
+                <button type="button" class="btn btn-secondary btn-sm" @click="reloadClusterVMs">
+                  ↻ Aggiorna
+                </button>
+              </div>
+              <div class="jm-backup-vm-actions">
+                <span class="muted">{{ backupVmTargets.length }} selezionate</span>
+                <button type="button" class="btn btn-xs btn-secondary" @click="selectAllClusterVMs">
+                  Seleziona filtrate
+                </button>
+                <button type="button" class="btn btn-xs btn-secondary" @click="clearBackupVmTargets">
+                  Deseleziona tutte
+                </button>
+              </div>
+              <div v-if="loadingClusterVms" class="jm-empty">Caricamento VM cluster…</div>
+              <div v-else-if="clusterFilteredVMs.length" class="jm-vm-list jm-vm-list-multi">
+                <label
+                  v-for="vm in clusterFilteredVMs"
+                  :key="backupVmKey(vm)"
+                  class="jm-vm-item jm-vm-check"
+                  :class="{ active: isBackupVmSelected(vm) }"
+                >
+                  <input
+                    type="checkbox"
+                    :checked="isBackupVmSelected(vm)"
+                    @change="toggleBackupVm(vm, ($event.target as HTMLInputElement).checked)"
+                  />
+                  <span class="jm-vm-id">#{{ vm.vmid }}</span>
+                  <span class="jm-vm-name">{{ vm.name }}</span>
+                  <span class="jm-vm-node muted">{{ vm.node }}</span>
+                  <span class="jm-vm-type" :class="`type-${vm.type}`">{{ vm.type }}</span>
+                </label>
+              </div>
+              <div v-else class="jm-empty">Nessuna VM trovata. Aggiorna l'inventario cluster.</div>
+            </div>
+
+            <template v-else>
             <div class="field field-full">
               <label>Macchina virtuale</label>
               <div class="jm-vm-pick">
@@ -115,8 +175,9 @@
                 Nessuna VM trovata. Aggiorna o seleziona un altro nodo.
               </div>
             </div>
+            </template>
 
-            <div class="field field-full" v-if="form.vm_id">
+            <div class="field field-full" v-if="form.vm_id && form.kind !== 'backup_pbs'">
               <label>Dischi da replicare</label>
               <div v-if="loadingDisks" class="jm-empty">Caricamento dischi…</div>
               <table v-else-if="vmDisks.length" class="jm-disks">
@@ -434,7 +495,10 @@
             <strong>Schedule:</strong>
             <code>{{ form.schedule }}</code>
           </span>
-          <span v-if="form.vm_id" class="jm-summary-chip">
+          <span v-if="form.kind === 'backup_pbs' && backupVmTargets.length" class="jm-summary-chip">
+            <strong>VM:</strong> {{ backupVmTargets.length }} selezionate
+          </span>
+          <span v-else-if="form.vm_id" class="jm-summary-chip">
             <strong>VM:</strong> #{{ form.vm_id }} {{ form.vm_name || '' }}
           </span>
         </div>
@@ -503,6 +567,7 @@ interface FormState {
   dest_pool: string | null         // syncoid
   dest_subfolder: string | null    // syncoid
   pbs_datastore: string | null     // backup/recovery
+  pbs_storage_id: string | null    // backup — storage PVE verso PBS
   restore_storage: string | null   // recovery_pbs
 
   registration: VMRegistration
@@ -550,6 +615,28 @@ interface PresetPvesr {
   id?: string
 }
 
+interface PresetClusterBackupVm {
+  vm_id: number
+  vm_name?: string | null
+  vm_type?: string
+  node?: string | null
+}
+
+interface PresetClusterBackup {
+  id: string
+  storage: string
+  pbs_node_id?: number | null
+  pbs_datastore?: string | null
+  schedule?: string | null
+  mode?: string | null
+  compress?: string | null
+  maxfiles?: number | null
+  exec_node_id?: number | null
+  vm: PresetClusterBackupVm
+}
+
+const CRON_RE = /^(\*|[0-9,\-/]+)\s+(\*|[0-9,\-/]+)\s+(\*|[0-9,\-/]+)\s+(\*|[0-9,\-/]+)\s+(\*|[0-9,\-/]+)$/
+
 const props = withDefaults(
   defineProps<{
     visible: boolean
@@ -557,12 +644,14 @@ const props = withDefaults(
     job?: UnifiedJob | null
     presetVm?: PresetVm | null
     presetPvesr?: PresetPvesr | null
+    presetClusterBackup?: PresetClusterBackup | null
   }>(),
   {
     mode: 'syncoid',
     job: null,
     presetVm: null,
     presetPvesr: null,
+    presetClusterBackup: null,
   }
 )
 const emit = defineEmits<{
@@ -574,6 +663,7 @@ const store = useReplicationStore()
 
 const isEdit = computed(() => !!props.job)
 const presetPvesr = computed(() => props.presetPvesr)
+const presetClusterBackup = computed(() => props.presetClusterBackup)
 const lockSource = computed(() => isEdit.value)
 
 const steps = [
@@ -591,6 +681,16 @@ const vmFilter = ref('')
 const vmDisks = ref<DiskInfo[]>([])
 const selectedDisks = ref<Set<string>>(new Set())
 const loadingDisks = ref(false)
+
+interface BackupVmTarget {
+  vm_id: number
+  vm_type: string
+  vm_name: string | null
+  source_node_id: number
+}
+const backupVmTargets = ref<BackupVmTarget[]>([])
+const clusterNodeFilter = ref<number | null>(null)
+const loadingClusterVms = ref(false)
 
 const replicationStorageHint = computed(() => {
   if (isEdit.value || !vmDisks.value.length) return null
@@ -648,6 +748,7 @@ function emptyForm(kind: JobKind): FormState {
     dest_pool: null,
     dest_subfolder: 'replica',
     pbs_datastore: null,
+    pbs_storage_id: null,
     restore_storage: null,
     registration: {
       register_vm: true,
@@ -756,8 +857,14 @@ watch(
     await store.fetchNodes(true)
     if (props.job) {
       form.value = hydrateFromJob(props.job)
+      if (form.value.kind === 'backup_pbs') {
+        loadBackupVmTargetsFromJob(props.job)
+      } else {
+        backupVmTargets.value = []
+      }
     } else {
       form.value = emptyForm(props.mode)
+      backupVmTargets.value = []
       if (props.presetVm && props.presetVm.node_id != null && props.presetVm.vmid != null) {
         form.value.source_node_id = Number(props.presetVm.node_id) as any
         form.value.vm_id = Number(props.presetVm.vmid) as any
@@ -774,9 +881,46 @@ watch(
         form.value.name =
           props.presetPvesr.comment?.trim() ||
           `VM-${props.presetPvesr.vm} (da pvesr ${props.presetPvesr.id || ''})`.trim()
+      } else if (props.presetClusterBackup?.vm?.vm_id) {
+        const preset = props.presetClusterBackup
+        const vm = preset.vm
+        form.value.kind = 'backup_pbs'
+        form.value.vm_id = vm.vm_id
+        form.value.vm_name = vm.vm_name || null
+        form.value.vm_type = (vm.vm_type as any) || 'qemu'
+        form.value.pbs_node_id = preset.pbs_node_id ?? null
+        form.value.pbs_datastore = preset.pbs_datastore ?? null
+        form.value.pbs_storage_id = preset.storage || null
+        form.value.backup_mode = (preset.mode as any) || 'snapshot'
+        form.value.backup_compress = (preset.compress as any) || 'zstd'
+        if (preset.maxfiles != null) form.value.keep_last = Number(preset.maxfiles) || 7
+        const sched = (preset.schedule || '').trim()
+        if (sched && CRON_RE.test(sched)) {
+          form.value.schedule = sched
+        } else {
+          form.value.schedule = null
+          form.value.schedule_config = { kind: 'manual' }
+        }
+        form.value.name = `VM-${vm.vm_id} (da cluster ${preset.id})`
+        if (preset.exec_node_id) {
+          form.value.source_node_id = preset.exec_node_id
+        } else if (vm.node) {
+          const match = store.nodes.find(
+            n => n.name === vm.node || n.hostname === vm.node,
+          )
+          if (match) form.value.source_node_id = match.id
+        }
+        backupVmTargets.value = [{
+          vm_id: vm.vm_id,
+          vm_type: (vm.vm_type as string) || 'qemu',
+          vm_name: vm.vm_name ?? null,
+          source_node_id: form.value.source_node_id ?? 0,
+        }].filter(t => t.source_node_id)
       }
     }
-    if (form.value.source_node_id) reloadVMs()
+    if (form.value.kind === 'backup_pbs') {
+      await reloadClusterVMs()
+    } else if (form.value.source_node_id) reloadVMs()
     if (form.value.vm_id && form.value.source_node_id) loadDisks()
   }
 )
@@ -845,6 +989,106 @@ const filteredVMs = computed(() => {
     .slice(0, 50)
 })
 
+function resolveVmNodeId(vm: VM): number | null {
+  if (vm.node_id != null) return Number(vm.node_id)
+  const n = store.pveNodes.find(
+    pn => pn.name === vm.node || pn.hostname === vm.node,
+  )
+  return n?.id ?? null
+}
+
+const clusterFilteredVMs = computed(() => {
+  let list = store.vms.slice()
+  if (clusterNodeFilter.value != null) {
+    list = list.filter(v => resolveVmNodeId(v) === clusterNodeFilter.value)
+  }
+  const q = vmFilter.value.trim().toLowerCase()
+  if (q) {
+    list = list.filter(
+      v =>
+        String(v.vmid).includes(q) ||
+        (v.name || '').toLowerCase().includes(q) ||
+        (v.node || '').toLowerCase().includes(q),
+    )
+  }
+  return list.slice(0, 200)
+})
+
+function backupVmKey(vm: VM) {
+  return `${resolveVmNodeId(vm) ?? vm.node}-${vm.vmid}`
+}
+
+function isBackupVmSelected(vm: VM) {
+  const nid = resolveVmNodeId(vm)
+  if (nid == null) return false
+  return backupVmTargets.value.some(
+    t => t.vm_id === Number(vm.vmid) && t.source_node_id === nid,
+  )
+}
+
+function toggleBackupVm(vm: VM, checked: boolean) {
+  const nid = resolveVmNodeId(vm)
+  if (nid == null) return
+  const vid = Number(vm.vmid)
+  if (checked) {
+    if (!isBackupVmSelected(vm)) {
+      backupVmTargets.value.push({
+        vm_id: vid,
+        vm_type: (vm.type as string) || 'qemu',
+        vm_name: vm.name || null,
+        source_node_id: nid,
+      })
+    }
+  } else {
+    backupVmTargets.value = backupVmTargets.value.filter(
+      t => !(t.vm_id === vid && t.source_node_id === nid),
+    )
+  }
+}
+
+function selectAllClusterVMs() {
+  for (const vm of clusterFilteredVMs.value) {
+    toggleBackupVm(vm, true)
+  }
+}
+
+function clearBackupVmTargets() {
+  backupVmTargets.value = []
+}
+
+async function reloadClusterVMs() {
+  loadingClusterVms.value = true
+  try {
+    await store.fetchVMs(true)
+  } finally {
+    loadingClusterVms.value = false
+  }
+}
+
+function loadBackupVmTargetsFromJob(j: UnifiedJob) {
+  const raw = j.raw || {}
+  const targets = raw.vm_targets as BackupVmTarget[] | undefined
+  if (Array.isArray(targets) && targets.length) {
+    backupVmTargets.value = targets.map(t => ({
+      vm_id: Number(t.vm_id),
+      vm_type: t.vm_type || 'qemu',
+      vm_name: t.vm_name ?? null,
+      source_node_id: Number(t.source_node_id),
+    }))
+    return
+  }
+  if (j.vm_id != null && j.source_node_id != null) {
+    backupVmTargets.value = [{
+      vm_id: Number(j.vm_id),
+      vm_type: (j.vm_type as string) || 'qemu',
+      vm_name: j.vm_name ?? null,
+      source_node_id: Number(j.source_node_id),
+    }]
+  } else {
+    backupVmTargets.value = []
+  }
+}
+
 const pveDestNodes = computed(() =>
   store.pveNodes.filter(n => n.id !== form.value.source_node_id)
 )
@@ -879,6 +1123,9 @@ const kindLabel = computed(() => {
 
 const canAdvance = computed(() => {
   if (currentStep.value === 0) {
+    if (form.value.kind === 'backup_pbs') {
+      return backupVmTargets.value.length >= 1
+    }
     if (!form.value.source_node_id || !form.value.vm_id) return false
     if (form.value.kind === 'syncoid' && vmDisks.value.length && !loadingDisks.value) {
       const selected = vmDisks.value.filter(
@@ -903,6 +1150,10 @@ const canAdvance = computed(() => {
 const advanceBlockReason = computed(() => {
   if (canAdvance.value) return null
   if (currentStep.value === 0) {
+    if (form.value.kind === 'backup_pbs') {
+      if (!backupVmTargets.value.length) return 'Seleziona almeno una VM da backuppare.'
+      return null
+    }
     if (!form.value.source_node_id) return 'Seleziona il nodo sorgente.'
     if (!form.value.vm_id) return 'Seleziona la VM da replicare.'
     if (form.value.kind === 'syncoid' && vmDisks.value.length && !loadingDisks.value) {
@@ -930,7 +1181,12 @@ const advanceBlockReason = computed(() => {
   }
   return null
 })
-const canSubmit = computed(() => canAdvance.value && !!form.value.vm_id)
+const canSubmit = computed(() => {
+  if (form.value.kind === 'backup_pbs') {
+    return backupVmTargets.value.length >= 1 && canAdvance.value
+  }
+  return canAdvance.value && !!form.value.vm_id
+})
 
 function canJumpTo(i: number) {
   if (i <= currentStep.value) return true
@@ -1121,14 +1377,21 @@ function buildPveNativePayload() {
 }
 
 function buildBackupPayload() {
+  const targets = backupVmTargets.value
+  const first = targets[0]
   return {
-    name: form.value.name || `backup-${form.value.vm_id}`,
-    source_node_id: form.value.source_node_id,
-    vm_id: form.value.vm_id,
-    vm_type: form.value.vm_type,
-    vm_name: form.value.vm_name,
+    name: form.value.name || `backup-${targets.length}-vm`,
+    vm_targets: targets,
+    source_node_id: first?.source_node_id,
+    vm_id: first?.vm_id,
+    vm_type: first?.vm_type || 'qemu',
+    vm_name:
+      targets.length === 1
+        ? first?.vm_name
+        : `${targets.length} VM`,
     pbs_node_id: form.value.pbs_node_id,
     pbs_datastore: form.value.pbs_datastore,
+    pbs_storage_id: form.value.pbs_storage_id,
     backup_mode: form.value.backup_mode,
     backup_compress: form.value.backup_compress,
     include_all_disks: true,
@@ -1232,6 +1495,11 @@ async function submit() {
       } else if (form.value.kind === 'backup_pbs') {
         r = await apiClient.put(`/backup-jobs/${id}`, {
           name: form.value.name,
+          vm_targets: backupVmTargets.value,
+          vm_name:
+            backupVmTargets.value.length === 1
+              ? backupVmTargets.value[0]?.vm_name
+              : `${backupVmTargets.value.length} VM`,
           schedule: form.value.schedule,
           schedule_config: form.value.schedule_config,
           backup_mode: form.value.backup_mode,
@@ -1501,6 +1769,26 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-bg-body);
+}
+.jm-vm-list-multi {
+  max-height: 320px;
+}
+.jm-vm-check {
+  cursor: pointer;
+  grid-template-columns: 24px 70px 1fr 100px 70px;
+}
+.jm-vm-check input {
+  margin: 0;
+}
+.jm-vm-node {
+  font-size: 0.75rem;
+}
+.jm-backup-vm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: var(--space-2) 0;
 }
 .jm-vm-item {
   background: transparent;

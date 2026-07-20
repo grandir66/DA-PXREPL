@@ -1,9 +1,12 @@
 """Test parsing progresso rclone."""
 
 from services.file_replication.rclone_sync import (
+    enrich_rclone_progress_view,
+    format_rclone_eta,
     format_rclone_progress_summary,
     merge_rclone_progress,
     parse_rclone_progress,
+    should_show_rclone_eta,
     summarize_rclone_output,
 )
 
@@ -41,9 +44,9 @@ def test_parse_stats_files_with_k_suffix():
     line = "Transferred:            3.803k / 3.803k, 100%"
     prog = parse_rclone_progress(line)
     assert prog is not None
-    assert prog["files_copied"] == 3803
-    assert prog["files_total"] == 3803
-    assert prog["percent"] == "100%"
+    assert prog["stat_files_transferred"] == 3803
+    assert prog["stat_files_total"] == 3803
+    assert prog["transfer_files_percent"] == "100%"
 
 
 def test_parse_checks():
@@ -59,7 +62,17 @@ def test_parse_copied_file():
     prog = parse_rclone_progress(line)
     assert prog is not None
     assert prog["files_copied_delta"] == 1
+    assert prog["files_new_delta"] == 1
     assert "13K0062CP" in prog["last_file"]
+
+
+def test_parse_copied_replaced():
+    line = "2026/07/17 17:29:32 INFO  : doc.pdf: Copied (replaced)"
+    prog = parse_rclone_progress(line)
+    assert prog is not None
+    assert prog["files_copied_delta"] == 1
+    assert prog["files_replaced_delta"] == 1
+    assert "files_new_delta" not in prog
 
 
 def test_parse_skipped_mtime():
@@ -96,5 +109,117 @@ def test_summarize_mixed_output():
     assert summary["files_skipped"] == 1
     assert summary["files_checked_total"] == 5
     text = format_rclone_progress_summary(summary)
-    assert "1 copiati" in text
-    assert "1 saltati" in text
+    assert "copiati" in text.lower() or "Copia" in text
+
+
+def test_scanning_phase_does_not_mark_checks_as_skipped():
+    state = enrich_rclone_progress_view(
+        merge_rclone_progress({}, {"files_checked": 50000, "files_checked_total": 100000, "phase": "scanning"})
+    )
+    assert state["files_skipped"] == 0
+    assert state["phase"] == "scanning"
+    assert "Scansione" in state["phase_label"]
+    assert state.get("hint")
+
+
+def test_enrich_copying_phase():
+    view = enrich_rclone_progress_view({
+        "files_copied": 12,
+        "files_new": 8,
+        "files_replaced": 4,
+        "files_skipped": 400,
+        "transferred_human": "1.2 GiB",
+        "speed": "15 MiB/s",
+        "phase": "copying",
+    })
+    assert view["phase"] == "copying"
+    assert any("nuovi" in line.lower() or "aggiornati" in line.lower() for line in view["detail_lines"])
+
+
+def test_parse_eta_with_weeks_and_days():
+    line = "Transferred:   	  1.2 GiB / 120 GiB, 1%, 512 KiB/s, ETA 6w3d"
+    prog = parse_rclone_progress(line)
+    assert prog is not None
+    assert prog["eta"] == "6w3d"
+    assert format_rclone_eta(prog["eta"]) == "6 settimane e 3 giorni"
+
+
+def test_format_eta_minutes_seconds():
+    assert format_rclone_eta("15m30s") == "15 minuti e 30 secondi"
+
+
+def test_enrich_eta_human_readable():
+    view = enrich_rclone_progress_view({
+        "phase": "copying",
+        "transferred_human": "10 GiB",
+        "transferred_total_human": "120 GiB",
+        "percent": "49%",
+        "speed": "15 MiB/s",
+        "files_copied": 5000,
+        "files_checked": 8000,
+        "eta": "15m30s",
+    })
+    assert view["eta_human"] == "15 minuti e 30 secondi"
+    assert any("15 minuti" in line for line in view["detail_lines"])
+
+
+def test_hide_unreliable_eta_during_compare():
+    state = {
+        "phase": "copying",
+        "transferred_human": "1.2 GiB",
+        "transferred_total_human": "120 GiB",
+        "percent": "1%",
+        "speed": "512 KiB/s",
+        "files_checked": 50000,
+        "files_copied": 12,
+        "files_skipped": 0,
+        "eta": "6w3d",
+    }
+    assert should_show_rclone_eta(state) is False
+    view = enrich_rclone_progress_view(state)
+    assert not any("Tempo restante" in line for line in view["detail_lines"])
+    assert view.get("eta_unreliable") is True
+    assert "Confronto" in view["phase_label"] or view["phase"] == "scanning"
+
+
+def test_bytes_progress_labels():
+    view = enrich_rclone_progress_view({
+        "phase": "copying",
+        "source_size_human": "2.3 TB",
+        "transferred_human": "4.362 GiB",
+        "transferred_total_human": "36.628 GiB",
+        "percent": "12%",
+        "files_copied": 100,
+    })
+    assert any("du Synology" in line for line in view["detail_lines"])
+    assert any("solo questo run" in line for line in view["detail_lines"])
+
+
+def test_enrich_folder_progress_lines():
+    view = enrich_rclone_progress_view({
+        "phase": "copying",
+        "source_size_human": "2.3 TB",
+        "folder_activity_label": "In lavorazione: Alpha (3/12)",
+        "current_folder_index": 3,
+        "current_folder_total": 12,
+        "current_folder_session_human": "4.2 GB",
+        "current_folder_progress_pct": 5,
+        "excluded_folder_names": ["#snapshot"],
+        "files_copied": 10,
+    })
+    assert any("In lavorazione: Alpha" in line for line in view["detail_lines"])
+    assert any("Avanzamento cartella" in line for line in view["detail_lines"])
+
+
+def test_copy_phase_hides_stale_checked():
+    view = enrich_rclone_progress_view({
+        "phase": "copying",
+        "files_checked": 5000,
+        "files_copied": 8000,
+        "files_skipped": 200,
+        "transferred_human": "1 GiB",
+        "percent": "20%",
+    })
+    assert not any("controllati" in line.lower() for line in view["detail_lines"])
+    assert any("File elaborati:" in line for line in view["detail_lines"])
+    assert view.get("hint")

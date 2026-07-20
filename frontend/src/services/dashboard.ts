@@ -9,9 +9,18 @@ export interface JobStats {
   total: number
 }
 
+export interface NetworkInterfaceMetrics {
+  name: string
+  rx_bytes: number
+  tx_bytes: number
+  rx_packets?: number
+  tx_packets?: number
+}
+
 export interface NodeMetrics {
-  node_id: string
+  node_id: string | number
   node_name: string
+  timestamp?: string
   cpu: {
     usage_percent: number
     load_1min: number
@@ -22,9 +31,17 @@ export interface NodeMetrics {
     used_gb: number
     total_gb: number
     usage_percent: number
+    available_gb?: number
   }
-  network: Record<string, unknown>
-  disk_io: Record<string, unknown>
+  network: {
+    interfaces?: NetworkInterfaceMetrics[]
+  }
+  disk: {
+    io_read_bytes?: number
+    io_write_bytes?: number
+    io_read_ops?: number
+    io_write_ops?: number
+  }
 }
 
 export interface ReplicationHealthJob {
@@ -76,7 +93,34 @@ export interface ReplicationHealth {
   running_jobs: ReplicationHealthJob[]
 }
 
+export interface DashboardOverview {
+  total_nodes: number
+  online_nodes: number
+  total_vms: number
+  running_vms: number
+  total_storage_gb: number
+  used_storage_gb: number
+  total_memory_gb: number
+  used_memory_gb: number
+  total_cpu_cores: number
+  nodes_summary: Array<Record<string, unknown>>
+  job_stats: JobStats
+  recent_logs: Array<{
+    id: number
+    job_type: string
+    job_name: string
+    status: string
+    started_at?: string | null
+    node_name?: string | null
+    message?: string | null
+  }>
+}
+
 export default {
+  getOverview() {
+    return apiClient.get<DashboardOverview>('/dashboard/overview')
+  },
+
   getJobStats() {
     return apiClient.get<JobStats>('/dashboard/job-stats')
   },

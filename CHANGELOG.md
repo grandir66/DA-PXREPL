@@ -5,6 +5,33 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+### Aggiunte
+- **Replica file**: stato persistente `run_state` — stime file/byte tra esecuzioni, checkpoint cartella per ripresa, nuovo stato **paused** (`file_replication_state.py`, `file_replication_execution.py`, `FileReplication.vue`).
+- **PBS Backup**: visualizzazione job backup Datacenter Proxmox verso storage PBS (`/cluster/backup`) con collegamento job dapx, run/delete su Proxmox e import wizard (`pve_backup_discovery.py`, `PBSClusterBackupJobs.vue`).
+
+### Correzioni
+- **Replica file**: cartelle già allineate (`done`/`skipped`) non vengono più riverificate — piano rclone espanso per cartella du 1° livello con skip automatico (`expand_rclone_steps_by_catalog`, `file_replication_execution.py`).
+- **Replica file**: UI progresso incoerente — niente più «Copiando X» con cartella già ✓; `compose_live_progress()` elimina chiavi stale; ultimo file nascosto su cartelle chiuse; contatori separati nuovi/aggiornati/saltati (`file_replication_state.py`, `rclone_sync.py`, `FileReplFolderCatalog.vue`, `FileReplLogModal.vue`).
+- **Replica file**: stati cartella non ciclano più tra completata/in esecuzione quando rclone alterna `last_file` su cartelle già allineate su QNAP — stato `skipped` + chiusura monotona (`file_replication_state.py`).
+- **Replica file rclone**: esclusione `#snapshot` inefficace — rclone 1.60 ignora filtri `**/#snapshot/**`; pattern `*#snapshot*/**` + `--exclude` CLI espliciti (`exclude_presets.py`, `rclone_sync.py`).
+- **Replica file**: run successivi ricopiavano tutto su SMB Synology→QNAP — aggiunti `--modify-window 2s` e `use_server_modtime`; pulsante **Stop** job (`rclone_sync.py`, `file_replication_execution.py`, `FileReplication.vue`).
+- **Replica file**: ETA rclone mostrata come `6w3` — regex senza `d` (giorni) + formattazione italiana; ETA nascosta in fase confronto quando la stima è fuorviante (`rclone_sync.py`).
+- **Replica file**: catalogo `du` solo **primo livello** sottocartelle Synology (esclusi `#snapshot`), cartella corrente e avanzamento per parte (`synology_du.py`, `file_replication_state.py`).
+- **Replica file**: stima dimensione share errata (~36 GiB vs ~2.5 TB) — catalogo con `du -sb` SSH su Synology invece di totali rclone del run (`synology_du.py`, `file_replication_execution.py`).
+- **Nodi**: temperatura errata (es. 8000000°C su px-nas) — raccolta limitata a `temp*_input`, esclusi power/fan/voltage; validazione range e sanitizzazione cache (`temperature_utils.py`, `host_info_service.py`, `nodes.py`, `Nodes.vue`).
+
+### Modifiche
+- **Replica file**: catalogo du **separato dalla copia** — job `POST /refresh-catalog` persiste dimensioni in `run_state`; la replica usa solo il catalogo memorizzato (`file_replication_du_catalog.py`, `FileReplication.vue`).
+- **Replica file**: catalogo cartelle du 1° livello in UI — cartella corrente, avanzamento %, completate e in attesa (`FileReplFolderCatalog.vue`, `file_replication_state.py`).
+- **Replica file**: controlli **Pausa / Riprendi / Da capo** visibili nella colonna Stato (badge + pulsanti) e nel modal log; rimosso «Stop» disabilitato nella colonna Azioni (`FileReplication.vue`, `FileReplLogModal.vue`).
+- **Replica file**: tuning rclone breve termine — `--fast-list`, `--no-traverse` (modalità copy), opzione job `--size-only`, hint UI copy vs sync (`rclone_sync.py`, `FileReplJobModal.vue`).
+- **Replica file**: progresso live riscritto — fasi «Scansione Synology» / «Copia verso QNAP», etichette chiarite per volume byte e contatori file (`rclone_sync.py`, `fileReplProgress.ts`, `FileReplLogModal.vue`).
+- **Cluster Monitor**: ring gauge CPU/RAM per nodo (`MetricRing.vue`, `Cluster.vue`).
+- **Nodi**: auto-refresh 60s, barra storage in tabella, tab Panoramica/Storage/Rete nel modale, colori temperatura (`Nodes.vue`).
+- **Dashboard**: auto-refresh ogni 30s, colonne rete/disco con rate calcolato, soglie colore barre CPU/RAM e timestamp ultimo aggiornamento (`Dashboard.vue`, `dashboard.ts`).
+- **Nodi**: fix mapping temperatura `highest_c` da cache host_info (`nodes.py`).
+- Job backup PBS dapx: **selezione multi-VM** cross-nodo (`vm_targets`, `JobModal.vue`, `backup_jobs.py`).
+
 ## [3.17.21] - 2026-07-18
 
 ### Aggiunte

@@ -5,6 +5,7 @@ import pytest
 from services.file_replication.exclude_presets import (
     MANDATORY_EXCLUDE_PRESETS,
     build_exclude_lines,
+    build_rclone_cli_exclude_patterns,
     build_rclone_filter_lines,
     build_rsync_exclude_lines,
 )
@@ -27,13 +28,20 @@ def test_build_exclude_lines_always_includes_mandatory():
 
 def test_build_rclone_filter_lines_excludes_hash_snapshots():
     lines = build_rclone_filter_lines([], [])
-    assert any("**/#snapshot/**" in line for line in lines)
-    assert any("**/#Snapshot/**" in line for line in lines)
-    assert any("**/@Snapshot/**" in line for line in lines)
+    assert any("*#snapshot*/**" in line for line in lines)
+    assert any("*#Snapshot*/**" in line for line in lines)
+    assert any("*@Snapshot*/**" in line for line in lines)
     assert all(line.startswith("- ") for line in lines)
     for line in lines:
         body = line[2:].lstrip()
         assert not body.startswith("#") and not body.startswith(";")
+    assert not any("**/#snapshot/**" in line for line in lines)
+
+
+def test_build_rclone_cli_exclude_patterns_includes_snapshot():
+    patterns = build_rclone_cli_exclude_patterns()
+    assert "*#snapshot*/**" in patterns
+    assert "*@Snapshot*/**" in patterns
 
 
 def test_build_rclone_filter_lines_no_comment_lines():

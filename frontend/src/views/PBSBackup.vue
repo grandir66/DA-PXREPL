@@ -8,8 +8,8 @@
 
     <section class="pbs-stats">
       <div class="pbs-stat">
-        <span class="pbs-stat-label">Job backup</span>
-        <span class="pbs-stat-val">{{ stats.total }}</span>
+        <span class="pbs-stat-label">Job cluster Proxmox</span>
+        <span class="pbs-stat-val">{{ clusterStats.total }}</span>
       </div>
       <div class="pbs-stat">
         <span class="pbs-stat-label">Attivi</span>
@@ -44,6 +44,16 @@
 
     <main class="pbs-main">
       <div v-if="activeTab === 'overview'" class="pbs-overview">
+        <div v-if="clusterStats.total > 0" class="info-banner mb-4 cluster-hint">
+          <div class="icon">📋</div>
+          <div class="content">
+            <strong>{{ clusterStats.total }} job backup Datacenter Proxmox</strong> verso PBS rilevati sul cluster
+            <span v-if="clusterStats.unlinked > 0"> ({{ clusterStats.unlinked }} non in dapx)</span>.
+            <button type="button" class="btn btn-sm btn-secondary ml-2" @click="activeTab = 'cluster'">
+              Apri Backup cluster
+            </button>
+          </div>
+        </div>
         <div class="info-banner mb-4">
           <div class="icon">🛡️</div>
           <div class="content">
@@ -73,8 +83,8 @@
 
       <div v-else-if="activeTab === 'jobs'">
         <div class="flex justify-between items-center mb-4">
-          <p class="muted mb-0">Job di backup VM verso PBS (senza restore automatico).</p>
-          <button class="btn btn-primary" @click="openCreateJob">+ Nuovo job</button>
+          <p class="muted mb-0">Job di backup VM verso PBS <strong>creati e schedulati in dapx</strong>.</p>
+          <button class="btn btn-primary" @click="openCreateJob">+ Nuovo job dapx</button>
         </div>
         <JobsList
           :jobs="backupJobs"
@@ -86,7 +96,18 @@
           @show-log="onShowLog"
           @toggle-active="onToggleActive"
         />
+        <p v-if="clusterStats.total > 0" class="muted mt-4 mb-0">
+          I job configurati in Proxmox Datacenter → Backup sono nella tab
+          <button type="button" class="btn-link" @click="activeTab = 'cluster'">Backup cluster</button>
+          ({{ clusterStats.total }} rilevati).
+        </p>
       </div>
+
+      <PBSClusterBackupJobs
+        v-else-if="activeTab === 'cluster'"
+        ref="clusterJobsRef"
+        @import="onImportClusterJob"
+      />
 
       <PBSInventoryPanel v-else-if="activeTab === 'inventory'" />
 
@@ -121,6 +142,7 @@
       v-model:visible="modalVisible"
       mode="backup_pbs"
       :job="editingJob"
+      :preset-cluster-backup="presetClusterBackup"
       @saved="onSaved"
     />
   </div>
@@ -133,7 +155,8 @@ import PageHeader from '../components/ui/PageHeader.vue'
 import JobsList from '../components/jobs/JobsList.vue'
 import JobModal from '../components/jobs/JobModal.vue'
 import PBSInventoryPanel from '../components/pbs/PBSInventoryPanel.vue'
-import backupJobsService, { type BackupJob } from '../services/backupJobs'
+import PBSClusterBackupJobs from '../components/pbs/PBSClusterBackupJobs.vue'
+import backupJobsService, { type BackupJob, type ClusterPBSBackupJob, type ClusterPBSVmLabel } from '../services/backupJobs'
 import logsService, { type JobLog } from '../services/logs'
 import { useReplicationStore, type UnifiedJob } from '../stores/replication'
 import { confirmDangerous } from '../stores/confirm'
@@ -144,19 +167,23 @@ const router = useRouter()
 const toast = useToast()
 const store = useReplicationStore()
 
-type TabId = 'overview' | 'jobs' | 'inventory' | 'logs'
+type TabId = 'overview' | 'jobs' | 'cluster' | 'inventory' | 'logs'
 const activeTab = ref<TabId>('overview')
 const stats = ref({ total: 0, active: 0, running: 0, failed: 0, scheduled: 0 })
+const clusterStats = ref({ total: 0, unlinked: 0, partial: 0, enabled: 0 })
 const backupJobsRaw = ref<BackupJob[]>([])
 const loadingJobs = ref(false)
 const logs = ref<JobLog[]>([])
 const loadingLogs = ref(false)
 const modalVisible = ref(false)
 const editingJob = ref<UnifiedJob | null>(null)
+const presetClusterBackup = ref<(ClusterPBSBackupJob & { vm: ClusterPBSVmLabel }) | null>(null)
+const clusterJobsRef = ref<InstanceType<typeof PBSClusterBackupJobs> | null>(null)
 
 const tabs = computed(() => [
   { id: 'overview' as TabId, label: 'Panoramica', count: null },
-  { id: 'jobs' as TabId, label: 'Job backup', count: stats.value.total },
+  { id: 'jobs' as TabId, label: 'Job dapx', count: stats.value.total },
+  { id: 'cluster' as TabId, label: 'Backup cluster', count: clusterStats.value.total || null },
   { id: 'inventory' as TabId, label: 'Inventario & restore', count: null },
   { id: 'logs' as TabId, label: 'Alert & log', count: null },
 ])
@@ -167,7 +194,7 @@ const backupJobs = computed(() =>
     id: j.id,
     name: j.name,
     vm_id: j.vm_id,
-    vm_name: j.vm_name,
+    vm_name: j.vm_summary || j.vm_name,
     vm_type: j.vm_type,
     source_node_id: j.source_node_id,
     source_node_name: j.source_node_name,
@@ -180,7 +207,7 @@ const backupJobs = computed(() =>
     last_run: j.last_run,
     last_status: j.last_status,
     current_status: j.current_status,
-    raw: j,
+    raw: { ...j, vm_count: j.vm_count ?? j.vm_targets?.length ?? 1 },
   })),
 )
 
@@ -190,7 +217,7 @@ const failedJobs = computed(() =>
 
 function applyRouteQuery() {
   const tab = route.query.tab as string
-  if (tab === 'jobs' || tab === 'inventory' || tab === 'logs' || tab === 'overview') {
+  if (tab === 'jobs' || tab === 'cluster' || tab === 'inventory' || tab === 'logs' || tab === 'overview') {
     activeTab.value = tab
   }
   if (route.query.action === 'create') {
@@ -202,7 +229,17 @@ function applyRouteQuery() {
 watch(activeTab, (tab) => {
   router.replace({ query: { ...route.query, tab } })
   if (tab === 'logs') loadLogs()
+  if (tab === 'cluster') clusterJobsRef.value?.loadJobs()
 })
+
+async function reloadClusterStats() {
+  try {
+    const { data } = await backupJobsService.getClusterSummary()
+    clusterStats.value = data
+  } catch {
+    clusterStats.value = { total: 0, unlinked: 0, partial: 0, enabled: 0 }
+  }
+}
 
 async function reloadStats() {
   try {
@@ -245,11 +282,19 @@ async function loadLogs() {
 
 function openCreateJob() {
   editingJob.value = null
+  presetClusterBackup.value = null
   modalVisible.value = true
   activeTab.value = 'jobs'
 }
 
+function onImportClusterJob(job: ClusterPBSBackupJob, vm: ClusterPBSVmLabel) {
+  presetClusterBackup.value = { ...job, vm }
+  editingJob.value = null
+  modalVisible.value = true
+}
+
 function onEdit(j: UnifiedJob) {
+  presetClusterBackup.value = null
   editingJob.value = j
   modalVisible.value = true
 }
@@ -292,7 +337,10 @@ function onShowLog() {
 
 function onSaved() {
   modalVisible.value = false
+  presetClusterBackup.value = null
   reloadJobs()
+  reloadClusterStats()
+  clusterJobsRef.value?.loadJobs()
 }
 
 function formatDate(v?: string | null) {
@@ -311,8 +359,9 @@ function statusBadge(s?: string) {
 onMounted(async () => {
   await store.fetchNodes()
   applyRouteQuery()
-  await reloadJobs()
+  await Promise.all([reloadJobs(), reloadClusterStats()])
   if (activeTab.value === 'logs') loadLogs()
+  if (activeTab.value === 'cluster') clusterJobsRef.value?.loadJobs()
 })
 </script>
 
@@ -386,7 +435,16 @@ onMounted(async () => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.text-success { color: var(--color-success-fg); }
+.btn-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-primary);
+  cursor: pointer;
+  text-decoration: underline;
+  font: inherit;
+}
+.cluster-hint .content { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .text-warning { color: var(--color-warning-fg); }
 .text-danger { color: var(--color-danger-fg); }
 </style>

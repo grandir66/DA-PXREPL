@@ -643,9 +643,10 @@ class BackupJob(Base):
     
     # VM sorgente
     source_node_id = Column(Integer, ForeignKey("nodes.id"), nullable=False)
-    vm_id = Column(Integer, nullable=False)  # VMID da backuppare
+    vm_id = Column(Integer, nullable=False)  # VMID primaria (legacy / prima della lista)
     vm_type = Column(String(10), default="qemu")  # qemu, lxc
     vm_name = Column(String(100), nullable=True)
+    vm_targets = Column(JSON, nullable=True)  # [{vm_id, vm_type, vm_name, source_node_id}, ...]
     
     # PBS destinazione
     pbs_node_id = Column(Integer, ForeignKey("nodes.id"), nullable=False)
@@ -798,6 +799,7 @@ class FileReplicationJob(Base):
     dest_staging_path = Column(String(500), nullable=False)
     sync_method = Column(String(30), nullable=False, default="rsync_ssh")
     delete_on_dest = Column(Boolean, default=True)
+    rclone_size_only = Column(Boolean, default=False)
     on_source_delete = Column(String(20), default="keep")
     exclude_presets = Column(JSON, nullable=False, default=list)
     exclude_patterns = Column(JSON, nullable=False, default=list)
@@ -817,6 +819,7 @@ class FileReplicationJob(Base):
     next_run_at = Column(DateTime, nullable=True)
     notify_mode = Column(String(20), default="daily")
     notify_subject = Column(String(200), nullable=True)
+    run_state = Column(JSON, nullable=True, default=dict)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

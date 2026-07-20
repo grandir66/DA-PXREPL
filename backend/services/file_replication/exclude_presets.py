@@ -82,10 +82,12 @@ def build_rsync_exclude_lines(presets: list[str], custom: list[str]) -> list[str
 
 
 def _expand_rclone_pattern(pat: str) -> list[str]:
-    """Espande un pattern in forme valide per rclone filter file.
+    """Espande un pattern in forme valide per rclone ``--filter-from``.
 
-    In rclone le righe del filter file che iniziano con # o ; sono commenti:
-    pattern come ``#snapshot`` vanno quindi espressi come ``**/#snapshot/**``.
+    In rclone le righe del filter file che iniziano con # o ; sono commenti.
+    Inoltre rclone 1.60 (Debian) non applica correttamente regole tipo
+    ``**/#snapshot/**``: usare ``*#snapshot*/**`` per escludere la cartella
+    a qualsiasi profondità.
     """
     p = (pat or "").strip()
     if not p:
@@ -97,13 +99,16 @@ def _expand_rclone_pattern(pat: str) -> list[str]:
             out.append(p[:-3] + "/")
         return out
 
-    if p.startswith("#") or p.startswith(";"):
-        return [f"**/{p}/**", f"**/{p}/", f"**/{p}"]
-
     if "/" in p:
-        return [p, f"**/{p}/**", f"**/{p}/"]
+        return [p, f"{p}/**"]
 
-    return [p, f"**/{p}/**", f"**/{p}/", f"**/{p}"]
+    if any(ch in p for ch in ("*", "?", "[")):
+        return [p]
+
+    if p[0] in "#@." or " " in p:
+        return [f"*{p}*/**"]
+
+    return [f"{p}/**", f"*{p}*/**"]
 
 
 def build_rclone_filter_lines(presets: list[str], custom: list[str]) -> list[str]:
@@ -121,6 +126,24 @@ def build_rclone_filter_lines(presets: list[str], custom: list[str]) -> list[str
 
     patterns.sort(key=lambda x: (-len(x), x))
     return [f"- {pat}" for pat in patterns]
+
+
+def build_rclone_cli_exclude_patterns(presets: list[str] | None = None) -> list[str]:
+    """Pattern ``--exclude`` rclone (affidabili anche con nomi ``#snapshot``).
+
+    Complemento a ``--filter-from``: rclone 1.60 ignora i filtri ``**/#…/**``.
+    """
+    patterns: list[str] = []
+    seen: set[str] = set()
+    for pat in _collect_preset_patterns(list(presets or []), []):
+        p = (pat or "").strip()
+        if not p or any(ch in p for ch in ("*", "?", "[")) or "/" in p:
+            continue
+        for expanded in _expand_rclone_pattern(p):
+            if expanded not in seen:
+                seen.add(expanded)
+                patterns.append(expanded)
+    return patterns
 
 
 def browse_exclude_patterns(presets: list[str] | None) -> list[str]:

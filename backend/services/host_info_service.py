@@ -12,6 +12,7 @@ from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime
 
 from services.ssh_service import ssh_service
+from services.temperature_utils import is_temperature_input_key, normalize_temperature_celsius
 from database import SessionLocal, Node
 
 logger = logging.getLogger(__name__)
@@ -985,17 +986,17 @@ class HostInfoService:
                             if not isinstance(sensor_values, dict):
                                 continue
                             for key, value in sensor_values.items():
-                                if key.endswith("_input"):
-                                    try:
-                                        temp_val = float(value)
-                                        readings.append({
-                                            "chip": chip_name,
-                                            "sensor": sensor_name,
-                                            "temperature_c": round(temp_val, 1)
-                                        })
-                                        highest = temp_val if highest is None else max(highest, temp_val)
-                                    except (TypeError, ValueError):
-                                        pass
+                                if not is_temperature_input_key(key):
+                                    continue
+                                temp_val = normalize_temperature_celsius(value)
+                                if temp_val is None:
+                                    continue
+                                readings.append({
+                                    "chip": chip_name,
+                                    "sensor": sensor_name,
+                                    "temperature_c": temp_val
+                                })
+                                highest = temp_val if highest is None else max(highest, temp_val)
                 except json.JSONDecodeError:
                     pass
             

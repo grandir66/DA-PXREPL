@@ -15,6 +15,7 @@ from database import get_db, Node, User
 from services.host_info_service import host_info_service
 from services.proxmox_service import proxmox_service
 from services.ssh_service import ssh_service
+from services.temperature_utils import resolve_highest_temperature_c
 from routers.auth import get_current_user
 from routers.nodes import check_node_access
 
@@ -304,7 +305,7 @@ async def get_dashboard_overview(
                 "storage_used_gb": round(node_storage_used, 2),
                 "vm_count": len(vms),
                 "running_vm_count": sum(1 for vm in vms if vm.get("status", "").lower() == "running"),
-                "temperature_highest_c": host_details.get("temperature", {}).get("highest_c"),
+                "temperature_highest_c": resolve_highest_temperature_c(host_details.get("temperature")),
                 "proxmox_version": host_details.get("proxmox_version")
             })
         except Exception as e:
@@ -442,7 +443,7 @@ async def get_dashboard_nodes(
                     "storage_used_gb": round(storage_used_gb, 2) if storage_used_gb > 0 else 0,
                     "vm_count": len(vms) if vms else 0,
                     "running_vm_count": sum(1 for vm in vms if vm.get("status", "").lower() == "running") if vms else 0,
-                    "temperature_highest_c": temperature_data.get("highest_c") if temperature_data else None
+                    "temperature_highest_c": resolve_highest_temperature_c(temperature_data),
                 })
                 
                 logger.debug(f"Nodo {node.name}: {len(vms) if vms else 0} VM totali, {node_summary['running_vm_count']} running, storage: {storage_total_gb}GB")

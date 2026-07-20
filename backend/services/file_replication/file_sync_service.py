@@ -98,6 +98,7 @@ def build_sync_plan(
                     "filter_file": filter_file,
                     "delete_on_dest": job.delete_on_dest,
                     "bandwidth_limit_kb": job.bandwidth_limit_kb,
+                    "size_only": bool(getattr(job, "rclone_size_only", False)),
                 }
             )
             continue
@@ -109,6 +110,9 @@ def build_sync_plan(
         if job.bandwidth_limit_kb:
             pull.extend(["--bwlimit", str(job.bandwidth_limit_kb)])
             push.extend(["--bwlimit", str(job.bandwidth_limit_kb)])
+        if getattr(job, "rclone_size_only", False):
+            pull.append("--size-only")
+            push.append("--size-only")
         if job.extra_rsync_args:
             extra = job.extra_rsync_args.split()
             pull.extend(extra)

@@ -91,6 +91,7 @@ class FileReplicationJobCreate(BaseModel):
     dest_staging_path: str
     sync_method: str = "rsync_ssh"
     delete_on_dest: bool = True
+    rclone_size_only: bool = False
     on_source_delete: str = "keep"
     exclude_presets: list[str] = Field(default_factory=lambda: ["nas_snapshots", "system_files"])
     exclude_patterns: list[str] = Field(default_factory=list)
@@ -111,6 +112,7 @@ class FileReplicationJobUpdate(BaseModel):
     dest_staging_path: Optional[str] = None
     sync_method: Optional[str] = None
     delete_on_dest: Optional[bool] = None
+    rclone_size_only: Optional[bool] = None
     on_source_delete: Optional[str] = None
     exclude_presets: Optional[list[str]] = None
     exclude_patterns: Optional[list[str]] = None
@@ -134,6 +136,7 @@ class FileReplicationJobOut(BaseModel):
     dest_staging_path: str
     sync_method: str
     delete_on_dest: bool
+    rclone_size_only: bool = False
     on_source_delete: str
     exclude_presets: list[str]
     exclude_patterns: list[str]
@@ -155,6 +158,17 @@ class FileReplicationJobOut(BaseModel):
     source_endpoint_name: Optional[str] = None
     dest_endpoint_name: Optional[str] = None
     last_run_error: Optional[str] = None
+    catalog_files_est: Optional[int] = None
+    catalog_bytes_est: Optional[int] = None
+    catalog_updated_at: Optional[str] = None
+    catalog_folder_count: Optional[int] = None
+    catalog_du_at: Optional[str] = None
+    catalog_has_du: Optional[bool] = None
+    resume_step_index: Optional[int] = None
+    resume_source_path: Optional[str] = None
+    resume_from_path: Optional[str] = None
+    resume_last_file: Optional[str] = None
+    resume_paused_at: Optional[str] = None
 
     class Config:
         from_attributes = True

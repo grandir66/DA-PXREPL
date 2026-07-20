@@ -383,26 +383,20 @@
                         </div>
                     </div>
 
-                    <div class="metrics-grid">
-                        <!-- CPU -->
-                        <div class="metric-item">
-                            <div class="metric-label">
-                                <span>CPU</span>
-                                <span class="metric-value">{{ formatPercentDirect(node.cpu_usage_percent) }}</span>
-                            </div>
-                            <div class="progress-bar">
-                                <div class="progress-fill" :class="getProgressClass(node.cpu_usage_percent)" :style="{ width: node.cpu_usage_percent + '%' }"></div>
-                            </div>
+                    <div class="metrics-grid metrics-grid-rings">
+                        <div class="metric-ring-cell">
+                            <MetricRing
+                                :value="node.cpu_usage_percent"
+                                sublabel="CPU"
+                                :title="`CPU ${nodeName}`"
+                            />
                         </div>
-                        <!-- Memory -->
-                        <div class="metric-item">
-                            <div class="metric-label">
-                                <span>RAM</span>
-                                <span class="metric-value">{{ formatPercentDirect(node.memory_usage_percent) }}</span>
-                            </div>
-                            <div class="progress-bar">
-                                <div class="progress-fill" :class="getProgressClass(node.memory_usage_percent)" :style="{ width: node.memory_usage_percent + '%' }"></div>
-                            </div>
+                        <div class="metric-ring-cell">
+                            <MetricRing
+                                :value="node.memory_usage_percent"
+                                sublabel="RAM"
+                                :title="`RAM ${nodeName}`"
+                            />
                             <div class="metric-subtext">{{ formatBytes(node.memory_used) }} / {{ formatBytes(node.memory_total) }}</div>
                         </div>
                         <!-- Network -->
@@ -655,6 +649,7 @@ import { ref, reactive, onMounted, computed, watch } from 'vue';
 import { confirmDangerous } from '../stores/confirm';
 import Icon from '../components/ui/Icon.vue';
 import PageHeader from '../components/ui/PageHeader.vue';
+import MetricRing from '../components/ui/MetricRing.vue';
 import { useRouter } from 'vue-router';
 import { useHAStore } from '../stores/ha_store';
 import haService from '../services/ha';
@@ -1328,6 +1323,17 @@ const getNetworkTopology = (nodeName: string) => {
 .score-critical { color: #f87171; }
 
 .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.metrics-grid-rings {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+.metric-ring-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+}
 .metric-item { background: var(--bg-secondary); padding: 8px 12px; border-radius: 6px; }
 .metric-label { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px; }
 .metric-value { color: var(--text-primary); font-weight: 600; }

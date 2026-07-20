@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
 import FileReplPathMapping from './FileReplPathMapping.vue'
+import FileReplFolderCatalog from './FileReplFolderCatalog.vue'
 import { fileReplicationApi } from '../../services/fileReplication'
 import type { FileReplicationJob } from '../../services/fileReplication'
 import {
   formatFileReplProgress,
+  fileReplProgressPercent,
   type FileReplProgress,
 } from '../../utils/fileReplProgress'
 
@@ -26,7 +28,7 @@ const props = defineProps<{
   job?: FileReplicationJob | null
 }>()
 
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: []; pause: []; resume: []; fresh: [] }>()
 
 const logs = ref<FileReplLogEntry[]>([])
 const progress = ref<FileReplProgress | null>(null)
@@ -36,6 +38,18 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 const latest = computed(() => logs.value[0] ?? null)
 const liveError = computed(() => progress.value?.error || latest.value?.error || null)
 const progressText = computed(() => formatFileReplProgress(progress.value))
+const isLive = computed(
+  () =>
+    progress.value?.status === 'running' ||
+    progress.value?.status === 'cancelling' ||
+    props.job?.current_status === 'running',
+)
+const isPaused = computed(
+  () =>
+    progress.value?.status === 'paused' ||
+    props.job?.current_status === 'paused' ||
+    props.job?.last_run_status === 'paused',
+)
 const reportText = computed(() => {
   if (progress.value?.status === 'running') return progressText.value
   if (progress.value?.report) return progress.value.report as string
@@ -95,7 +109,25 @@ onUnmounted(stopPolling)
     <div class="frl-modal card">
       <div class="card-header">
         <h3>Report sync — {{ jobName }}</h3>
-        <button class="btn btn-sm btn-secondary" type="button" @click="emit('close')">Chiudi</button>
+        <div class="frl-header-actions">
+          <button
+            v-if="isLive"
+            class="btn btn-sm btn-warning"
+            type="button"
+            @click="emit('pause')"
+          >
+            Pausa
+          </button>
+          <template v-else-if="isPaused">
+            <button class="btn btn-sm btn-primary" type="button" @click="emit('resume')">
+              Riprendi
+            </button>
+            <button class="btn btn-sm btn-secondary" type="button" @click="emit('fresh')">
+              Da capo
+            </button>
+          </template>
+          <button class="btn btn-sm btn-secondary" type="button" @click="emit('close')">Chiudi</button>
+        </div>
       </div>
       <div class="card-body">
         <FileReplPathMapping
@@ -112,18 +144,58 @@ onUnmounted(stopPolling)
 
         <p v-if="loading && !logs.length" class="muted">Caricamento log…</p>
 
-        <div v-if="progress?.status === 'running'" class="frl-running">
-          <span class="frl-dot" /> In esecuzione
-          <span v-if="progress.message" class="frl-step"> — {{ progress.message }}</span>
+        <div v-if="isPaused && !isLive" class="frl-paused">
+          <strong>In pausa</strong>
+          <span v-if="job?.resume_from_path"> — riprendi da {{ job.resume_from_path }}</span>
         </div>
-        <p v-if="progressText" class="frl-progress-detail">
+
+        <div v-if="isLive" class="frl-running">
+          <span class="frl-dot" />
+          {{ progress?.status === 'cancelling' ? 'Interruzione in corso…' : (progress?.phase_label || 'In esecuzione') }}
+          <span v-if="progress?.message" class="frl-step"> — {{ progress.message }}</span>
+        </div>
+
+        <div v-if="isLive && progress" class="frl-live-panel">
+          <FileReplFolderCatalog
+            v-if="progress.folder_catalog?.length"
+            :folders="progress.folder_catalog"
+            :activity-label="progress.folder_activity_label"
+            :current-name="progress.current_folder_name"
+            :current-index="progress.current_folder_index"
+            :current-total="progress.current_folder_total"
+            :folders-done="progress.folders_done"
+          />
+          <div
+            v-if="fileReplProgressPercent(progress) != null"
+            class="frl-progress-bar"
+            role="progressbar"
+            :aria-valuenow="fileReplProgressPercent(progress) ?? 0"
+          >
+            <div class="frl-progress-fill" :style="{ width: `${fileReplProgressPercent(progress)}%` }" />
+          </div>
+          <ul v-if="progress.detail_lines?.length" class="frl-detail-lines">
+            <li v-for="(line, idx) in progress.detail_lines" :key="idx">{{ line }}</li>
+          </ul>
+          <p v-else-if="progressText" class="frl-progress-detail">{{ progressText }}</p>
+          <p v-else class="frl-progress-detail muted">In attesa dati da rclone…</p>
+          <p v-if="progress.hint" class="frl-hint">{{ progress.hint }}</p>
+          <p v-if="progress.show_last_file !== false && progress.last_file" class="frl-last-file muted">
+            Ultimo file: {{ progress.last_file }}
+          </p>
+        </div>
+
+        <FileReplFolderCatalog
+          v-else-if="isPaused && progress?.folder_catalog?.length"
+          :folders="progress.folder_catalog"
+          :activity-label="progress.folder_activity_label"
+          :current-name="progress.current_folder_name"
+          :current-index="progress.current_folder_index"
+          :current-total="progress.current_folder_total"
+          :folders-done="progress.folders_done"
+        />
+
+        <p v-else-if="progressText" class="frl-progress-detail">
           {{ progressText }}
-        </p>
-        <p v-else-if="progress?.status === 'running'" class="frl-progress-detail muted">
-          In attesa dati da rclone…
-        </p>
-        <p v-if="progress?.last_file" class="frl-last-file muted">
-          Ultimo file: {{ progress.last_file }}
         </p>
 
         <div v-if="latest && latest.status !== 'started'" class="frl-report">
@@ -195,6 +267,11 @@ onUnmounted(stopPolling)
   justify-content: space-between;
   align-items: center;
 }
+.frl-header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
 .card-body {
   overflow: auto;
   max-height: 70vh;
@@ -222,6 +299,14 @@ onUnmounted(stopPolling)
   margin: 0;
   font-size: 0.85rem;
 }
+.frl-paused {
+  color: #5bc0de;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(13, 202, 240, 0.08);
+  border: 1px solid rgba(13, 202, 240, 0.25);
+}
 .frl-running {
   color: #f0ad4e;
   margin-bottom: 8px;
@@ -237,6 +322,37 @@ onUnmounted(stopPolling)
   margin: 0 0 8px;
   font-size: 1rem;
   font-weight: 600;
+}
+.frl-live-panel {
+  margin-bottom: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  background: rgba(240, 173, 78, 0.08);
+  border: 1px solid rgba(240, 173, 78, 0.25);
+}
+.frl-progress-bar {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+.frl-progress-fill {
+  height: 100%;
+  background: #f0ad4e;
+  transition: width 0.4s ease;
+}
+.frl-detail-lines {
+  margin: 0 0 8px;
+  padding-left: 18px;
+  font-size: 0.95rem;
+}
+.frl-detail-lines li { margin-bottom: 4px; }
+.frl-hint {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  opacity: 0.85;
+  font-style: italic;
 }
 .frl-last-file {
   margin: 0 0 12px;

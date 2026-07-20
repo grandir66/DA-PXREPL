@@ -17,6 +17,7 @@ from services.btrfs_service import btrfs_service
 from services.pbs_service import pbs_service
 from services.ssh_key_service import ssh_key_service
 from services.cache_service import cache_service
+from services.temperature_utils import resolve_highest_temperature_c
 from routers.auth import get_current_user, require_operator, require_admin, log_audit
 import logging
 
@@ -199,10 +200,9 @@ def enhance_node_response(node: Node, db: Session) -> dict:
             resp["storage_total_gb"] = 0
             resp["storage_used_gb"] = 0
         
-        # Temperature (potrebbe essere in temperature o hardware)
+        # Temperature: valida e ignora valori fuori range (es. power*_input letto per errore)
         temp_data = info.get("temperature", {})
-        if temp_data and isinstance(temp_data, dict):
-            resp["temperature_highest_c"] = temp_data.get("highest")
+        resp["temperature_highest_c"] = resolve_highest_temperature_c(temp_data)
         
         # Proxmox version è alla radice di host_info
         if not resp.get("proxmox_version"):

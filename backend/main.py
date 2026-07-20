@@ -61,6 +61,13 @@ async def lifespan(app: FastAPI):
         db.close()
     
     await scheduler.start()
+    try:
+        from services.file_replication.file_replication_execution import reconcile_stale_running_jobs
+        reset = reconcile_stale_running_jobs()
+        if reset:
+            logger.info("Replica file: %s job 'running' riportati a idle (processo assente)", reset)
+    except Exception as e:
+        logger.warning("reconcile_stale_running_jobs fallito (non bloccante): %s", e)
     logger.info("DAPX-backandrepl avviato")
     
     yield

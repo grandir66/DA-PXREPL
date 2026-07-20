@@ -28,7 +28,8 @@ const form = reactive({
   dest_endpoint_id: null as number | null,
   source_paths: [] as string[],
   dest_staging_path: '/share/DATI',
-  delete_on_dest: true,
+  delete_on_dest: false,
+  rclone_size_only: false,
   exclude_presets: ['nas_snapshots', 'system_files'] as string[],
   exclude_patterns: '',
   schedule: '0 2 * * *',
@@ -70,7 +71,8 @@ function resetForm() {
   form.dest_endpoint_id = null
   form.source_paths = []
   form.dest_staging_path = '/share/DATI'
-  form.delete_on_dest = true
+  form.delete_on_dest = false
+  form.rclone_size_only = false
   form.exclude_presets = ['nas_snapshots', 'system_files']
   form.exclude_patterns = ''
   form.schedule = '0 2 * * *'
@@ -91,6 +93,7 @@ function loadFromJob(job: FileReplicationJob) {
   form.source_paths = compactSourcePaths([...(job.source_paths || [])])
   form.dest_staging_path = normalizeQnapDestShare(job.dest_staging_path)
   form.delete_on_dest = job.delete_on_dest
+  form.rclone_size_only = job.rclone_size_only ?? false
   form.exclude_presets = [...(job.exclude_presets || ['nas_snapshots', 'system_files'])]
   form.exclude_patterns = (job.exclude_patterns || []).join('\n')
   form.schedule = job.schedule || ''
@@ -109,6 +112,7 @@ function buildPayload(): Record<string, unknown> {
     source_paths: compactSourcePaths(form.source_paths),
     dest_staging_path: form.dest_staging_path,
     delete_on_dest: form.delete_on_dest,
+    rclone_size_only: form.rclone_size_only,
     exclude_presets: form.exclude_presets,
     exclude_patterns: form.exclude_patterns
       .split('\n')
@@ -269,8 +273,24 @@ onMounted(loadEndpoints)
         />
         <label class="checkbox-label">
           <input v-model="form.delete_on_dest" type="checkbox" />
-          Elimina su QNAP i file non più presenti in Synology (mirror corrente; nessuno storico sorgente)
+          Elimina su QNAP i file non più presenti in Synology (mirror / sync completo)
         </label>
+        <p class="text-muted">
+          Disattivato (consigliato su share grandi): modalità <strong>copy</strong> incrementale —
+          rclone usa <code>--no-traverse</code> e non riscansiona tutta la destinazione.
+          Attivo: modalità <strong>sync</strong> — più lenta, deve confrontare sorgente e QNAP per intero.
+        </p>
+        <label class="checkbox-label mt-2">
+          <input v-model="form.rclone_size_only" type="checkbox" />
+          Confronta solo la dimensione file (<code>--size-only</code>, più veloce)
+        </label>
+        <p class="text-muted">
+          Ignora data modifica: utile se SMB Synology/QNAP segnala mtime instabili.
+          Non rileva file modificati a pari dimensione.
+        </p>
+        <p class="text-muted mt-2">
+          Sempre attivi su Synology→QNAP: <code>--fast-list</code>, <code>--modify-window 2s</code>.
+        </p>
         <p class="text-muted mt-2">
           Esclusioni automatiche (non disabilitabili): <code>#snapshot</code>, <code>@Snapshot</code>,
           <code>#recycle</code>, <code>@eaDir</code>, cestini e cartelle di sistema.
@@ -340,6 +360,7 @@ onMounted(loadEndpoints)
 .modal-error { padding: 0 20px 12px; color: var(--danger, #e74c3c); font-size: 0.875rem; }
 .steps { display: flex; gap: 12px; padding: 0 20px 12px; font-size: 0.85rem; opacity: 0.7; }
 .steps .active { opacity: 1; font-weight: 600; }
+.mt-2 { margin-top: 8px; }
 .mt-3 { margin-top: 12px; }
 .mb-3 { margin-bottom: 12px; }
 .text-muted { opacity: 0.75; font-size: 0.85rem; display: block; margin-top: 4px; }

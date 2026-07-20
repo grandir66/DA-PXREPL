@@ -2,7 +2,7 @@
   <div class="dashboard">
     <PageHeader
       title="Dashboard"
-      subtitle="Riepilogo job di replica, backup e metriche dei nodi."
+      :subtitle="headerSubtitle"
       icon="home"
     >
       <template #actions>
@@ -12,6 +12,21 @@
         </button>
       </template>
     </PageHeader>
+
+    <section v-if="healthStrip.length" class="health-strip">
+      <div
+        v-for="item in healthStrip"
+        :key="item.id"
+        class="health-strip-item"
+        :class="`health-strip-${item.tone}`"
+      >
+        <Icon :name="item.icon" :size="16" />
+        <div class="health-strip-text">
+          <span class="health-strip-value">{{ item.value }}</span>
+          <span class="health-strip-label">{{ item.label }}</span>
+        </div>
+      </div>
+    </section>
 
     <section class="kpi-grid">
       <div class="kpi" v-for="k in kpis" :key="k.id">
@@ -133,7 +148,7 @@
       <div class="card-head">
         <div>
           <h2 class="card-title">Performance nodi</h2>
-          <p class="card-sub">Snapshot CPU/RAM/load corrente.</p>
+          <p class="card-sub">Snapshot live CPU/RAM/rete/disco · aggiornamento automatico ogni 30s.</p>
         </div>
         <button class="btn btn-secondary btn-sm" :disabled="loadingMetrics" @click="loadNodesMetrics">
           <Icon name="refresh" :size="14" :class="{ spin: loadingMetrics }" />
@@ -152,14 +167,23 @@
         <thead>
           <tr>
             <th>Nodo</th>
+            <th>Trend CPU</th>
             <th>CPU</th>
             <th>RAM</th>
+            <th>Rete ↓/↑</th>
+            <th>Disco R/W</th>
             <th>Load (1/5/15)</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="m in nodesMetrics" :key="m.node_id">
             <td><strong>{{ m.node_name }}</strong></td>
+            <td>
+              <MetricSparkline
+                :values="cpuHistory[nodeKey(m)] || []"
+                :title="`CPU ${m.node_name}`"
+              />
+            </td>
             <td>
               <div class="metric-row">
                 <div class="bar">
@@ -180,6 +204,13 @@
               </div>
             </td>
             <td>
+              <div class="io-metric">{{ formatIoRate(m, 'net') }}</div>
+              <div class="metric-detail">{{ primaryIfaceName(m) }}</div>
+            </td>
+            <td>
+              <div class="io-metric">{{ formatIoRate(m, 'disk') }}</div>
+            </td>
+            <td>
               <code class="load">
                 {{ (m.cpu?.load_1min || 0).toFixed(2) }} ·
                 {{ (m.cpu?.load_5min || 0).toFixed(2) }} ·
@@ -194,17 +225,24 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import dashboardService, {
   type JobStats,
   type NodeMetrics,
   type ReplicationHealth,
+  type DashboardOverview,
 } from '../services/dashboard'
 import { useToast, errorMessage } from '../stores/toast'
 import PageHeader from '../components/ui/PageHeader.vue'
 import Icon from '../components/ui/Icon.vue'
 import LoadingState from '../components/ui/LoadingState.vue'
 import EmptyState from '../components/ui/EmptyState.vue'
+import MetricSparkline from '../components/ui/MetricSparkline.vue'
+import nodesService from '../services/nodes'
+
+const POLL_MS = 30_000
+const OVERVIEW_POLL_MS = 60_000
+const HISTORY_MAX = 20
 
 const toast = useToast()
 
@@ -213,6 +251,23 @@ const loadingMetrics = ref(false)
 const jobStats = ref<JobStats | null>(null)
 const nodesMetrics = ref<NodeMetrics[]>([])
 const replicationHealth = ref<ReplicationHealth | null>(null)
+const overview = ref<DashboardOverview | null>(null)
+const nodeInventory = ref<{ total: number; offline: number }>({ total: 0, offline: 0 })
+const lastUpdated = ref<Date | null>(null)
+const cpuHistory = ref<Record<string, number[]>>({})
+const ioRates = ref<Record<string, { netRx: number; netTx: number; diskRead: number; diskWrite: number }>>({})
+
+interface IoSample {
+  ts: number
+  netRx: number
+  netTx: number
+  diskRead: number
+  diskWrite: number
+}
+
+const ioSamples = new Map<string, IoSample>()
+let pollTimer: ReturnType<typeof setInterval> | null = null
+let overviewTimer: ReturnType<typeof setInterval> | null = null
 
 const overdueGroups = computed(() =>
   replicationHealth.value?.overdue_groups?.length
@@ -236,6 +291,80 @@ const scheduleGroups = computed(() => replicationHealth.value?.groups || [])
 
 const runningJobs = computed(() => replicationHealth.value?.running_jobs || [])
 
+const headerSubtitle = computed(() => {
+  const base = 'Riepilogo job di replica, backup e metriche dei nodi.'
+  if (!lastUpdated.value) return base
+  const t = lastUpdated.value.toLocaleTimeString()
+  return `${base} Ultimo aggiornamento: ${t}.`
+})
+
+interface HealthStripItem {
+  id: string
+  label: string
+  value: string | number
+  icon: string
+  tone: 'ok' | 'warn' | 'danger' | 'info'
+}
+
+const healthStrip = computed<HealthStripItem[]>(() => {
+  const items: HealthStripItem[] = []
+  const rh = replicationHealth.value
+  const inv = nodeInventory.value
+  const ov = overview.value
+
+  if (inv.total > 0) {
+    items.push({
+      id: 'nodes',
+      label: 'Nodi online',
+      value: `${inv.total - inv.offline}/${inv.total}`,
+      icon: 'server',
+      tone: inv.offline > 0 ? 'danger' : 'ok',
+    })
+  }
+
+  if (rh) {
+    items.push({
+      id: 'replica',
+      label: 'Replica in ritardo',
+      value: rh.overdue_count,
+      icon: 'alert-triangle',
+      tone: rh.overdue_count > 0 ? 'warn' : 'ok',
+    })
+    if (rh.running_count > 0) {
+      items.push({
+        id: 'running',
+        label: 'Replica in corso',
+        value: rh.running_count,
+        icon: 'refresh',
+        tone: 'info',
+      })
+    }
+  }
+
+  const hotNodes = nodesMetrics.value.filter((m) => (m.cpu?.usage_percent || 0) >= 85).length
+  if (hotNodes > 0) {
+    items.push({
+      id: 'hot-cpu',
+      label: 'Nodi CPU ≥85%',
+      value: hotNodes,
+      icon: 'cpu',
+      tone: 'warn',
+    })
+  }
+
+  if (ov && ov.total_vms > 0) {
+    items.push({
+      id: 'vms',
+      label: 'VM attive',
+      value: `${ov.running_vms}/${ov.total_vms}`,
+      icon: 'monitor',
+      tone: 'info',
+    })
+  }
+
+  return items
+})
+
 interface Kpi {
   id: string
   label: string
@@ -257,51 +386,169 @@ const kpis = computed<Kpi[]>(() => {
   ]
 })
 
-onMounted(refreshData)
+onMounted(() => {
+  refreshData()
+  loadOverview(true)
+  pollTimer = setInterval(() => refreshData(true), POLL_MS)
+  overviewTimer = setInterval(() => loadOverview(true), OVERVIEW_POLL_MS)
+})
 
-async function refreshData() {
-  loading.value = true
+onUnmounted(() => {
+  if (pollTimer) clearInterval(pollTimer)
+  if (overviewTimer) clearInterval(overviewTimer)
+})
+
+async function refreshData(silent = false) {
+  if (!silent) loading.value = true
   try {
-    await Promise.all([loadJobStats(), loadNodesMetrics(), loadReplicationHealth()])
+    await Promise.all([
+      loadJobStats(silent),
+      loadNodesMetrics(silent),
+      loadReplicationHealth(silent),
+      loadNodeInventory(silent),
+    ])
+    lastUpdated.value = new Date()
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
 }
 
-async function loadReplicationHealth() {
+async function loadOverview(silent = false) {
+  try {
+    const r = await dashboardService.getOverview()
+    overview.value = r.data
+  } catch (e) {
+    if (!silent) toast.error('Impossibile caricare overview', errorMessage(e))
+  }
+}
+
+async function loadNodeInventory(silent = false) {
+  try {
+    const r = await nodesService.getNodes()
+    const list = r.data || []
+    nodeInventory.value = {
+      total: list.length,
+      offline: list.filter((n) => !n.is_online).length,
+    }
+  } catch (e) {
+    if (!silent) toast.error('Impossibile caricare inventario nodi', errorMessage(e))
+  }
+}
+
+async function loadReplicationHealth(silent = false) {
   try {
     const r = await dashboardService.getReplicationHealth()
     replicationHealth.value = r.data
   } catch (e) {
-    toast.error('Impossibile caricare salute replica', errorMessage(e))
+    if (!silent) toast.error('Impossibile caricare salute replica', errorMessage(e))
   }
 }
 
-async function loadJobStats() {
+async function loadJobStats(silent = false) {
   try {
     const r = await dashboardService.getJobStats()
     jobStats.value = r.data
   } catch (e) {
-    toast.error('Impossibile caricare le statistiche', errorMessage(e))
+    if (!silent) toast.error('Impossibile caricare le statistiche', errorMessage(e))
   }
 }
 
-async function loadNodesMetrics() {
-  loadingMetrics.value = true
+async function loadNodesMetrics(silent = false) {
+  if (!silent) loadingMetrics.value = true
   try {
     const r = await dashboardService.getNodesMetrics()
+    pushCpuHistory(r.data)
+    updateIoRates(r.data)
     nodesMetrics.value = r.data
   } catch (e) {
-    toast.error('Errore metriche nodi', errorMessage(e))
+    if (!silent) toast.error('Errore metriche nodi', errorMessage(e))
   } finally {
-    loadingMetrics.value = false
+    if (!silent) loadingMetrics.value = false
   }
 }
 
-function barStyle(val: number, danger = 80, warning = 60) {
+function pushCpuHistory(metrics: NodeMetrics[]) {
+  const next = { ...cpuHistory.value }
+  for (const m of metrics) {
+    const key = nodeKey(m)
+    const cpu = m.cpu?.usage_percent
+    if (!Number.isFinite(cpu)) continue
+    const arr = [...(next[key] || []), cpu as number]
+    next[key] = arr.length > HISTORY_MAX ? arr.slice(-HISTORY_MAX) : arr
+  }
+  cpuHistory.value = next
+}
+
+function nodeKey(m: NodeMetrics): string {
+  return String(m.node_id)
+}
+
+function primaryIface(m: NodeMetrics) {
+  return m.network?.interfaces?.[0]
+}
+
+function primaryIfaceName(m: NodeMetrics): string {
+  return primaryIface(m)?.name || '—'
+}
+
+function updateIoRates(metrics: NodeMetrics[]) {
+  const now = Date.now()
+  const next: typeof ioRates.value = {}
+
+  for (const m of metrics) {
+    const key = nodeKey(m)
+    const iface = primaryIface(m)
+    const netRx = iface?.rx_bytes ?? 0
+    const netTx = iface?.tx_bytes ?? 0
+    const diskRead = m.disk?.io_read_bytes ?? 0
+    const diskWrite = m.disk?.io_write_bytes ?? 0
+
+    const prev = ioSamples.get(key)
+    if (prev && now > prev.ts) {
+      const secs = (now - prev.ts) / 1000
+      if (secs > 0) {
+        next[key] = {
+          netRx: Math.max(0, (netRx - prev.netRx) / secs),
+          netTx: Math.max(0, (netTx - prev.netTx) / secs),
+          diskRead: Math.max(0, (diskRead - prev.diskRead) / secs),
+          diskWrite: Math.max(0, (diskWrite - prev.diskWrite) / secs),
+        }
+      }
+    }
+
+    ioSamples.set(key, { ts: now, netRx, netTx, diskRead, diskWrite })
+  }
+
+  ioRates.value = { ...ioRates.value, ...next }
+}
+
+function formatBytesPerSec(bps: number): string {
+  if (!bps || bps <= 0) return '0 B/s'
+  const units = ['B/s', 'KiB/s', 'MiB/s', 'GiB/s']
+  let v = bps
+  let i = 0
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024
+    i++
+  }
+  return `${v >= 100 ? v.toFixed(0) : v.toFixed(1)} ${units[i]}`
+}
+
+function formatIoRate(m: NodeMetrics, kind: 'net' | 'disk'): string {
+  const key = nodeKey(m)
+  const rates = ioRates.value[key]
+  if (!rates) return '—'
+
+  if (kind === 'net') {
+    return `${formatBytesPerSec(rates.netRx)} / ${formatBytesPerSec(rates.netTx)}`
+  }
+  return `${formatBytesPerSec(rates.diskRead)} / ${formatBytesPerSec(rates.diskWrite)}`
+}
+
+function barStyle(val: number, danger = 85, warning = 70) {
   let color = 'var(--color-primary)'
-  if (val > danger) color = 'var(--color-danger-fg)'
-  else if (val > warning) color = 'var(--color-warning-fg)'
+  if (val >= danger) color = 'var(--color-danger-fg)'
+  else if (val >= warning) color = 'var(--color-warning-fg)'
   return {
     width: `${Math.min(100, Math.max(0, val))}%`,
     background: color,
@@ -332,6 +579,43 @@ function formatDelay(hours?: number | null): string {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: var(--space-3);
+}
+
+.health-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.health-strip-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-surface);
+  min-width: 140px;
+}
+.health-strip-ok { border-color: rgba(34, 197, 94, 0.25); }
+.health-strip-warn { border-color: rgba(245, 158, 11, 0.35); }
+.health-strip-danger { border-color: rgba(248, 113, 113, 0.35); }
+.health-strip-info { border-color: rgba(59, 130, 246, 0.25); }
+.health-strip-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+.health-strip-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-primary);
+}
+.health-strip-label {
+  font-size: 0.68rem;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 .kpi {
   background: var(--color-bg-surface);
@@ -549,6 +833,12 @@ function formatDelay(hours?: number | null): string {
   color: var(--color-text-secondary);
   margin-top: 4px;
   font-family: var(--font-mono);
+}
+.io-metric {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--color-text-primary);
+  white-space: nowrap;
 }
 .load {
   font-family: var(--font-mono);
