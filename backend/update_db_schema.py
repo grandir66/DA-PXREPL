@@ -1,7 +1,7 @@
 
 import logging
 from sqlalchemy import create_engine, text
-from database import DATABASE_PATH
+from database import Base, DATABASE_PATH
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -88,6 +88,11 @@ def update_schema():
 
             _ensure_column(conn, "recovery_jobs", "notify_on_each_run", "BOOLEAN")
             _ensure_column(conn, "backup_jobs", "notify_on_each_run", "BOOLEAN")
+
+            # Repliche dati v2: tabella nuova, creata idempotente via metadata.
+            # Il modello è registrato importando services.nas_sync.models.
+            from services.nas_sync import models as _nas_sync_models  # noqa: F401
+            Base.metadata.create_all(bind=engine)
 
             conn.commit()
         except Exception as e:
