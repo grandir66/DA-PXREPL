@@ -1,5 +1,7 @@
 """Test builder e parser del motore diretto rsync."""
 
+import re
+
 from database import FileEndpoint, FileEndpointType
 from services.nas_sync.engine_direct_rsync import (
     RSYNC_WARNING_EXITS,
@@ -47,6 +49,14 @@ def test_dest_rsync_url_with_base_subpath():
     assert url == "rsync://backup@10.0.0.2:873/DATI/backup-syno/Condivisa/docs/"
 
 
+def test_dest_rsync_url_strips_share_and_module_prefix():
+    """dest_base_path UI `/share/DATI` non deve ripetersi sotto il modulo DATI."""
+    url = build_dest_rsync_url(_dst(), "/Piegatubi", "/share/DATI")
+    assert url == "rsync://backup@10.0.0.2:873/DATI/Piegatubi/"
+    url2 = build_dest_rsync_url(_dst(), "/Piegatubi", "/share/DATI/archivio")
+    assert url2 == "rsync://backup@10.0.0.2:873/DATI/archivio/Piegatubi/"
+
+
 def test_remote_script_never_contains_password_and_exports_env():
     script = build_remote_rsync_script(
         "/volume1/Condivisa/docs/",
@@ -63,6 +73,9 @@ def test_remote_script_never_contains_password_and_exports_env():
     assert "--exclude '@eaDir'" in script
     assert "--partial-dir=.dapx-partial" in script
     assert "--info=progress2" in script
+    assert "--out-format='%i %n'" in script
+    # Nessun token %n lasciato come argomento path separato (bug shell-split)
+    assert re.search(r"(?<!')%n(?!')", script) is None
 
 
 def test_ssh_argv_with_key_uses_batchmode(monkeypatch):

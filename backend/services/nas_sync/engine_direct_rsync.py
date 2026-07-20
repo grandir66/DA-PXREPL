@@ -66,6 +66,21 @@ def build_source_fs_path(source: FileEndpoint, src_path: str) -> str:
     return f"{base}{clean}".rstrip("/") + "/"
 
 
+def _rel_under_rsync_module(module: str, dest_subpath: str) -> str:
+    """Path relativo alla root del modulo rsyncd.
+
+    UI usa path filesystem tipo ``/share/DATI`` o ``/share/DATI/subdir``, ma
+    con modulo ``DATI`` la root rsync è già quella share: non ripetere
+    ``share/DATI`` nell'URL (altrimenti mkdir fallisce sul receiver).
+    """
+    parts = [p for p in dest_subpath.strip().strip("/").split("/") if p]
+    if parts and parts[0] == "share":
+        parts = parts[1:]
+    if parts and parts[0] == module:
+        parts = parts[1:]
+    return "/".join(parts)
+
+
 def build_dest_rsync_url(dest: FileEndpoint, src_path: str, dest_subpath: str) -> str:
     """URL rsyncd destinazione: rsync://user@host:port/MODULE/[subpath/]<struttura sorgente>/"""
     extra = dest.extra_config or {}
@@ -75,7 +90,8 @@ def build_dest_rsync_url(dest: FileEndpoint, src_path: str, dest_subpath: str) -
     user = str(extra.get("rsync_user") or dest.username)
     port = int(extra.get("rsync_port") or 873)
     rel = sanitize_path(src_path).strip("/")
-    parts = [p for p in (dest_subpath.strip("/"), rel) if p]
+    base_rel = _rel_under_rsync_module(module, dest_subpath or "")
+    parts = [p for p in (base_rel, rel) if p]
     sub = "/".join(parts)
     return f"rsync://{user}@{dest.host}:{port}/{module}/{sub}/"
 
@@ -93,7 +109,8 @@ def build_remote_rsync_script(
         "rsync",
         "-a",
         "--info=progress2",
-        "--out-format=%i %n",
+        # Quotare: altrimenti la shell spezza su spazio e `%n` diventa un path arg.
+        "--out-format='%i %n'",
         "--partial-dir=.dapx-partial",
     ]
     for pattern in exclude_lines:

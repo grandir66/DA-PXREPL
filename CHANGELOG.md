@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.24] - 2026-07-20
+
+### Correzioni
+- **Repliche dati (motore diretto)**: fix path destinazione rsync — non ripetere `/share/DATI` dentro il modulo; fix `--out-format` quotato (evita errore `%n` / `link_stat`).
+
 ## [3.17.23] - 2026-07-20
 
 ### Correzioni
