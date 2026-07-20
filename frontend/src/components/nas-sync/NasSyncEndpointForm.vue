@@ -143,11 +143,14 @@ async function save() {
       domain: form.domain || null,
       base_path: form.base_path || null,
     }
-    if (form.endpoint_type === 'synology') {
-      payload.extra_config = { verify_ssl: form.verify_ssl }
-    }
-    if (form.endpoint_type === 'qnap') {
-      payload.extra_config = { verify_ssl: form.verify_ssl, use_https: form.use_https }
+    if (form.endpoint_type === 'synology' || form.endpoint_type === 'qnap') {
+      const existingExtra =
+        isEdit.value && props.endpoint ? { ...(props.endpoint.extra_config || {}) } : {}
+      payload.extra_config = {
+        ...existingExtra,
+        verify_ssl: form.verify_ssl,
+        ...(form.endpoint_type === 'qnap' ? { use_https: form.use_https } : {}),
+      }
     }
     if (form.password) payload.password = form.password
 
