@@ -3,15 +3,11 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import NasSyncEndpointForm from '../components/nas-sync/NasSyncEndpointForm.vue'
 import NasSyncJobModal from '../components/nas-sync/NasSyncJobModal.vue'
 import NasSyncLogModal from '../components/nas-sync/NasSyncLogModal.vue'
-import FileReplFolderCatalog from '../components/file-replication/FileReplFolderCatalog.vue'
 import FileReplPathMapping from '../components/file-replication/FileReplPathMapping.vue'
 import { fileEndpointsApi, type FileEndpoint } from '../services/fileEndpoints'
 import { nasSyncApi, type NasSyncJob } from '../services/nasSync'
 import type { EndpointCapabilities } from '../services/nasSync'
-import {
-  formatFileReplProgress,
-  type FileReplProgress,
-} from '../utils/fileReplProgress'
+import type { FileReplProgress } from '../utils/fileReplProgress'
 
 const jobs = ref<NasSyncJob[]>([])
 const endpoints = ref<FileEndpoint[]>([])
@@ -110,8 +106,39 @@ async function refreshProgressForRunning() {
   )
 }
 
-function progressLabel(jobId: number) {
-  return formatFileReplProgress(progressByJob.value[jobId])
+/** Una riga sintetica per la tabella; il dettaglio cartelle è nel modale Log. */
+function statusSummary(job: NasSyncJob): string {
+  const p = progressByJob.value[job.id]
+  if (jobIsCatalogRefreshing(job)) {
+    return p?.message || 'Catalogo du in corso…'
+  }
+  if (jobIsRunning(job) && p) {
+    const parts: string[] = []
+    if (p.current_folder_index && p.current_folder_total) {
+      parts.push(`${p.current_folder_index}/${p.current_folder_total}`)
+    } else if (p.folders_done != null && p.current_folder_total) {
+      parts.push(`${p.folders_done}/${p.current_folder_total}`)
+    }
+    if (p.current_folder_name) {
+      const name =
+        p.current_folder_name.length > 28
+          ? `${p.current_folder_name.slice(0, 28)}…`
+          : p.current_folder_name
+      parts.push(name)
+    }
+    const pct = p.progress_percent || p.percent
+    if (pct && pct !== '-' && pct !== '-%') parts.push(String(pct))
+    const eta = p.eta || p.eta_human
+    if (eta && eta !== '-') parts.push(`ETA ${eta}`)
+    if (!parts.length && p.phase_label) return p.phase_label
+    if (!parts.length && p.message) return p.message
+    return parts.join(' · ')
+  }
+  if (job.catalog_has_du && job.catalog_bytes_est) {
+    return `du ${job.catalog_folder_count || '?'} cart. · ${formatBytes(job.catalog_bytes_est)}`
+  }
+  if (sourceHasSsh(job)) return 'Catalogo du assente'
+  return ''
 }
 
 function startLivePoll() {
@@ -492,6 +519,7 @@ onUnmounted(stopLivePoll)
               </td>
               <td class="fr-job-status">
                 <span
+                  class="fr-status-badge"
                   :class="
                     jobIsRunning(job) || jobIsCatalogRefreshing(job)
                       ? 'text-warning'
@@ -510,50 +538,29 @@ onUnmounted(stopLivePoll)
                         : job.current_status || job.last_run_status || 'idle'
                   }}
                 </span>
-                <small v-if="job.catalog_has_du && job.catalog_bytes_est" class="muted d-block">
-                  Catalogo du: {{ job.catalog_folder_count || '?' }} cartelle ·
-                  {{ formatBytes(job.catalog_bytes_est) }}
-                  <span v-if="job.catalog_updated_at">
-                    · {{ new Date(job.catalog_updated_at).toLocaleString() }}
-                  </span>
-                </small>
-                <small
-                  v-else-if="sourceHasSsh(job) && !jobIsCatalogRefreshing(job)"
-                  class="muted d-block text-warning"
+                <span
+                  v-if="statusSummary(job)"
+                  class="fr-status-line"
+                  :class="{
+                    'text-warning': !job.catalog_has_du && sourceHasSsh(job) && !jobIsBusy(job),
+                  }"
+                  :title="statusSummary(job)"
                 >
-                  Catalogo du assente — consigliato per % e ETA
-                </small>
-                <small v-if="jobIsCatalogRefreshing(job)" class="muted d-block">
-                  {{ progressByJob[job.id]?.message || 'Aggiornamento catalogo du…' }}
-                </small>
-                <FileReplFolderCatalog
-                  v-if="jobIsCatalogRefreshing(job) && progressByJob[job.id]?.folder_catalog?.length"
-                  compact
-                  :folders="progressByJob[job.id]!.folder_catalog!"
-                  :folders-done="0"
-                />
-                <small
-                  v-if="jobIsRunning(job) && progressByJob[job.id]?.folder_activity_label"
-                  class="muted d-block"
+                  {{ statusSummary(job) }}
+                </span>
+                <span
+                  v-if="jobIsRunning(job) || jobIsCatalogRefreshing(job)"
+                  class="fr-status-hint"
                 >
-                  {{ progressByJob[job.id]?.folder_activity_label }}
-                </small>
-                <FileReplFolderCatalog
-                  v-if="jobIsRunning(job) && progressByJob[job.id]?.folder_catalog?.length"
-                  compact
-                  :folders="progressByJob[job.id]!.folder_catalog!"
-                  :activity-label="progressByJob[job.id]?.folder_activity_label"
-                  :current-name="progressByJob[job.id]?.current_folder_name"
-                  :current-index="progressByJob[job.id]?.current_folder_index"
-                  :current-total="progressByJob[job.id]?.current_folder_total"
-                  :folders-done="progressByJob[job.id]?.folders_done"
-                />
-                <small v-if="jobIsRunning(job) && progressLabel(job.id)" class="muted d-block">
-                  {{ progressLabel(job.id) }}
-                </small>
-                <small v-if="job.last_run_error" class="muted d-block text-danger" :title="job.last_run_error">
-                  {{ job.last_run_error.length > 120 ? job.last_run_error.slice(0, 120) + '…' : job.last_run_error }}
-                </small>
+                  Dettaglio in Log
+                </span>
+                <span
+                  v-if="job.last_run_error && !jobIsBusy(job)"
+                  class="fr-status-err"
+                  :title="job.last_run_error"
+                >
+                  {{ job.last_run_error.length > 80 ? job.last_run_error.slice(0, 80) + '…' : job.last_run_error }}
+                </span>
               </td>
               <td class="actions">
                 <button
@@ -620,7 +627,44 @@ onUnmounted(stopLivePoll)
 .repl-stat-val { font-size: 1.5rem; font-weight: 700; }
 .actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .fr-job-structure { min-width: 240px; max-width: 380px; vertical-align: top; }
-.fr-job-status { min-width: 220px; max-width: 360px; vertical-align: top; }
+.fr-job-status {
+  min-width: 160px;
+  max-width: 240px;
+  vertical-align: top;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+.fr-status-badge {
+  display: inline-block;
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+.fr-status-line {
+  display: block;
+  margin-top: 2px;
+  opacity: 0.72;
+  font-size: 0.72rem;
+  max-width: 230px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fr-status-hint {
+  display: block;
+  margin-top: 1px;
+  font-size: 0.68rem;
+  opacity: 0.45;
+}
+.fr-status-err {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.7rem;
+  color: #e74c3c;
+  max-width: 230px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .badge { font-size: 0.75rem; background: #333; padding: 2px 8px; border-radius: 4px; }
 .muted { opacity: 0.65; font-size: 0.85rem; }
 .d-block { display: block; margin-top: 2px; max-width: 320px; }

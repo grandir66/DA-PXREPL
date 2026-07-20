@@ -102,11 +102,12 @@ function statusIcon(status: string) {
 
 <style scoped>
 .frfc {
-  margin-bottom: 12px;
-  padding: 12px;
+  margin-bottom: 0;
+  padding: 10px 12px;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.82rem;
 }
 .frfc-head {
   display: flex;
@@ -114,27 +115,44 @@ function statusIcon(status: string) {
   align-items: baseline;
   gap: 12px;
   flex-wrap: wrap;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
+  font-size: 0.8rem;
 }
-.frfc-summary { font-size: 0.85rem; }
+.frfc-summary { font-size: 0.75rem; }
 .frfc-current {
-  margin: 0 0 10px;
-  font-size: 0.95rem;
+  margin: 0 0 8px;
+  font-size: 0.8rem;
 }
 .frfc-list {
   list-style: none;
   margin: 0;
   padding: 0;
-  max-height: 280px;
+  max-height: 360px;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+}
+.frfc-list::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.frfc-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+.frfc-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 4px;
+}
+.frfc-list::-webkit-scrollbar-corner {
+  background: transparent;
 }
 .frfc-compact .frfc-list {
-  max-height: 160px;
+  max-height: 140px;
 }
 .frfc-item {
   display: flex;
-  gap: 10px;
-  padding: 8px 0;
+  gap: 8px;
+  padding: 5px 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 .frfc-item:last-child { border-bottom: none; }
@@ -142,16 +160,16 @@ function statusIcon(status: string) {
 .frfc-item--skipped { opacity: 0.8; }
 .frfc-item--in_progress {
   background: rgba(240, 173, 78, 0.08);
-  margin: 0 -8px;
-  padding: 8px;
+  margin: 0 -6px;
+  padding: 5px 6px;
   border-radius: 6px;
   border-bottom-color: transparent;
 }
 .frfc-icon {
-  width: 18px;
+  width: 16px;
   flex-shrink: 0;
   text-align: center;
-  font-size: 0.85rem;
+  font-size: 0.75rem;
   line-height: 1.4;
 }
 .frfc-item--done .frfc-icon { color: #28a745; }
@@ -167,18 +185,19 @@ function statusIcon(status: string) {
 }
 .frfc-name {
   font-weight: 500;
+  font-size: 0.8rem;
   word-break: break-word;
 }
 .frfc-size {
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   white-space: nowrap;
 }
 .frfc-bar {
-  height: 6px;
+  height: 4px;
   background: rgba(255, 255, 255, 0.1);
   border-radius: 3px;
   overflow: hidden;
-  margin-top: 6px;
+  margin-top: 4px;
 }
 .frfc-bar-fill {
   height: 100%;
@@ -187,8 +206,8 @@ function statusIcon(status: string) {
 }
 .frfc-progress {
   display: block;
-  margin-top: 4px;
-  font-size: 0.8rem;
+  margin-top: 2px;
+  font-size: 0.72rem;
 }
 .muted { opacity: 0.7; }
 </style>

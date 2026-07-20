@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
+import FileReplFolderCatalog from '../file-replication/FileReplFolderCatalog.vue'
 import FileReplPathMapping from '../file-replication/FileReplPathMapping.vue'
 import { nasSyncApi } from '../../services/nasSync'
 import type { NasSyncJob } from '../../services/nasSync'
@@ -35,9 +36,12 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 
 const latest = computed(() => logs.value[0] ?? null)
 const liveError = computed(() => progress.value?.error || latest.value?.error || null)
+const isLive = computed(() =>
+  ['running', 'cancelling', 'catalog_refresh'].includes(progress.value?.status || ''),
+)
 const progressText = computed(() => formatFileReplProgress(progress.value))
 const reportText = computed(() => {
-  if (progress.value?.status === 'running') return progressText.value
+  if (isLive.value) return progressText.value
   if (progress.value?.report) return progress.value.report as string
   if (latest.value?.output?.includes('Cartelle replicate:')) {
     return latest.value.output.split('\n\n--- rclone')[0].trim()
@@ -51,6 +55,7 @@ const outputText = computed(() => {
   }
   return raw.trim()
 })
+const folderCatalog = computed(() => progress.value?.folder_catalog || [])
 
 async function refresh() {
   try {
@@ -112,21 +117,41 @@ onUnmounted(stopPolling)
 
         <p v-if="loading && !logs.length" class="muted">Caricamento log…</p>
 
-        <div v-if="progress?.status === 'running'" class="frl-running">
+        <div v-if="progress?.status === 'running' || progress?.status === 'cancelling'" class="frl-running">
           <span class="frl-dot" /> In esecuzione
+          <span v-if="progress.folder_activity_label" class="frl-step">
+            — {{ progress.folder_activity_label }}
+          </span>
+          <span v-else-if="progress.message" class="frl-step"> — {{ progress.message }}</span>
+        </div>
+        <div v-else-if="progress?.status === 'catalog_refresh'" class="frl-running">
+          <span class="frl-dot" /> Catalogo du
           <span v-if="progress.message" class="frl-step"> — {{ progress.message }}</span>
         </div>
+
         <p v-if="progressText" class="frl-progress-detail">
           {{ progressText }}
         </p>
         <p v-else-if="progress?.status === 'running'" class="frl-progress-detail muted">
-          In attesa dati da rclone…
+          In attesa dati dal motore…
         </p>
+
+        <div v-if="folderCatalog.length" class="frl-catalog">
+          <FileReplFolderCatalog
+            :folders="folderCatalog"
+            :activity-label="progress?.folder_activity_label"
+            :current-name="progress?.current_folder_name"
+            :current-index="progress?.current_folder_index"
+            :current-total="progress?.current_folder_total"
+            :folders-done="progress?.folders_done"
+          />
+        </div>
+
         <p v-if="progress?.last_file" class="frl-last-file muted">
           Ultimo file: {{ progress.last_file }}
         </p>
 
-        <div v-if="latest && latest.status !== 'started'" class="frl-report">
+        <div v-if="latest && latest.status !== 'started' && !isLive" class="frl-report">
           <strong>Ultimo report</strong>
           <p v-if="latest.duration != null" class="frl-meta">
             Durata {{ latest.duration }}s
@@ -151,7 +176,10 @@ onUnmounted(stopPolling)
           <pre>{{ outputText }}</pre>
         </div>
 
-        <p v-if="!loading && !liveError && !reportText && !outputText && progress?.status !== 'running'" class="muted">
+        <p
+          v-if="!loading && !liveError && !reportText && !outputText && !folderCatalog.length && !isLive"
+          class="muted"
+        >
           Nessun log disponibile. Se il job non parte, verifica rsync/sshpass sul server e SSH sui NAS.
         </p>
 
@@ -185,7 +213,7 @@ onUnmounted(stopPolling)
   padding: 24px;
 }
 .frl-modal {
-  width: min(900px, 100%);
+  width: min(920px, 100%);
   max-height: 85vh;
   display: flex;
   flex-direction: column;
@@ -203,6 +231,9 @@ onUnmounted(stopPolling)
   margin-bottom: 10px;
   padding-bottom: 10px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.frl-catalog {
+  margin: 0 0 12px;
 }
 .frl-report {
   margin-bottom: 12px;
@@ -229,18 +260,19 @@ onUnmounted(stopPolling)
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  font-size: 0.9rem;
 }
 .frl-step {
   font-weight: 500;
 }
 .frl-progress-detail {
   margin: 0 0 8px;
-  font-size: 1rem;
+  font-size: 0.88rem;
   font-weight: 600;
 }
 .frl-last-file {
   margin: 0 0 12px;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   word-break: break-all;
 }
 .frl-dot {
@@ -265,8 +297,8 @@ onUnmounted(stopPolling)
   white-space: pre-wrap;
   word-break: break-word;
   margin: 8px 0 0;
-  font-size: 0.85rem;
-  max-height: 320px;
+  font-size: 0.8rem;
+  max-height: 280px;
   overflow: auto;
 }
 .frl-output {
@@ -274,7 +306,7 @@ onUnmounted(stopPolling)
 }
 .frl-history {
   margin-top: 16px;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
 }
 .frl-history ul {
   margin: 8px 0 0;

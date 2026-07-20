@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.26] - 2026-07-20
+
+### Modifiche
+- **Repliche dati**: stato in tabella sintetico (cartella N/M · % · ETA); lista cartelle dettagliata solo nel modale Log; tipografia più compatta.
+
 ## [3.17.25] - 2026-07-20
 
 ### Aggiunte
