@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.27] - 2026-07-20
+
+### Correzioni
+- **Repliche dati (rsync diretto)**: creazione path destinazione multi-livello sotto il modulo (`--mkpath` + step preliminare); evita `mkdir … failed: No such file or directory` su QNAP.
+
 ## [3.17.26] - 2026-07-20
 
 ### Modifiche

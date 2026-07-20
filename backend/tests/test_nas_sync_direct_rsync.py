@@ -74,8 +74,24 @@ def test_remote_script_never_contains_password_and_exports_env():
     assert "--partial-dir=.dapx-partial" in script
     assert "--info=progress2" in script
     assert "--out-format='%i %n'" in script
+    assert "DAPX_MKPATH" in script
+    assert "--mkpath" in script
     # Nessun token %n lasciato come argomento path separato (bug shell-split)
     assert re.search(r"(?<!')%n(?!')", script) is None
+
+
+def test_remote_script_ensure_dest_only_excludes_all_content():
+    script = build_remote_rsync_script(
+        "/volume1/FTP_BACKUP/",
+        "rsync://backup@10.0.0.2:873/DATI/FTP_BACKUP/",
+        exclude_lines=[],
+        delete_on_dest=True,
+        bandwidth_limit_kb=1000,
+        ensure_dest_only=True,
+    )
+    assert "--exclude '*'" in script
+    assert "--delete-after" not in script
+    assert "--bwlimit" not in script
 
 
 def test_ssh_argv_with_key_uses_batchmode(monkeypatch):

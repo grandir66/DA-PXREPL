@@ -30,7 +30,7 @@ RSYNC_EXIT_HINTS: dict[int, str] = {
     1: "Errore di sintassi rsync (bug interno: aprire un issue).",
     5: "Autenticazione al modulo rsync fallita: verifica utente/password del servizio rsync sul NAS di destinazione.",
     10: "Errore socket verso il demone rsync di destinazione: verifica che il servizio rsync sia attivo e la porta raggiungibile.",
-    11: "Errore I/O file: spazio disco o permessi sulla destinazione.",
+    11: "Errore I/O sulla destinazione: spazio disco, permessi, o cartelle intermedie mancanti sotto il modulo rsync (path multi-livello).",
     12: "Errore di protocollo rsync: versioni rsync incompatibili tra sorgente e destinazione.",
     30: "Timeout di rete durante il trasferimento.",
     35: "Timeout in attesa del demone rsync di destinazione.",
@@ -103,8 +103,13 @@ def build_remote_rsync_script(
     exclude_lines: list[str],
     delete_on_dest: bool,
     bandwidth_limit_kb: int | None,
+    ensure_dest_only: bool = False,
 ) -> str:
-    """Script eseguito via SSH sulla sorgente. Legge da stdin la password modulo."""
+    """Script eseguito via SSH sulla sorgente. Legge da stdin la password modulo.
+
+    ``ensure_dest_only``: crea solo il path destinazione (esclude tutto il contenuto),
+    utile prima degli step per-cartella quando sotto il modulo mancano i padri.
+    """
     parts = [
         "rsync",
         "-a",
@@ -113,12 +118,18 @@ def build_remote_rsync_script(
         "--out-format='%i %n'",
         "--partial-dir=.dapx-partial",
     ]
+    # Crea componenti mancanti del path destinazione (rsync ≥ 3.2.3).
+    # Senza questo, mkdir di ``padre/figlio`` sotto il modulo fallisce se ``padre`` non esiste.
+    parts.append("$DAPX_MKPATH")
+    if ensure_dest_only:
+        # Solo mkdir del path dest: nessun file/dir di contenuto.
+        parts.extend(["--exclude", "'*'"])
     for pattern in exclude_lines:
         escaped = pattern.replace("'", "'\\''")
         parts.extend(["--exclude", f"'{escaped}'"])
-    if bandwidth_limit_kb:
+    if bandwidth_limit_kb and not ensure_dest_only:
         parts.append(f"--bwlimit={int(bandwidth_limit_kb)}")
-    if delete_on_dest:
+    if delete_on_dest and not ensure_dest_only:
         parts.append("--delete-after")
     parts.append(shlex.quote(fs_src))
     parts.append(shlex.quote(dest_url))
@@ -126,6 +137,8 @@ def build_remote_rsync_script(
     return (
         "IFS= read -r RSYNC_PASSWORD; export RSYNC_PASSWORD; "
         'echo "__DAPX_PID__$$"; '
+        # Abilita --mkpath solo se il rsync della sorgente lo supporta.
+        'DAPX_MKPATH=; rsync --help 2>&1 | grep -q -- "--mkpath" && DAPX_MKPATH=--mkpath; '
         f"exec {rsync_cmd}"
     )
 
@@ -259,6 +272,7 @@ async def run_direct_rsync(
     cancel_check: Optional[Callable[[], bool]],
     process_registry: list,
     argv_override: list[str] | None = None,
+    ensure_dest_only: bool = False,
 ) -> StepResult:
     """Esegue rsync sulla sorgente via SSH; stdout/stderr → SyncEvent via on_event."""
     fs_src = build_source_fs_path(source, src_path)
@@ -269,13 +283,18 @@ async def run_direct_rsync(
         exclude_lines=exclude_lines,
         delete_on_dest=delete_on_dest,
         bandwidth_limit_kb=bandwidth_limit_kb,
+        ensure_dest_only=ensure_dest_only,
     )
     if argv_override is not None:
         argv, env = list(argv_override), {}
     else:
         argv, env = build_ssh_argv(source)
     cmd = argv + [script]
-    logger.info("nas_sync direct: rsync %s -> %s (via ssh %s)", fs_src, dest_url, source.host)
+    logger.info(
+        "nas_sync direct: rsync %s -> %s (via ssh %s)%s",
+        fs_src, dest_url, source.host,
+        " [ensure-dest]" if ensure_dest_only else "",
+    )
 
     proc = await asyncio.create_subprocess_exec(
         *cmd,

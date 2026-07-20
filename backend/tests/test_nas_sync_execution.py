@@ -115,13 +115,16 @@ def test_build_steps_with_catalog_includes_root_loose_files(db_session):
         "t",
     )
     steps = execution._build_steps(job, state)
-    assert [s["src_path"] for s in steps] == [
+    assert steps[0]["ensure_dest_only"] is True
+    assert steps[0]["src_path"] == "/Condivisa/docs"
+    assert [s["src_path"] for s in steps[1:]] == [
         "/Condivisa/docs/a",
         "/Condivisa/docs/b",
         "/Condivisa/docs",
     ]
     assert steps[-1]["folder_path"] is None
     assert steps[-1]["exclude_dirs"] == ["a", "b"]
+    assert not steps[-1].get("ensure_dest_only")
 
 
 def test_build_steps_without_catalog_is_single_root(db_session):

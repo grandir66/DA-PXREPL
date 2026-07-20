@@ -109,12 +109,20 @@ def _catalog_dir_names(run_state: dict, root: str) -> list[str]:
 
 
 def _build_steps(job: NasSyncJob, run_state: dict) -> list[dict]:
-    """Step: per-cartella se c'è catalogo du, poi root (file sciolti / cartelle nuove)."""
+    """Step: ensure root dest, poi per-cartella se c'è catalogo, poi root (file sciolti)."""
     steps: list[dict] = []
     for src_path in job.source_paths or []:
         root = sanitize_path(src_path)
         catalog_entry = (run_state.get("catalog") or {}).get(root)
         if catalog_entry is not None:
+            # Crea prima la cartella destinazione della root (es. DATI/FTP_BACKUP/)
+            # altrimenti gli step per-cartella falliscono su mkdir multi-livello.
+            steps.append({
+                "src_path": root,
+                "root": root,
+                "folder_path": None,
+                "ensure_dest_only": True,
+            })
             for folder in pending_folders(run_state, root):
                 steps.append({
                     "src_path": folder["path"],
@@ -155,6 +163,7 @@ async def _run_engine_step(
     job_id: int,
 ) -> StepResult:
     step_excludes = _step_exclude_lines(exclude_lines, step)
+    ensure_dest_only = bool(step.get("ensure_dest_only"))
     if engine == ENGINE_DIRECT:
         result = await run_direct_rsync(
             source,
@@ -162,15 +171,18 @@ async def _run_engine_step(
             step["src_path"],
             (job.dest_base_path or "").strip(),
             exclude_lines=step_excludes,
-            delete_on_dest=bool(job.delete_on_dest),
-            bandwidth_limit_kb=job.bandwidth_limit_kb,
+            delete_on_dest=bool(job.delete_on_dest) and not ensure_dest_only,
+            bandwidth_limit_kb=None if ensure_dest_only else job.bandwidth_limit_kb,
             on_event=on_event,
             cancel_check=lambda: job_id in _cancel_requested,
             process_registry=_processes[job_id],
+            ensure_dest_only=ensure_dest_only,
         )
         if result.remote_pid:
             _remote_pids[job_id] = (source.id, result.remote_pid)
         return result
+    if ensure_dest_only:
+        return StepResult(output_lines=["[ensure-dest skipped for rclone]"], exit_code=0)
     return await run_rclone_step(
         source,
         dest,
@@ -266,6 +278,9 @@ async def execute_nas_sync_job(job_id: int, *, fresh: bool = False, _engine_runn
                 step_eta_seconds=progress_state.get("eta_seconds"),
             )
             view.update(folder_fields)
+            if current_step.get("ensure_dest_only"):
+                view["folder_activity_label"] = "Preparazione path destinazione…"
+                view["phase_label"] = "Preparazione destinazione"
             # Alias UI (formatFileReplProgress legge eta / percent stringa)
             if folder_fields.get("percent"):
                 view["percent"] = folder_fields["percent"]
