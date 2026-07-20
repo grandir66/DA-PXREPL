@@ -18,6 +18,7 @@ from routers import nodes, snapshots, sync_jobs, vms, logs, settings, auth, ssh_
 from routers import recovery_jobs, backup_jobs, host_info, host_backup, migration_jobs, updates, pve_replication_jobs
 from routers import ha, clusters
 from routers import file_endpoints, file_replication_jobs
+from routers import nas_sync_jobs
 from routers import schedule as schedule_router
 from services.scheduler import SchedulerService
 from services.logging_config import setup_logging, get_logger
@@ -52,6 +53,12 @@ async def lifespan(app: FastAPI):
         update_schema()
     except Exception as e:
         logger.warning(f"update_db_schema fallito (non bloccante): {e}")
+
+    try:
+        from services.nas_sync.execution import reconcile_stale_running_jobs as _nas2_reconcile
+        _nas2_reconcile()
+    except Exception as _exc:  # noqa: BLE001 — il reconcile non deve bloccare l'avvio
+        logger.warning(f"nas_sync reconcile all'avvio fallito: {_exc}")
 
     # Inizializza configurazione di default
     db = SessionLocal()
@@ -146,6 +153,7 @@ if dapx_mode == "full":
     app.include_router(pve_replication_jobs.router, prefix="/api/pve-replication", tags=["PVE Replication"])
     app.include_router(file_endpoints.router, prefix="/api/file-endpoints", tags=["File Endpoints"])
     app.include_router(file_replication_jobs.router, prefix="/api/file-replication", tags=["File Replication"])
+    app.include_router(nas_sync_jobs.router, prefix="/api/nas-sync", tags=["Repliche dati (NAS Sync v2)"])
     app.include_router(schedule_router.router, prefix="/api/schedule", tags=["Schedule"])
 
 
