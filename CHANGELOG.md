@@ -5,6 +5,9 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+### Aggiunte
+- **Repliche dati (v2)**: nuovo modulo parallelo con motore diretto rsync NAS→NAS (dati senza transito da dapx) e fallback rclone SMB; matrice capacità endpoint, preflight prerequisiti, pausa/riprendi, catalogo du generico; nuova voce menù, API `/api/nas-sync`, tabella `nas_sync_jobs` (`backend/services/nas_sync/`, `backend/routers/nas_sync_jobs.py`, `NasSync.vue`). Il modulo «Replica file» esistente resta invariato.
+
 ## [3.17.21] - 2026-07-18
 
 ### Aggiunte
