@@ -47,6 +47,11 @@ const router = createRouter({
                     component: () => import('../views/FileReplication.vue')
                 },
                 {
+                    path: 'nas-sync',
+                    name: 'nas-sync',
+                    component: () => import('../views/NasSync.vue')
+                },
+                {
                     path: 'sanoid-syncoid',
                     name: 'sanoid-syncoid',
                     component: () => import('../views/SanoidSyncoid.vue')

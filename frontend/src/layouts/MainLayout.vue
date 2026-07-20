@@ -43,6 +43,10 @@
             <Icon name="folder" :size="16" />
             <span>Replica file NAS</span>
           </router-link>
+          <router-link :to="{ name: 'nas-sync' }" class="nav-item" active-class="active">
+            <Icon name="arrow-right-left" :size="16" />
+            <span>Repliche dati</span>
+          </router-link>
           <router-link :to="{ name: 'pbs-backup' }" class="nav-item" active-class="active">
             <Icon name="database" :size="16" />
             <span>PBS Backup</span>
