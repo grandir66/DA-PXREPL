@@ -276,6 +276,16 @@ async def execute_nas_sync_job(job_id: int, *, fresh: bool = False, _engine_runn
                 current_step.get("folder_path"),
                 step_percent=progress_state.get("percent"),
                 step_eta_seconds=progress_state.get("eta_seconds"),
+                activity=(
+                    "ensure"
+                    if current_step.get("ensure_dest_only")
+                    else (
+                        "root_loose"
+                        if current_step.get("folder_path") is None
+                        and current_step.get("exclude_dirs") is not None
+                        else None
+                    )
+                ),
             )
             view.update(folder_fields)
             if current_step.get("ensure_dest_only"):
@@ -305,16 +315,30 @@ async def execute_nas_sync_job(job_id: int, *, fresh: bool = False, _engine_runn
             **build_view({"status": "running", "phase": "starting"}),
             "status": "running",
             **catalog_summary(run_state),
-            **folder_progress_fields(run_state),
+            **folder_progress_fields(run_state, activity="ensure"),
+            "folder_activity_label": "Avvio replica…",
         }
         for step in steps:
             current_step.clear()
             current_step.update(step)
+            step_activity = (
+                "ensure"
+                if step.get("ensure_dest_only")
+                else (
+                    "root_loose"
+                    if step.get("folder_path") is None and step.get("exclude_dirs") is not None
+                    else None
+                )
+            )
             _progress[job_id] = {
                 **(_progress.get(job_id) or {}),
-                **folder_progress_fields(run_state, step.get("folder_path")),
+                **folder_progress_fields(
+                    run_state, step.get("folder_path"), activity=step_activity,
+                ),
                 "status": "running",
             }
+            if step.get("ensure_dest_only"):
+                _progress[job_id]["folder_activity_label"] = "Preparazione path destinazione…"
             if job_id in _cancel_requested:
                 raise EngineCancelled("Interrotto dall'utente")
             if _engine_runner is not None:

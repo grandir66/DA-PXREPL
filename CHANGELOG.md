@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.29] - 2026-07-20
+
+### Modifiche
+- **Repliche dati**: nel Log, catalogo du mostra «N cartelle catalogate» (non 0/N completate); durante la copia «N/M replicate».
+
 ## [3.17.28] - 2026-07-20
 
 ### Modifiche

@@ -56,6 +56,28 @@ const outputText = computed(() => {
   return raw.trim()
 })
 const folderCatalog = computed(() => progress.value?.folder_catalog || [])
+const catalogMode = computed((): 'catalog' | 'sync' => {
+  const s = progress.value?.status
+  if (s === 'catalog_refresh') return 'catalog'
+  if (s === 'running' || s === 'cancelling') return 'sync'
+  // Dopo du (success) o idle con lista: mostra come catalogo, non 0/N replicate
+  if (progress.value?.catalog_view_mode === 'catalog') return 'catalog'
+  if (s === 'success' && folderCatalog.value.length && !progress.value?.folders_done) {
+    return 'catalog'
+  }
+  return 'sync'
+})
+const catalogActivityLabel = computed(() => {
+  if (catalogMode.value === 'catalog') {
+    return progress.value?.folder_activity_label || null
+  }
+  // Non mostrare «File sciolti» come titolo fuorviante a inizio run
+  const label = progress.value?.folder_activity_label
+  if (label && label.startsWith('File sciolti') && !(progress.value?.folders_done)) {
+    return progress.value?.phase_label || 'Avvio replica…'
+  }
+  return label || null
+})
 
 async function refresh() {
   try {
@@ -139,7 +161,8 @@ onUnmounted(stopPolling)
         <div v-if="folderCatalog.length" class="frl-catalog">
           <FileReplFolderCatalog
             :folders="folderCatalog"
-            :activity-label="progress?.folder_activity_label"
+            :mode="catalogMode"
+            :activity-label="catalogActivityLabel"
             :current-name="progress?.current_folder_name"
             :current-index="progress?.current_folder_index"
             :current-total="progress?.current_folder_total"

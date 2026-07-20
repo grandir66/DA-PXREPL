@@ -86,8 +86,12 @@ def folder_progress_fields(
     *,
     step_percent: int | None = None,
     step_eta_seconds: int | None = None,
+    activity: str | None = None,
 ) -> dict:
-    """Campi UI: lista cartelle, indici, % complessivo ed ETA da catalogo du."""
+    """Campi UI: lista cartelle, indici, % complessivo ed ETA da catalogo du.
+
+    ``activity``: ``ensure`` | ``root_loose`` | ``catalog`` | None (cartella o idle).
+    """
     catalog = state.get("catalog") or {}
     if not catalog:
         return {}
@@ -101,7 +105,9 @@ def folder_progress_fields(
         for folder in cat.get("folders") or []:
             path = folder.get("path") or ""
             nbytes = int(folder.get("bytes") or 0)
-            if path == current_folder_path:
+            if activity == "catalog":
+                status = "catalogued"
+            elif path == current_folder_path:
                 status = "in_progress"
                 current_folder_bytes = nbytes
                 current_idx = len(items) + 1
@@ -129,8 +135,17 @@ def folder_progress_fields(
         "folders_done": done_count,
         "folders_pending": pending_count,
         "current_folder_total": len(items),
+        "catalog_view_mode": "catalog" if activity == "catalog" else "sync",
     }
-    if current_folder_path:
+    if activity == "ensure":
+        out["folder_activity_label"] = "Preparazione path destinazione…"
+    elif activity == "root_loose":
+        out["folder_activity_label"] = "File sciolti a root (+ cartelle nuove)"
+    elif activity == "catalog":
+        out["folder_activity_label"] = f"Catalogo du: {len(items)} cartelle di 1° livello"
+        out["folders_done"] = 0
+        out["folders_pending"] = 0
+    elif current_folder_path:
         name = current_folder_path.rsplit("/", 1)[-1]
         out["current_folder_path"] = current_folder_path
         out["current_folder_name"] = name
@@ -144,11 +159,8 @@ def folder_progress_fields(
             )
         else:
             out["folder_activity_label"] = f"In lavorazione: {name}"
-    elif current_folder_path is None and items:
-        # Step file sciolti a root (dopo le cartelle catalogate)
-        out["folder_activity_label"] = "File sciolti a root (+ cartelle nuove)"
 
-    if total_bytes > 0:
+    if activity != "catalog" and total_bytes > 0:
         current_contrib = 0.0
         if current_folder_bytes and step_percent is not None:
             current_contrib = current_folder_bytes * max(0, min(100, int(step_percent))) / 100.0
@@ -166,6 +178,9 @@ def folder_progress_fields(
                 rate = step_remaining / float(step_eta_seconds)
                 if rate > 0:
                     out["eta_seconds_overall"] = int(remaining / rate)
+    elif activity == "catalog" and total_bytes > 0:
+        out["catalog_bytes_est"] = total_bytes
+        out["transferred_total_human"] = _format_bytes_human(total_bytes)
     return out
 
 

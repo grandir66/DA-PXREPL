@@ -48,6 +48,7 @@ export interface FileReplProgress {
   folders_pending?: number
   folder_catalog?: FileReplFolderItem[]
   folder_activity_label?: string
+  catalog_view_mode?: 'catalog' | 'sync'
   show_last_file?: boolean
   files_new?: number
   files_replaced?: number

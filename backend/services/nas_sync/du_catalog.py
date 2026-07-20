@@ -93,7 +93,7 @@ async def refresh_job_du_catalog(job_id: int) -> None:
                 "phase": "starting",
                 "phase_label": "Catalogo du sorgente",
                 "message": f"du {src_path}…",
-                **folder_progress_fields(state),
+                **folder_progress_fields(state, activity="catalog"),
             }
             proc = await asyncio.create_subprocess_exec(
                 *argv,
@@ -115,7 +115,7 @@ async def refresh_job_du_catalog(job_id: int) -> None:
                 "phase": "starting",
                 "phase_label": "Catalogo du sorgente",
                 "message": f"Catalogo aggiornato: {src_path} ({len(folders)} cartelle)",
-                **folder_progress_fields(state),
+                **folder_progress_fields(state, activity="catalog"),
             }
         assign_run_state(job, state)
         # Dopo un du riuscito non tenere «failed» in evidenza (era dell'ultimo sync).
@@ -127,7 +127,7 @@ async def refresh_job_du_catalog(job_id: int) -> None:
             "phase": "done",
             "phase_label": "Catalogo du completato",
             "message": "Catalogo du aggiornato",
-            **folder_progress_fields(state),
+            **folder_progress_fields(state, activity="catalog"),
         }
     except Exception as exc:  # noqa: BLE001 — task fire-and-forget, errore in progress
         logger.error("nas_sync du catalog %s fallito: %s", job_id, exc, exc_info=True)

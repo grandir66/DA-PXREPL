@@ -10,7 +10,11 @@ const props = defineProps<{
   currentTotal?: number | null
   foldersDone?: number | null
   compact?: boolean
+  /** catalog = solo dimensioni du; sync = avanzamento copia */
+  mode?: 'catalog' | 'sync'
 }>()
+
+const viewMode = computed(() => props.mode || 'sync')
 
 const activeFolder = computed(() =>
   props.folders.find((f) => f.status === 'in_progress'),
@@ -18,6 +22,7 @@ const activeFolder = computed(() =>
 
 const headerLine = computed(() => {
   if (props.activityLabel) return props.activityLabel
+  if (viewMode.value === 'catalog') return null
   if (activeFolder.value && props.currentIndex && props.currentTotal) {
     return `In lavorazione: ${activeFolder.value.name || activeFolder.value.path} (${props.currentIndex}/${props.currentTotal})`
   }
@@ -33,17 +38,28 @@ const pendingCount = computed(
   () => props.folders.filter((f) => f.status === 'pending').length,
 )
 
+const summaryLine = computed(() => {
+  if (viewMode.value === 'catalog') {
+    return `${props.folders.length} cartelle catalogate (du)`
+  }
+  const parts = [`${doneCount.value}/${props.folders.length} replicate`]
+  if (pendingCount.value) parts.push(`${pendingCount.value} in coda`)
+  return parts.join(' · ')
+})
+
 function statusLabel(status: string) {
-  if (status === 'done') return 'Completata'
+  if (status === 'done') return 'Replicata'
   if (status === 'skipped') return 'Già allineata'
   if (status === 'in_progress') return 'In lavorazione'
-  return 'In attesa'
+  if (status === 'catalogued') return 'Nel catalogo du'
+  return 'In coda'
 }
 
 function statusIcon(status: string) {
   if (status === 'done') return '✓'
   if (status === 'skipped') return '≈'
   if (status === 'in_progress') return '▶'
+  if (status === 'catalogued') return '·'
   return '○'
 }
 </script>
@@ -51,11 +67,10 @@ function statusIcon(status: string) {
 <template>
   <div v-if="folders.length" class="frfc" :class="{ 'frfc-compact': compact }">
     <div class="frfc-head">
-      <strong>Cartelle sorgente (du 1° livello)</strong>
-      <span class="frfc-summary muted">
-        {{ doneCount }}/{{ folders.length }} completate
-        <span v-if="pendingCount"> · {{ pendingCount }} in attesa</span>
-      </span>
+      <strong>
+        {{ viewMode === 'catalog' ? 'Catalogo du (1° livello)' : 'Avanzamento replica' }}
+      </strong>
+      <span class="frfc-summary muted">{{ summaryLine }}</span>
     </div>
     <p v-if="headerLine" class="frfc-current">
       {{ headerLine }}
@@ -176,6 +191,7 @@ function statusIcon(status: string) {
 .frfc-item--skipped .frfc-icon { color: #5bc0de; }
 .frfc-item--in_progress .frfc-icon { color: #f0ad4e; }
 .frfc-item--pending .frfc-icon { color: rgba(255, 255, 255, 0.35); }
+.frfc-item--catalogued .frfc-icon { color: rgba(255, 255, 255, 0.45); }
 .frfc-body { flex: 1; min-width: 0; }
 .frfc-row {
   display: flex;
