@@ -2,26 +2,37 @@
 
 import asyncio
 
+import pytest
+
 from database import FileEndpoint, FileEndpointType
 from services.file_replication.endpoint_crypto import encrypt_password
 from services.nas_sync.models import NasSyncJob
 from services.nas_sync.preflight import run_preflight
 
-_ENC = encrypt_password("test")
+
+@pytest.fixture(autouse=True)
+def _pin_secret_key(monkeypatch):
+    """Chiave fissa per la durata del test: altri test (es. test_endpoint_crypto)
+    mutano os.environ e una _ENC calcolata a import time diventerebbe indecifrabile."""
+    monkeypatch.setenv("DAPX_SECRET_KEY", "test-secret-key-for-testing-only")
+
+
+def _enc() -> str:
+    return encrypt_password("test")
 
 
 def _src():
     return FileEndpoint(
         name="s", endpoint_type=FileEndpointType.SYNOLOGY, host="10.0.0.1", port=5001,
-        protocol="api", username="admin", password_enc=_ENC, extra_config={},
+        protocol="api", username="admin", password_enc=_enc(), extra_config={},
     )
 
 
 def _dst():
     return FileEndpoint(
         name="d", endpoint_type=FileEndpointType.QNAP, host="10.0.0.2", port=8080,
-        protocol="api", username="admin", password_enc=_ENC,
-        extra_config={"rsync_module": "DATI", "rsync_password_enc": _ENC, "rsync_port": 873},
+        protocol="api", username="admin", password_enc=_enc(),
+        extra_config={"rsync_module": "DATI", "rsync_password_enc": _enc(), "rsync_port": 873},
     )
 
 
@@ -68,7 +79,7 @@ def test_preflight_ssh_failure_stops_dependent_checks():
 def test_preflight_rclone_engine_checks_binary():
     src = FileEndpoint(
         name="w", endpoint_type=FileEndpointType.WINDOWS, host="10.0.0.3", port=445,
-        protocol="smb", username="u", password_enc=_ENC, extra_config={},
+        protocol="smb", username="u", password_enc=_enc(), extra_config={},
     )
     checks = asyncio.run(run_preflight(_job(), src, _dst(), ssh_runner=None))
     by_name = {c["check"]: c for c in checks}
