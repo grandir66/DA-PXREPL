@@ -118,6 +118,9 @@ async def refresh_job_du_catalog(job_id: int) -> None:
                 **folder_progress_fields(state),
             }
         assign_run_state(job, state)
+        # Dopo un du riuscito non tenere «failed» in evidenza (era dell'ultimo sync).
+        if job.current_status == "failed":
+            job.current_status = "idle"
         db.commit()
         _catalog_progress[job_id] = {
             "status": "success",

@@ -176,10 +176,12 @@ def set_endpoint_rsync_config(
 def list_jobs(db: Session = Depends(get_db), _user: User = Depends(get_current_user)):
     jobs = db.query(NasSyncJob).order_by(NasSyncJob.name).all()
     errors = _latest_log_errors(db, [j.id for j in jobs])
-    return [
-        _job_out(db, j, None if j.current_status == "running" else errors.get(j.id))
-        for j in jobs
-    ]
+    out = []
+    for j in jobs:
+        # Mostra errore solo se lo stato corrente è ancora failed (non dopo un du successivo).
+        err = errors.get(j.id) if j.current_status == "failed" else None
+        out.append(_job_out(db, j, err))
+    return out
 
 
 @router.post("", response_model=NasSyncJobOut)

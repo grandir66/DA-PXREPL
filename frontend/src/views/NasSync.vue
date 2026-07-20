@@ -141,6 +141,35 @@ function statusSummary(job: NasSyncJob): string {
   return ''
 }
 
+/** Catalogo du più recente dell'ultimo sync → non mostrare failed/errore obsoleti. */
+function catalogFresherThanLastRun(job: NasSyncJob): boolean {
+  if (!job.catalog_updated_at || !job.last_run_at) return Boolean(job.catalog_updated_at)
+  return new Date(job.catalog_updated_at).getTime() >= new Date(job.last_run_at).getTime()
+}
+
+function displayStatus(job: NasSyncJob): string {
+  if (jobIsCatalogRefreshing(job)) return 'catalogo'
+  if (jobIsRunning(job)) return 'running'
+  if (job.current_status === 'failed' && catalogFresherThanLastRun(job)) return 'idle'
+  if (job.current_status && job.current_status !== 'idle') return job.current_status
+  if (job.last_run_status === 'failed' && catalogFresherThanLastRun(job)) return 'idle'
+  return job.current_status || job.last_run_status || 'idle'
+}
+
+function statusToneClass(job: NasSyncJob): string {
+  const s = displayStatus(job)
+  if (s === 'running' || s === 'catalogo' || s === 'cancelling') return 'text-warning'
+  if (s === 'failed') return 'text-danger'
+  if (s === 'success') return 'text-success'
+  return ''
+}
+
+function showLastRunError(job: NasSyncJob): boolean {
+  if (!job.last_run_error || jobIsBusy(job)) return false
+  if (catalogFresherThanLastRun(job)) return false
+  return job.current_status === 'failed' || job.last_run_status === 'failed'
+}
+
 function startLivePoll() {
   if (pollTimer) return
   pollTimer = setInterval(async () => {
@@ -520,23 +549,9 @@ onUnmounted(stopLivePoll)
               <td class="fr-job-status">
                 <span
                   class="fr-status-badge"
-                  :class="
-                    jobIsRunning(job) || jobIsCatalogRefreshing(job)
-                      ? 'text-warning'
-                      : job.current_status === 'failed' || job.last_run_status === 'failed'
-                        ? 'text-danger'
-                        : job.last_run_status === 'success'
-                          ? 'text-success'
-                          : ''
-                  "
+                  :class="statusToneClass(job)"
                 >
-                  {{
-                    jobIsCatalogRefreshing(job)
-                      ? 'catalogo'
-                      : jobIsRunning(job)
-                        ? 'running'
-                        : job.current_status || job.last_run_status || 'idle'
-                  }}
+                  {{ displayStatus(job) }}
                 </span>
                 <span
                   v-if="statusSummary(job)"
@@ -555,11 +570,15 @@ onUnmounted(stopLivePoll)
                   Dettaglio in Log
                 </span>
                 <span
-                  v-if="job.last_run_error && !jobIsBusy(job)"
+                  v-if="showLastRunError(job)"
                   class="fr-status-err"
-                  :title="job.last_run_error"
+                  :title="job.last_run_error || ''"
                 >
-                  {{ job.last_run_error.length > 80 ? job.last_run_error.slice(0, 80) + '…' : job.last_run_error }}
+                  {{
+                    (job.last_run_error || '').length > 80
+                      ? (job.last_run_error || '').slice(0, 80) + '…'
+                      : job.last_run_error
+                  }}
                 </span>
               </td>
               <td class="actions">
