@@ -142,6 +142,36 @@ def endpoint_capabilities(
     return resolve_capabilities(ep)
 
 
+@router.put("/endpoints/{endpoint_id}/rsync-config")
+def set_endpoint_rsync_config(
+    endpoint_id: int,
+    body: dict,
+    db: Session = Depends(get_db),
+    _user: User = Depends(require_operator),
+):
+    """Salva config servizio rsync dell'endpoint (password cifrata, mai in chiaro)."""
+    from services.file_replication.endpoint_crypto import encrypt_password
+
+    ep = db.query(FileEndpoint).filter(FileEndpoint.id == endpoint_id).first()
+    if not ep:
+        raise HTTPException(status_code=404, detail="Endpoint non trovato")
+    extra = dict(ep.extra_config or {})
+    for key in ("ssh_port", "rsync_module", "rsync_user", "rsync_port"):
+        if key in body and body[key] not in (None, ""):
+            extra[key] = body[key]
+        elif key in body:
+            extra.pop(key, None)
+    if body.get("rsync_password"):
+        extra["rsync_password_enc"] = encrypt_password(str(body["rsync_password"]))
+    ep.extra_config = extra
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(ep, "extra_config")
+    ep.updated_at = datetime.utcnow()
+    db.commit()
+    from services.nas_sync.capabilities import resolve_capabilities as _caps
+    return _caps(ep)
+
+
 @router.get("", response_model=list[NasSyncJobOut])
 def list_jobs(db: Session = Depends(get_db), _user: User = Depends(get_current_user)):
     jobs = db.query(NasSyncJob).order_by(NasSyncJob.name).all()

@@ -78,4 +78,6 @@ export const nasSyncApi = {
   preflight: (id: number) => apiClient.post<PreflightCheck[]>(`/nas-sync/${id}/preflight`),
   capabilities: (endpointId: number) =>
     apiClient.get<EndpointCapabilities>(`/nas-sync/endpoints/${endpointId}/capabilities`),
+  setRsyncConfig: (endpointId: number, data: Record<string, unknown>) =>
+    apiClient.put(`/nas-sync/endpoints/${endpointId}/rsync-config`, data),
 }
