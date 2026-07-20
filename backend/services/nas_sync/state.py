@@ -160,6 +160,8 @@ def folder_progress_fields(
         out["current_folder_parent"] = parent or None
         if current_idx is not None:
             out["current_folder_index"] = current_idx
+        if current_folder_bytes:
+            out["current_folder_size_human"] = _format_bytes_human(current_folder_bytes)
         size_bit = (
             f" (~{_format_bytes_human(current_folder_bytes)})"
             if current_folder_bytes
