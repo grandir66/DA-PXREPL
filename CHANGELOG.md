@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.31] - 2026-07-20
+
+### Modifiche
+- **Repliche dati**: in lavorazione mostra il path completo reale (es. `/FTP_BACKUP/DITTE`), non solo il nome leaf.
+
 ## [3.17.30] - 2026-07-20
 
 ### Modifiche

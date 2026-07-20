@@ -112,19 +112,19 @@ function statusSummary(job: NasSyncJob): string {
   if (jobIsCatalogRefreshing(job)) {
     return p?.message || 'Catalogo du in corso…'
   }
-  if (jobIsRunning(job) && p) {
+    if (jobIsRunning(job) && p) {
     const parts: string[] = []
     if (p.current_folder_index && p.current_folder_total) {
       parts.push(`${p.current_folder_index}/${p.current_folder_total}`)
     } else if (p.folders_done != null && p.current_folder_total) {
       parts.push(`${p.folders_done}/${p.current_folder_total}`)
     }
-    if (p.current_folder_name) {
-      const name =
-        p.current_folder_name.length > 28
-          ? `${p.current_folder_name.slice(0, 28)}…`
-          : p.current_folder_name
-      parts.push(name)
+    // Path completo (es. /FTP_BACKUP/DITTE), non solo il leaf
+    const folderRef = p.current_folder_path || p.current_folder_name
+    if (folderRef) {
+      const shown =
+        folderRef.length > 40 ? `…${folderRef.slice(-39)}` : folderRef
+      parts.push(shown)
     }
     const pct = p.progress_percent || p.percent
     if (pct && pct !== '-' && pct !== '-%') parts.push(String(pct))

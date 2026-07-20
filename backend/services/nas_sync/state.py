@@ -154,18 +154,22 @@ def folder_progress_fields(
         out["folders_pending"] = 0
     elif current_folder_path:
         name = current_folder_path.rsplit("/", 1)[-1]
+        parent = current_folder_path.rsplit("/", 1)[0] if "/" in current_folder_path else ""
         out["current_folder_path"] = current_folder_path
         out["current_folder_name"] = name
+        out["current_folder_parent"] = parent or None
         if current_idx is not None:
             out["current_folder_index"] = current_idx
-        if current_folder_bytes:
-            out["current_folder_size_human"] = _format_bytes_human(current_folder_bytes)
-            out["folder_activity_label"] = (
-                f"In lavorazione: {name} ({current_idx}/{len(items)})"
-                f" (~{_format_bytes_human(current_folder_bytes)})"
-            )
-        else:
-            out["folder_activity_label"] = f"In lavorazione: {name}"
+        size_bit = (
+            f" (~{_format_bytes_human(current_folder_bytes)})"
+            if current_folder_bytes
+            else ""
+        )
+        idx_bit = f" ({current_idx}/{len(items)})" if current_idx is not None else ""
+        # Path completo reale (non solo il leaf): es. /FTP_BACKUP/DITTE
+        out["folder_activity_label"] = (
+            f"In lavorazione: {current_folder_path}{idx_bit}{size_bit}"
+        )
 
     if activity != "catalog" and total_bytes > 0:
         current_contrib = 0.0

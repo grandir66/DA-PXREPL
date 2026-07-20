@@ -49,7 +49,11 @@ const headerLine = computed(() => {
   if (props.activityLabel) return props.activityLabel
   if (viewMode.value === 'catalog') return null
   if (activeFolder.value && props.currentIndex && props.currentTotal) {
-    return `In lavorazione: ${activeFolder.value.name || activeFolder.value.path} (${props.currentIndex}/${props.currentTotal})`
+    const full =
+      activeFolder.value.path ||
+      activeFolder.value.name ||
+      ''
+    return `In lavorazione: ${full} (${props.currentIndex}/${props.currentTotal})`
   }
   return null
 })
@@ -153,6 +157,12 @@ function statusIcon(status: string) {
             <span class="frfc-name">{{ folder.name || folder.path }}</span>
             <span v-if="folder.size_human" class="frfc-size muted">{{ folder.size_human }}</span>
           </div>
+          <small
+            v-if="folder.status === 'in_progress' && folder.path && folder.path !== folder.name"
+            class="frfc-path muted"
+          >
+            {{ folder.path }}
+          </small>
           <div
             v-if="folder.status === 'in_progress' && folder.progress_pct != null"
             class="frfc-bar"
@@ -300,6 +310,14 @@ function statusIcon(status: string) {
   font-weight: 500;
   font-size: 0.8rem;
   word-break: break-word;
+}
+.frfc-path {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.7rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  word-break: break-all;
+  opacity: 0.75;
 }
 .frfc-size {
   font-size: 0.72rem;

@@ -40,6 +40,7 @@ export interface FileReplProgress {
   error?: string
   current_folder_name?: string
   current_folder_path?: string
+  current_folder_parent?: string | null
   current_folder_index?: number
   current_folder_total?: number
   current_folder_progress_pct?: number
