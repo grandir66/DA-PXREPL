@@ -1,9 +1,10 @@
 export interface FileReplFolderItem {
   path: string
   name?: string | null
+  root?: string | null
   bytes?: number
   size_human?: string
-  status: 'pending' | 'in_progress' | 'done' | 'skipped' | string
+  status: 'pending' | 'in_progress' | 'done' | 'skipped' | 'catalogued' | string
   session_human?: string
   progress_pct?: number
   status_hint?: string
@@ -49,6 +50,8 @@ export interface FileReplProgress {
   folder_catalog?: FileReplFolderItem[]
   folder_activity_label?: string
   catalog_view_mode?: 'catalog' | 'sync'
+  catalog_roots?: string[]
+  catalog_parent_path?: string | null
   show_last_file?: boolean
   files_new?: number
   files_replaced?: number

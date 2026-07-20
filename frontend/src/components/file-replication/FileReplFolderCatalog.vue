@@ -12,9 +12,34 @@ const props = defineProps<{
   compact?: boolean
   /** catalog = solo dimensioni du; sync = avanzamento copia */
   mode?: 'catalog' | 'sync'
+  /** Path sorgente superiore (es. /FTP_BACKUP) a cui si riferisce l'elenco */
+  parentPath?: string | null
+  /** Più root se il job ha più source_paths */
+  roots?: string[] | null
 }>()
 
 const viewMode = computed(() => props.mode || 'sync')
+
+const parentPaths = computed(() => {
+  if (props.roots?.length) return props.roots
+  if (props.parentPath) return [props.parentPath]
+  const fromFolders = [
+    ...new Set(
+      props.folders
+        .map((f) => f.root)
+        .filter((r): r is string => Boolean(r)),
+    ),
+  ]
+  if (fromFolders.length) return fromFolders
+  const parents = props.folders
+    .map((f) => {
+      const p = f.path || ''
+      const i = p.lastIndexOf('/')
+      return i > 0 ? p.slice(0, i) : null
+    })
+    .filter((p): p is string => Boolean(p))
+  return [...new Set(parents)]
+})
 
 const activeFolder = computed(() =>
   props.folders.find((f) => f.status === 'in_progress'),
@@ -47,6 +72,14 @@ const summaryLine = computed(() => {
   return parts.join(' · ')
 })
 
+function foldersForRoot(root: string) {
+  return props.folders.filter((f) => {
+    if (f.root) return f.root === root
+    const p = f.path || ''
+    return p === root || p.startsWith(`${root}/`)
+  })
+}
+
 function statusLabel(status: string) {
   if (status === 'done') return 'Replicata'
   if (status === 'skipped') return 'Già allineata'
@@ -72,10 +105,42 @@ function statusIcon(status: string) {
       </strong>
       <span class="frfc-summary muted">{{ summaryLine }}</span>
     </div>
+
+    <div v-if="parentPaths.length === 1" class="frfc-parent">
+      <span class="frfc-parent-label">Sotto</span>
+      <code class="frfc-parent-path">{{ parentPaths[0] }}</code>
+    </div>
+
     <p v-if="headerLine" class="frfc-current">
       {{ headerLine }}
     </p>
-    <ul class="frfc-list">
+
+    <template v-if="parentPaths.length > 1">
+      <div v-for="root in parentPaths" :key="root" class="frfc-group">
+        <div class="frfc-parent frfc-parent--group">
+          <span class="frfc-parent-label">Sotto</span>
+          <code class="frfc-parent-path">{{ root }}</code>
+        </div>
+        <ul class="frfc-list">
+          <li
+            v-for="folder in foldersForRoot(root)"
+            :key="folder.path"
+            class="frfc-item"
+            :class="`frfc-item--${folder.status}`"
+          >
+            <span class="frfc-icon" :title="statusLabel(folder.status)">{{ statusIcon(folder.status) }}</span>
+            <div class="frfc-body">
+              <div class="frfc-row">
+                <span class="frfc-name">{{ folder.name || folder.path }}</span>
+                <span v-if="folder.size_human" class="frfc-size muted">{{ folder.size_human }}</span>
+              </div>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </template>
+
+    <ul v-else class="frfc-list">
       <li
         v-for="folder in folders"
         :key="folder.path"
@@ -134,6 +199,38 @@ function statusIcon(status: string) {
   font-size: 0.8rem;
 }
 .frfc-summary { font-size: 0.75rem; }
+.frfc-parent {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.frfc-parent--group {
+  margin-bottom: 4px;
+}
+.frfc-parent-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.55;
+  flex-shrink: 0;
+}
+.frfc-parent-path {
+  font-size: 0.8rem;
+  font-weight: 600;
+  word-break: break-all;
+  color: #7ec8e3;
+}
+.frfc-group {
+  margin-bottom: 10px;
+}
+.frfc-group:last-child {
+  margin-bottom: 0;
+}
 .frfc-current {
   margin: 0 0 8px;
   font-size: 0.8rem;

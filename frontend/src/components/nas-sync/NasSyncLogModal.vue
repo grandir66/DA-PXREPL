@@ -71,13 +71,23 @@ const catalogActivityLabel = computed(() => {
   if (catalogMode.value === 'catalog') {
     return progress.value?.folder_activity_label || null
   }
-  // Non mostrare «File sciolti» come titolo fuorviante a inizio run
   const label = progress.value?.folder_activity_label
   if (label && label.startsWith('File sciolti') && !(progress.value?.folders_done)) {
     return progress.value?.phase_label || 'Avvio replica…'
   }
   return label || null
 })
+const catalogParentPath = computed(
+  () =>
+    progress.value?.catalog_parent_path ||
+    (progress.value?.catalog_roots?.length === 1 ? progress.value.catalog_roots[0] : null) ||
+    (props.job?.source_paths?.length === 1 ? props.job.source_paths[0] : null),
+)
+const catalogRoots = computed(
+  () =>
+    progress.value?.catalog_roots ||
+    (props.job?.source_paths?.length ? props.job.source_paths : null),
+)
 
 async function refresh() {
   try {
@@ -163,6 +173,8 @@ onUnmounted(stopPolling)
             :folders="folderCatalog"
             :mode="catalogMode"
             :activity-label="catalogActivityLabel"
+            :parent-path="catalogParentPath"
+            :roots="catalogRoots"
             :current-name="progress?.current_folder_name"
             :current-index="progress?.current_folder_index"
             :current-total="progress?.current_folder_total"

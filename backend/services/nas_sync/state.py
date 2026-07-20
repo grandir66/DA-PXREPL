@@ -122,11 +122,13 @@ def folder_progress_fields(
                 "bytes": nbytes,
                 "size_human": _format_bytes_human(nbytes),
                 "status": status,
+                "root": root,
             })
 
     if not items:
         return {}
 
+    roots = list(catalog.keys())
     done_count = sum(1 for it in items if it["status"] == "done")
     pending_count = sum(1 for it in items if it["status"] == "pending")
     total_bytes = sum(int(c.get("total_bytes") or 0) for c in catalog.values())
@@ -136,13 +138,18 @@ def folder_progress_fields(
         "folders_pending": pending_count,
         "current_folder_total": len(items),
         "catalog_view_mode": "catalog" if activity == "catalog" else "sync",
+        "catalog_roots": roots,
+        "catalog_parent_path": roots[0] if len(roots) == 1 else None,
     }
     if activity == "ensure":
         out["folder_activity_label"] = "Preparazione path destinazione…"
     elif activity == "root_loose":
         out["folder_activity_label"] = "File sciolti a root (+ cartelle nuove)"
     elif activity == "catalog":
-        out["folder_activity_label"] = f"Catalogo du: {len(items)} cartelle di 1° livello"
+        parent = roots[0] if len(roots) == 1 else "sorgente"
+        out["folder_activity_label"] = (
+            f"Catalogo du sotto {parent}: {len(items)} cartelle di 1° livello"
+        )
         out["folders_done"] = 0
         out["folders_pending"] = 0
     elif current_folder_path:

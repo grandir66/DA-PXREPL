@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.30] - 2026-07-20
+
+### Modifiche
+- **Repliche dati**: nel Log del catalogo/avanzamento mostra la cartella superiore (es. `/FTP_BACKUP`) a cui si riferisce l’elenco di 1° livello.
+
 ## [3.17.29] - 2026-07-20
 
 ### Modifiche
