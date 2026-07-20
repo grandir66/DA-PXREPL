@@ -7,13 +7,23 @@ via stdin remoto → RSYNC_PASSWORD. Mai credenziali in argv o nei log.
 
 from __future__ import annotations
 
+import asyncio
+import logging
+import os
 import re
 import shlex
+import signal
+from dataclasses import dataclass, field
+from typing import Callable, Optional
 
 from database import FileEndpoint, FileEndpointType
 from services.file_replication.endpoint_crypto import decrypt_password
 from services.file_replication.path_utils import normalize_synology_ssh_path, sanitize_path
 from services.nas_sync.events import SyncEvent
+
+logger = logging.getLogger(__name__)
+
+_PID_MARKER = "__DAPX_PID__"
 
 RSYNC_WARNING_EXITS = (23, 24)
 RSYNC_EXIT_HINTS: dict[int, str] = {
@@ -158,3 +168,158 @@ def parse_rsync_line(line: str) -> SyncEvent | None:
         return SyncEvent(phase="copying", files_replaced=1, last_file=name, raw_line=text)
 
     return None
+
+
+class EngineError(RuntimeError):
+    """Errore fatale engine (exit code rsync mappato in RSYNC_EXIT_HINTS)."""
+
+    def __init__(self, message: str, exit_code: int | None = None):
+        super().__init__(message)
+        self.exit_code = exit_code
+
+
+class EngineCancelled(Exception):
+    """Step interrotto su richiesta utente."""
+
+
+@dataclass
+class StepResult:
+    output_lines: list[str] = field(default_factory=list)
+    exit_code: int = 0
+    warnings: list[str] = field(default_factory=list)
+    remote_pid: int | None = None
+
+
+def _module_password(dest: FileEndpoint) -> str:
+    extra = dest.extra_config or {}
+    enc = extra.get("rsync_password_enc") or ""
+    if enc:
+        return decrypt_password(enc)
+    return ""
+
+
+async def kill_remote_rsync(source: FileEndpoint, pid: int) -> bool:
+    """Termina il process group rsync sulla sorgente via SSH. Best effort."""
+    argv, env = build_ssh_argv(source)
+    cmd = argv + [f"kill -TERM -- -{pid} 2>/dev/null || kill -TERM {pid} 2>/dev/null || true"]
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+            env={**os.environ, **env},
+        )
+        await asyncio.wait_for(proc.wait(), timeout=15)
+        return proc.returncode == 0
+    except (OSError, asyncio.TimeoutError):
+        return False
+
+
+async def _terminate_local(proc: asyncio.subprocess.Process) -> None:
+    if proc.returncode is None and proc.pid:
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except (ProcessLookupError, PermissionError):
+            proc.terminate()
+        await asyncio.sleep(0.5)
+        if proc.returncode is None:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                proc.kill()
+
+
+async def run_direct_rsync(
+    source: FileEndpoint,
+    dest: FileEndpoint,
+    src_path: str,
+    dest_subpath: str,
+    *,
+    exclude_lines: list[str],
+    delete_on_dest: bool,
+    bandwidth_limit_kb: int | None,
+    on_event: Optional[Callable[[SyncEvent], None]],
+    cancel_check: Optional[Callable[[], bool]],
+    process_registry: list,
+    argv_override: list[str] | None = None,
+) -> StepResult:
+    """Esegue rsync sulla sorgente via SSH; stdout/stderr → SyncEvent via on_event."""
+    fs_src = build_source_fs_path(source, src_path)
+    dest_url = build_dest_rsync_url(dest, src_path, dest_subpath)
+    script = build_remote_rsync_script(
+        fs_src,
+        dest_url,
+        exclude_lines=exclude_lines,
+        delete_on_dest=delete_on_dest,
+        bandwidth_limit_kb=bandwidth_limit_kb,
+    )
+    if argv_override is not None:
+        argv, env = list(argv_override), {}
+    else:
+        argv, env = build_ssh_argv(source)
+    cmd = argv + [script]
+    logger.info("nas_sync direct: rsync %s -> %s (via ssh %s)", fs_src, dest_url, source.host)
+
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+        env={**os.environ, **env},
+        start_new_session=True,
+    )
+    process_registry.append(proc)
+    assert proc.stdin is not None and proc.stdout is not None
+    try:
+        proc.stdin.write((_module_password(dest) + "\n").encode())
+        await proc.stdin.drain()
+        proc.stdin.close()
+    except (BrokenPipeError, ConnectionResetError):
+        pass
+
+    result = StepResult()
+    cancelled = False
+    while True:
+        if cancel_check and cancel_check() and not cancelled:
+            cancelled = True
+            if result.remote_pid:
+                await kill_remote_rsync(source, result.remote_pid)
+            await _terminate_local(proc)
+            raise EngineCancelled("Step interrotto dall'utente")
+        try:
+            line_b = await asyncio.wait_for(proc.stdout.readline(), timeout=1.0)
+        except asyncio.TimeoutError:
+            if proc.returncode is not None:
+                break
+            continue
+        if not line_b:
+            break
+        line = line_b.decode(errors="replace")
+        result.output_lines.append(line)
+        stripped = line.strip()
+        if stripped.startswith(_PID_MARKER):
+            try:
+                result.remote_pid = int(stripped[len(_PID_MARKER):])
+            except ValueError:
+                pass
+            continue
+        event = parse_rsync_line(line)
+        if event and on_event:
+            on_event(event)
+
+    await proc.wait()
+    result.exit_code = proc.returncode or 0
+
+    if result.exit_code in RSYNC_WARNING_EXITS:
+        result.warnings.append(
+            "rsync ha segnalato file saltati o spariti durante la copia "
+            f"(exit {result.exit_code}): controllare il log per l'elenco."
+        )
+        return result
+    if result.exit_code != 0:
+        hint = RSYNC_EXIT_HINTS.get(
+            result.exit_code, f"rsync terminato con codice {result.exit_code}."
+        )
+        tail = "".join(result.output_lines)[-1500:]
+        raise EngineError(f"{hint}\n{tail}", exit_code=result.exit_code)
+    return result
