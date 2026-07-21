@@ -32,6 +32,40 @@ def _ensure_column(conn, table: str, column: str, ddl_type: str) -> None:
         logger.error(f"Errore aggiunta colonna {table}.{column}: {e}")
 
 
+def _migrate_smtp_password(conn) -> None:
+    """Cifra in-place le smtp_password salvate in chiaro (idempotente).
+
+    Le versioni precedenti salvavano la password SMTP in chiaro nonostante
+    il commento "# Encrypted" sul modello. Se DAPX_SECRET_KEY non è
+    disponibile la migrazione viene saltata senza bloccare l'avvio.
+    """
+    try:
+        from services.secrets import encrypt_secret, is_encrypted
+    except Exception as e:
+        logger.warning(f"services.secrets non importabile, migrazione smtp_password saltata: {e}")
+        return
+    try:
+        rows = conn.execute(text("SELECT id, smtp_password FROM notification_config")).fetchall()
+    except Exception:
+        # Tabella inesistente: create_all la creerà al primo avvio.
+        return
+    for row_id, password in rows:
+        if not password:
+            continue
+        try:
+            if is_encrypted(password):
+                continue
+            encrypted = encrypt_secret(password)
+        except RuntimeError as e:
+            logger.warning(f"DAPX_SECRET_KEY assente, migrazione smtp_password saltata: {e}")
+            return
+        conn.execute(
+            text("UPDATE notification_config SET smtp_password = :pw WHERE id = :id"),
+            {"pw": encrypted, "id": row_id},
+        )
+        logger.info("notification_config.smtp_password cifrata (migrazione da chiaro)")
+
+
 def update_schema():
     """Esegue le migrazioni leggere idempotenti.
 
@@ -88,6 +122,9 @@ def update_schema():
 
             _ensure_column(conn, "recovery_jobs", "notify_on_each_run", "BOOLEAN")
             _ensure_column(conn, "backup_jobs", "notify_on_each_run", "BOOLEAN")
+
+            # --- notification_config: cifratura password legacy ---
+            _migrate_smtp_password(conn)
 
             # Repliche dati v2: tabella nuova, creata idempotente via metadata.
             # Il modello è registrato importando services.nas_sync.models.
