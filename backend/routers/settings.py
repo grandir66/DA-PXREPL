@@ -15,6 +15,7 @@ from database import (
     get_config_value, set_config_value, init_default_config, SessionLocal
 )
 from routers.auth import get_current_user, require_admin, log_audit
+from services.secrets import decrypt_secret, encrypt_secret
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -353,9 +354,13 @@ async def update_notification_config(
         config = NotificationConfig()
         db.add(config)
     
-    for key, value in update.model_dump(exclude_unset=True).items():
+    data = update.model_dump(exclude_unset=True)
+    # La password SMTP va salvata SOLO cifrata (at-rest nel DB).
+    if data.get("smtp_password"):
+        data["smtp_password"] = encrypt_secret(data["smtp_password"])
+    for key, value in data.items():
         setattr(config, key, value)
-    
+
     config.updated_at = datetime.utcnow()
     
     log_audit(
@@ -387,19 +392,28 @@ async def test_notification(
             raise HTTPException(status_code=400, detail="Destinatario email non configurato")
         
         from services.email_service import email_service
-        
-        # Configura il servizio email
+
+        smtp_password = None
+        if config.smtp_password:
+            try:
+                smtp_password = decrypt_secret(config.smtp_password)
+            except (ValueError, RuntimeError):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Password SMTP non decifrabile: reinserirla nelle impostazioni",
+                )
+
         email_service.configure(
             host=config.smtp_host,
             port=config.smtp_port or 587,
             user=config.smtp_user,
-            password=config.smtp_password,
+            password=smtp_password,
             from_addr=config.smtp_from,
             to_addrs=config.smtp_to,
             subject_prefix=config.smtp_subject_prefix or "[DAPX]",
             use_tls=config.smtp_tls
         )
-        
+
         # Invia email di test
         success, message = email_service.send_test_email()
         

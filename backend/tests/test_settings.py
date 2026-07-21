@@ -162,3 +162,37 @@ class TestNotificationConfig:
         assert "categories" in data
         assert len(data["categories"]) > 0
 
+
+class TestNotificationSmtpPassword:
+    """La password SMTP deve essere cifrata at-rest nel DB."""
+
+    def test_put_encrypts_password(self, client, admin_token, db):
+        resp = client.put(
+            "/api/settings/notifications",
+            headers={"Authorization": f"Bearer {admin_token}"},
+            json={"smtp_password": "pw-in-chiaro"},
+        )
+        assert resp.status_code == 200
+
+        from database import NotificationConfig
+        from services.secrets import decrypt_secret, is_encrypted
+
+        db.expire_all()
+        stored = db.query(NotificationConfig).first().smtp_password
+        assert stored != "pw-in-chiaro"
+        assert is_encrypted(stored)
+        assert decrypt_secret(stored) == "pw-in-chiaro"
+
+    def test_put_without_password_keeps_existing(self, client, admin_token, db):
+        headers = {"Authorization": f"Bearer {admin_token}"}
+        client.put("/api/settings/notifications", headers=headers, json={"smtp_password": "pw-1"})
+        client.put("/api/settings/notifications", headers=headers, json={"smtp_host": "mail.example.com"})
+
+        from database import NotificationConfig
+        from services.secrets import decrypt_secret
+
+        db.expire_all()
+        cfg = db.query(NotificationConfig).first()
+        assert decrypt_secret(cfg.smtp_password) == "pw-1"
+        assert cfg.smtp_host == "mail.example.com"
+

@@ -10,6 +10,7 @@ from typing import List, Optional, Tuple, Dict, Any
 import logging
 
 from services.email_service import email_service
+from services.secrets import decrypt_secret
 from database import (
     SessionLocal,
     NotificationConfig,
@@ -54,11 +55,20 @@ class NotificationService:
     def _configure_email_service(self, config: NotificationConfig):
         """Configura il servizio email con i dati dal database"""
         if config and config.smtp_enabled and config.smtp_host:
+            password = None
+            if config.smtp_password:
+                try:
+                    password = decrypt_secret(config.smtp_password)
+                except (ValueError, RuntimeError):
+                    logger.error(
+                        "Password SMTP non decifrabile: reinserirla nelle impostazioni "
+                        "o verificare DAPX_SECRET_KEY"
+                    )
             email_service.configure(
                 host=config.smtp_host,
                 port=config.smtp_port or 587,
                 user=config.smtp_user,
-                password=config.smtp_password,
+                password=password,
                 from_addr=config.smtp_from,
                 to_addrs=config.smtp_to,
                 subject_prefix=config.smtp_subject_prefix or "[DAPX]",
