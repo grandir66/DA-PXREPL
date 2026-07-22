@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.35] - 2026-07-22
+
+### Correzioni
+- **Snapshot VM**: email di notifica con report per-VM completo (esito, nodo, snapshot potati, avvisi) al posto della singola riga di sintesi; etichette modulo «Snapshot VM» e «Repliche dati» nel template email (`vm_snapshot/notifications.py`, `email_service.py`).
+
 ## [3.17.34] - 2026-07-22
 
 ### Correzioni

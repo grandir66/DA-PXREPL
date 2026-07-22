@@ -177,3 +177,28 @@ def test_vmstate_only_for_qemu(env):
     _run(job_id)
     assert calls[100] is True   # qemu
     assert calls[101] is False  # lxc: mai vmstate
+
+
+def test_build_results_report_lists_each_vm():
+    from services.vm_snapshot.notifications import build_results_report
+
+    class J:
+        label = "daily"
+        keep = 7
+
+    results = [
+        {"vm_name": "web01", "vmid": 100, "vm_type": "qemu", "node_name": "px1",
+         "snapname": "autodaily_20260722_031500", "created": True,
+         "pruned": ["autodaily_20260715_030000"], "warning": None, "error": None},
+        {"vm_name": "db01", "vmid": 101, "vm_type": "lxc", "node_name": "px2",
+         "snapname": "autodaily_20260722_031500", "created": False,
+         "pruned": [], "warning": None, "error": "lock vzdump"},
+    ]
+    report = build_results_report(J(), results, 95)
+    assert "autodaily_20260722_031500" in report
+    assert "label «daily»" in report and "mantieni 7" in report
+    assert "riuscite: 1" in report and "fallite: 1" in report
+    assert "✓ web01 (100, VM) @ px1" in report
+    assert "potati 1: autodaily_20260715_030000" in report
+    assert "✗ db01 (101, CT) @ px2 — ERRORE: lock vzdump" in report
+    assert "1m 35s" in report

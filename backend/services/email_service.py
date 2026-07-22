@@ -181,6 +181,8 @@ class EmailService:
             "recovery": "🔄 Recovery (PBS)",
             "migration": "🚀 Migration (Live)",
             "file_replication": "📁 Replica file (NAS)",
+            "nas_sync": "📁 Repliche dati (NAS)",
+            "vm_snapshot": "📸 Snapshot VM",
         }
         module_label = job_type_labels.get(job_type, "📋 Job") if job_type else "📋 Job"
         
