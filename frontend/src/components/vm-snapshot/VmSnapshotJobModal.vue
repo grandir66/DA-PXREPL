@@ -268,8 +268,8 @@ onMounted(loadIndex)
 
       <div v-show="step === 1" class="modal-body">
         <div class="form-group">
-          <label>Nome job</label>
-          <input v-model="form.name" class="form-input" placeholder="Snapshot giornaliero prod" />
+          <label>Nome job <span class="req">*</span></label>
+          <input v-model="form.name" class="form-input" placeholder="es. Snapshot giornaliero prod" />
         </div>
 
         <p v-if="indexError" class="text-danger">{{ indexError }}</p>
@@ -441,6 +441,12 @@ onMounted(loadIndex)
       <p v-if="errorMsg" class="modal-error">{{ errorMsg }}</p>
 
       <footer class="modal-foot">
+        <small v-if="step === 1 && (!form.name || !hasSelection)" class="foot-hint">
+          Per proseguire:
+          <template v-if="!form.name">compila il <strong>Nome job</strong></template>
+          <template v-if="!form.name && !hasSelection"> e </template>
+          <template v-if="!hasSelection">seleziona almeno una <strong>VM</strong> (o un selettore)</template>
+        </small>
         <button v-if="step > 1" type="button" class="btn btn-secondary" @click="step--">Indietro</button>
         <button
           v-if="step < 4"
@@ -472,7 +478,9 @@ onMounted(loadIndex)
   background: var(--bg-primary, #111); border-radius: 12px;
   width: min(760px, 94vw); max-height: 90vh; overflow: auto;
 }
-.modal-head, .modal-foot { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; }
+.modal-head, .modal-foot { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; gap: 12px; }
+.foot-hint { color: #f1c40f; font-size: .8rem; margin-right: auto; }
+.req { color: #e74c3c; }
 .modal-body { padding: 0 20px 16px; }
 .modal-error { padding: 0 20px 12px; color: var(--danger, #e74c3c); font-size: .875rem; }
 .steps { display: flex; gap: 12px; padding: 0 20px 12px; font-size: .85rem; opacity: .7; }

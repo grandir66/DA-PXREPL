@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.33] - 2026-07-22
+
+### Correzioni
+- **Snapshot VM**: wizard nuovo job — il pulsante «Avanti» restava disabilitato senza spiegazione se mancava il Nome job; ora un hint accanto al pulsante indica cosa manca (nome e/o selezione VM) e il campo Nome è marcato obbligatorio (`VmSnapshotJobModal.vue`).
+
 ## [3.17.32] - 2026-07-22
 
 ### Aggiunte
