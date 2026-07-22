@@ -92,6 +92,8 @@ def update_schema():
             # Repliche dati v2: tabella nuova, creata idempotente via metadata.
             # Il modello è registrato importando services.nas_sync.models.
             from services.nas_sync import models as _nas_sync_models  # noqa: F401
+            # Snapshot VM: stessa meccanica di registrazione.
+            from services.vm_snapshot import models as _vm_snapshot_models  # noqa: F401
             Base.metadata.create_all(bind=engine)
 
             conn.commit()
