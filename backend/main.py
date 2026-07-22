@@ -19,6 +19,7 @@ from routers import recovery_jobs, backup_jobs, host_info, host_backup, migratio
 from routers import ha, clusters
 from routers import file_endpoints, file_replication_jobs
 from routers import nas_sync_jobs
+from routers import vm_snapshot_jobs
 from routers import schedule as schedule_router
 from services.scheduler import SchedulerService
 from services.logging_config import setup_logging, get_logger
@@ -59,6 +60,12 @@ async def lifespan(app: FastAPI):
         _nas2_reconcile()
     except Exception as _exc:  # noqa: BLE001 — il reconcile non deve bloccare l'avvio
         logger.warning(f"nas_sync reconcile all'avvio fallito: {_exc}")
+
+    try:
+        from services.vm_snapshot.execution import reconcile_stale_running_jobs as _vmsnap_reconcile
+        _vmsnap_reconcile()
+    except Exception as _exc:  # noqa: BLE001 — il reconcile non deve bloccare l'avvio
+        logger.warning(f"vm_snapshot reconcile all'avvio fallito: {_exc}")
 
     # Inizializza configurazione di default
     db = SessionLocal()
@@ -154,6 +161,7 @@ if dapx_mode == "full":
     app.include_router(file_endpoints.router, prefix="/api/file-endpoints", tags=["File Endpoints"])
     app.include_router(file_replication_jobs.router, prefix="/api/file-replication", tags=["File Replication"])
     app.include_router(nas_sync_jobs.router, prefix="/api/nas-sync", tags=["Repliche dati (NAS Sync v2)"])
+    app.include_router(vm_snapshot_jobs.router, prefix="/api/vm-snapshots", tags=["Snapshot VM"])
     app.include_router(schedule_router.router, prefix="/api/schedule", tags=["Schedule"])
 
 

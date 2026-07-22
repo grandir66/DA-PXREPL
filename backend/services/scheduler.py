@@ -611,6 +611,44 @@ class SchedulerService:
                 except Exception as e:
                     logger.error(f"Errore scheduling NasSyncJob {job.id}: {e}")
 
+            # === VM SNAPSHOT JOBS (Snapshot VM) ===
+            from services.vm_snapshot.models import VmSnapshotJob
+
+            vm_snapshot_jobs_q = db.query(VmSnapshotJob).filter(
+                VmSnapshotJob.is_active == True,
+                VmSnapshotJob.schedule.isnot(None),
+                VmSnapshotJob.schedule != "",
+            ).all()
+
+            for job in vm_snapshot_jobs_q:
+                try:
+                    job_key = f"vm_snapshot_{job.id}"
+                    if job_key not in self._jobs:
+                        self._jobs[job_key] = compute_initial_next_run(
+                            job.schedule, job.last_run_at, now
+                        )
+                    next_run = self._jobs[job_key]
+                    if now >= next_run:
+                        if self._try_lock(job_key):
+                            logger.info(
+                                f"Esecuzione VmSnapshotJob schedulato: {job.name} (ID: {job.id})"
+                            )
+                            asyncio.create_task(
+                                self._guarded_execute(
+                                    job_key,
+                                    self._execute_vm_snapshot_job,
+                                    job.id,
+                                )
+                            )
+                            cron = croniter(job.schedule, now)
+                            self._jobs[job_key] = cron.get_next(datetime)
+                        else:
+                            logger.info(
+                                f"VmSnapshotJob {job.id} ancora in esecuzione: skip fire schedulato"
+                            )
+                except Exception as e:
+                    logger.error(f"Errore scheduling VmSnapshotJob {job.id}: {e}")
+
             # === BACKUP PBS JOBS ===
             backup_jobs = db.query(BackupJob).filter(
                 BackupJob.is_active == True,
@@ -890,6 +928,12 @@ class SchedulerService:
 
         await execute_nas_sync_job(job_id)
 
+    async def _execute_vm_snapshot_job(self, job_id: int):
+        """Esegue un job Snapshot VM schedulato."""
+        from services.vm_snapshot.execution import execute_vm_snapshot_job
+
+        await execute_vm_snapshot_job(job_id, is_scheduled=True)
+
     async def _execute_backup_pbs_job(self, job_id: int):
         """Esegue un backup VM verso PBS schedulato."""
         from routers.backup_jobs import execute_backup_task
@@ -976,6 +1020,21 @@ class SchedulerService:
 
     def remove_nas_sync_schedule(self, job_id: int) -> None:
         self._jobs.pop(f"nas_sync_{job_id}", None)
+
+    def update_vm_snapshot_schedule(
+        self,
+        job_id: int,
+        schedule: str,
+        last_run: Optional[datetime] = None,
+    ) -> None:
+        key = f"vm_snapshot_{job_id}"
+        if schedule:
+            self._jobs[key] = compute_initial_next_run(schedule, last_run, datetime.utcnow())
+        elif key in self._jobs:
+            del self._jobs[key]
+
+    def remove_vm_snapshot_schedule(self, job_id: int) -> None:
+        self._jobs.pop(f"vm_snapshot_{job_id}", None)
 
     def update_backup_pbs_schedule(
         self,
