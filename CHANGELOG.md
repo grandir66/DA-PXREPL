@@ -5,6 +5,8 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.32] - 2026-07-22
+
 ### Aggiunte
 - **Snapshot VM**: nuovo modulo per snapshot nativi Proxmox (`qm`/`pct`) schedulati con retention label+keep (stile cv4pve-autosnap): selezione multi-VM cross-nodo con checkbox e selettori dinamici per tag/nodo (con esclusioni), opzione RAM/vmstate per job (default off, solo qemu), esiti per-VM, browser snapshot con rollback/delete dalla UI, avviso per VM con replica pvesr. Prefisso `auto{label}_` distinto da `autosnap_` di Sanoid: la retention non tocca mai snapshot manuali o di altri strumenti. Nuova voce menù «Snapshot VM», API `/api/vm-snapshots`, tabella `vm_snapshot_jobs` (`backend/services/vm_snapshot/`, `backend/routers/vm_snapshot_jobs.py`, `VmSnapshots.vue`).
 
