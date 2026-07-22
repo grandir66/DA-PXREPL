@@ -34,7 +34,10 @@ async def send_job_notification_helper(
     notify_mode: str = "daily",
     source_node_name: str = None,
     dest_node_name: str = None,
-    job_type: str = "sync"
+    job_type: str = "sync",
+    vm_name: str = None,
+    vm_id: int = None,
+    transferred: str = None,
 ):
     """
     Invia notifica per un job di replica usando il notification_service centralizzato.
@@ -60,7 +63,10 @@ async def send_job_notification_helper(
         notify_mode=notify_mode,
         job_type=job_type,
         source_node_name=source_node_name,
-        dest_node_name=dest_node_name
+        dest_node_name=dest_node_name,
+        vm_name=vm_name,
+        vm_id=vm_id,
+        transferred=transferred,
     )
 
 
@@ -895,7 +901,10 @@ async def execute_sync_job_task(job_id: int, triggered_by_user_id: int = None) -
                 notify_mode=job.notify_mode or "daily",
                 source_node_name=source_node.name,
                 dest_node_name=dest_node.name,
-                job_type="sync"
+                job_type="sync",
+                vm_name=getattr(job, "vm_name", None),
+                vm_id=getattr(job, "vm_id", None),
+                transferred=result.get("transferred"),
             )
         except Exception as notify_err:
             # Non bloccare se la notifica fallisce

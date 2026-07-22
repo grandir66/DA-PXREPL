@@ -174,6 +174,12 @@ class NotificationService:
                             source_node_name = source_node.name
                         if dest_node and not dest_node_name:
                             dest_node_name = dest_node.name
+                        if job.vm_name and not vm_name:
+                            vm_name = job.vm_name
+                        if job.vm_id and not vm_id:
+                            vm_id = job.vm_id
+                        if not transferred and getattr(job, "last_transferred", None):
+                            transferred = job.last_transferred
                 elif job_type == "recovery":
                     from database import RecoveryJob
                     job = db.query(RecoveryJob).filter(RecoveryJob.id == job_id).first()

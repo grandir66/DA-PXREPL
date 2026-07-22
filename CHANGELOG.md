@@ -5,8 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.34] - 2026-07-22
+
 ### Correzioni
 - **Notifiche email**: un host SMTP con spazio iniziale/finale (es. incollato) causava «[Errno -2] Name or service not known»; ora host/utente/mittente vengono ripuliti in `email_service.configure()` (`backend/services/email_service.py`).
+- **Notifiche email job replica**: l'email di riepilogo non riportava VM né dimensioni — ora include nome/ID VM e dati trasferiti (passati dal run o recuperati dal job) e mostra l'ora locale invece di UTC (`sync_job_execution.py`, `notification_service.py`, `email_service.py`).
 
 ## [3.17.33] - 2026-07-22
 

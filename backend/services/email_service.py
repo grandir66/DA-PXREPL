@@ -253,7 +253,7 @@ class EmailService:
         
         {vm_info}
         
-        <p><span class="label">Data/Ora:</span> {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC</p>
+        <p><span class="label">Data/Ora:</span> {datetime.now().astimezone().strftime('%d/%m/%Y %H:%M:%S %Z')}</p>
         {'<p><span class="label">Durata:</span> <strong>' + duration_str + '</strong></p>' if duration_str else ''}
         {'<p><span class="label">Trasferito:</span> <strong>' + transferred + '</strong></p>' if transferred else ''}
     </div>
