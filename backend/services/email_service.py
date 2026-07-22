@@ -38,11 +38,13 @@ class EmailService:
         use_tls: bool = True
     ):
         """Configura il servizio email"""
-        self.host = host
+        # strip: uno spazio incollato nell'host produce "[Errno -2] Name or service
+        # not known" in getaddrinfo — sanitizzare qui copre ogni chiamante.
+        self.host = (host or "").strip()
         self.port = port
-        self.user = user
+        self.user = (user or "").strip() or None
         self.password = password
-        self.from_addr = from_addr or user
+        self.from_addr = ((from_addr or "").strip() or None) or self.user
         self.to_addrs = [addr.strip() for addr in (to_addrs or "").split(",") if addr.strip()]
         self.subject_prefix = subject_prefix
         self.use_tls = use_tls
