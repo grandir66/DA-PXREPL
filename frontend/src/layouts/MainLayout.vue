@@ -47,6 +47,10 @@
             <Icon name="arrow-right-left" :size="16" />
             <span>Repliche dati</span>
           </router-link>
+          <router-link :to="{ name: 'vm-snapshots' }" class="nav-item" active-class="active">
+            <Icon name="copy" :size="16" />
+            <span>Snapshot VM</span>
+          </router-link>
           <router-link :to="{ name: 'pbs-backup' }" class="nav-item" active-class="active">
             <Icon name="database" :size="16" />
             <span>PBS Backup</span>

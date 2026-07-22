@@ -47,6 +47,11 @@ const router = createRouter({
                     component: () => import('../views/FileReplication.vue')
                 },
                 {
+                    path: 'vm-snapshots',
+                    name: 'vm-snapshots',
+                    component: () => import('../views/VmSnapshots.vue')
+                },
+                {
                     path: 'nas-sync',
                     name: 'nas-sync',
                     component: () => import('../views/NasSync.vue')
