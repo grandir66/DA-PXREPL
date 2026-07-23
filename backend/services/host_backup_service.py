@@ -418,3 +418,47 @@ host_backup_service = HostBackupService()
 
 
 
+
+
+async def notify_host_backup_result(
+    job,
+    node,
+    *,
+    status: str,
+    duration: int,
+    backup_name: Optional[str] = None,
+    size_human: Optional[str] = None,
+    error: Optional[str] = None,
+    is_scheduled: bool = False,
+) -> None:
+    """Notifica esito job host backup secondo job.notify_mode (never|failure|always|daily)."""
+    try:
+        from services.notification_service import notification_service
+
+        details = None
+        if backup_name:
+            details = (
+                f"File: {backup_name}\n"
+                f"Dimensione: {size_human or '—'}\n"
+                f"Destinazione: {job.dest_path}\n"
+                f"Retention: ultimi {job.keep_last} backup"
+            )
+        await notification_service.send_job_notification(
+            job_name=job.name,
+            status=status,
+            source=f"{node.name}: configurazione host",
+            destination=f"{node.name}:{job.dest_path}",
+            duration=duration,
+            error=error,
+            details=details,
+            job_id=job.id,
+            is_scheduled=is_scheduled,
+            notify_mode=job.notify_mode or "daily",
+            transferred=size_human,
+            job_type="host_backup",
+            source_node_name=node.name,
+            dest_node_name=node.name,
+            notify_subject=job.notify_subject,
+        )
+    except Exception as exc:  # noqa: BLE001 — la notifica non deve rompere il run
+        logger.warning("Notifica host_backup %s non inviata: %s", getattr(job, "id", "?"), exc)

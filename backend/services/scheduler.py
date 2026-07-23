@@ -861,6 +861,12 @@ class SchedulerService:
                 log_entry.duration = duration
                 
                 logger.info(f"HostBackupJob {job_id} completato: {result['backup_name']}")
+                from services.host_backup_service import notify_host_backup_result
+                await notify_host_backup_result(
+                    job, node, status="success", duration=duration,
+                    backup_name=result.get('backup_name'),
+                    size_human=result.get('size_human'), is_scheduled=True,
+                )
             else:
                 job.current_status = "failed"
                 job.last_status = "failed"
@@ -876,7 +882,12 @@ class SchedulerService:
                 log_entry.duration = duration
                 
                 logger.error(f"HostBackupJob {job_id} fallito: {result.get('error')}")
-            
+                from services.host_backup_service import notify_host_backup_result
+                await notify_host_backup_result(
+                    job, node, status="failed", duration=duration,
+                    error=result.get('error'), is_scheduled=True,
+                )
+
             db.commit()
             
             # Invia notifica - il notification_service gestisce notify_mode internamente

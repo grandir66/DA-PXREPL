@@ -27,6 +27,13 @@ async def notify_nas_sync_result(
     try:
         from services.notification_service import notification_service
 
+        view = progress or {}
+        report_lines = [view.get("display_summary") or ""]
+        report_lines.extend(view.get("detail_lines") or [])
+        if view.get("hint"):
+            report_lines.append(f"Nota: {view['hint']}")
+        report = "\n".join(line for line in report_lines if line)[:4000] or None
+
         await notification_service.send_job_notification(
             job_name=job.name,
             status=status,
@@ -34,7 +41,7 @@ async def notify_nas_sync_result(
             destination=dest.name,
             duration=duration,
             error=error,
-            details=(progress or {}).get("display_summary"),
+            details=report,
             job_id=job.id,
             is_scheduled=is_scheduled,
             notify_mode=mode,

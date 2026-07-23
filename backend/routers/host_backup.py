@@ -339,9 +339,15 @@ async def run_host_backup_job(
             log.message = f"Backup {host_type.upper()} completato: {result['backup_name']} ({result['size_human']})"
             log.completed_at = end_time
             log.duration = duration
-            
+
             db.commit()
-            
+
+            from services.host_backup_service import notify_host_backup_result
+            await notify_host_backup_result(
+                job, node, status="success", duration=duration,
+                backup_name=result.get('backup_name'), size_human=result.get('size_human'),
+            )
+
             return {
                 "success": True,
                 "job_id": job.id,
@@ -356,15 +362,20 @@ async def run_host_backup_job(
             job.last_duration = duration
             job.last_error = result.get('error')
             job.error_count += 1
-            
+
             log.status = "failed"
             log.error = result.get('error')
             log.message = f"Backup {host_type.upper()} fallito"
             log.completed_at = end_time
             log.duration = duration
-            
+
             db.commit()
-            
+
+            from services.host_backup_service import notify_host_backup_result
+            await notify_host_backup_result(
+                job, node, status="failed", duration=duration, error=result.get('error'),
+            )
+
             raise HTTPException(status_code=500, detail=result.get('error'))
             
     except Exception as e:

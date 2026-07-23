@@ -183,6 +183,7 @@ class EmailService:
             "file_replication": "📁 Replica file (NAS)",
             "nas_sync": "📁 Repliche dati (NAS)",
             "vm_snapshot": "📸 Snapshot VM",
+            "host_backup": "🛡️ Host Backup",
         }
         module_label = job_type_labels.get(job_type, "📋 Job") if job_type else "📋 Job"
         

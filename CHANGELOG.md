@@ -5,6 +5,12 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.37] - 2026-07-23
+
+### Correzioni
+- **Notifiche — audit di coerenza su tutti i moduli**: Host Backup non inviava MAI email pur salvando notify_mode/subject (ora notifica da run manuale e schedulato); oggetto email personalizzato ora rispettato anche per job Sync e Migration; dettagli email Backup PBS con VM/storage/nodo; email Repliche dati con report multiriga (fasi, contatori, byte) invece della sola riga di sintesi; etichetta modulo «🛡️ Host Backup» (`notification_service.py`, `host_backup_service.py`, `sync_job_execution.py`, `backup_jobs.py`, `migration_jobs.py`, `nas_sync/notifications.py`, `email_service.py`).
+- **Riepilogo giornaliero esteso a tutti i moduli**: ora include anche Backup PBS, Host Backup, Migration, Repliche dati e Snapshot VM (prima solo Sync/Recovery/Replica file), con nome VM, esiti 24h, dimensioni e ultima esecuzione per riga (`notification_service.py`).
+
 ## [3.17.36] - 2026-07-23
 
 ### Correzioni

@@ -38,6 +38,7 @@ async def send_job_notification_helper(
     vm_name: str = None,
     vm_id: int = None,
     transferred: str = None,
+    notify_subject: str = None,
 ):
     """
     Invia notifica per un job di replica usando il notification_service centralizzato.
@@ -67,6 +68,7 @@ async def send_job_notification_helper(
         vm_name=vm_name,
         vm_id=vm_id,
         transferred=transferred,
+        notify_subject=notify_subject,
     )
 
 
@@ -905,6 +907,7 @@ async def execute_sync_job_task(job_id: int, triggered_by_user_id: int = None) -
                 vm_name=getattr(job, "vm_name", None),
                 vm_id=getattr(job, "vm_id", None),
                 transferred=result.get("transferred"),
+                notify_subject=getattr(job, "notify_subject", None),
             )
         except Exception as notify_err:
             # Non bloccare se la notifica fallisce

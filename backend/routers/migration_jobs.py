@@ -258,7 +258,8 @@ async def execute_migration_job_task(job_id: int, triggered_by: Optional[int] = 
                     source_node_name=source_node.name,
                     dest_node_name=dest_node.name,
                     vm_name=job.vm_name,
-                    vm_id=job.vm_id
+                    vm_id=job.vm_id,
+                    notify_subject=getattr(job, "notify_subject", None)
                 )
             else:
                 job.last_status = "failed"
@@ -331,7 +332,8 @@ async def execute_migration_job_task(job_id: int, triggered_by: Optional[int] = 
                     source_node_name=source_node.name,
                     dest_node_name=dest_node.name,
                     vm_name=job.vm_name,
-                    vm_id=job.vm_id
+                    vm_id=job.vm_id,
+                    notify_subject=getattr(job, "notify_subject", None)
                 )
             
             db.commit()

@@ -509,7 +509,11 @@ async def execute_backup_task(job_id: int, db_path: str):
                     destination=f"{pbs_node.name}:{job.pbs_storage_id}",
                     duration=duration,
                     error=error if job.last_status == "failed" else None,
-                    details=f"VM {job.vm_id} - Durata: {duration}s",
+                    details=(
+                        f"VM: {job.vm_name or '—'} (ID {job.vm_id})\n"
+                        f"Storage PBS: {job.pbs_storage_id}\n"
+                        f"Nodo sorgente: {source_node.name}"
+                    ),
                     job_id=job_id,
                     is_scheduled=bool(job.schedule),
                     notify_mode=job.notify_mode or "daily",

@@ -381,7 +381,22 @@ class NotificationService:
             recovery_jobs = db.query(RecoveryJob).filter(RecoveryJob.is_active == True).all()
             file_repl_jobs = db.query(FileReplicationJob).filter(FileReplicationJob.is_active == True).all()
 
-            if not sync_jobs and not recovery_jobs and not file_repl_jobs:
+            # Moduli aggiuntivi (import lazy: evita dipendenze circolari all'avvio)
+            from database import BackupJob, HostBackupJob, MigrationJob, FileEndpoint
+            from services.nas_sync.models import NasSyncJob
+            from services.vm_snapshot.models import VmSnapshotJob
+            backup_pbs_jobs = db.query(BackupJob).filter(BackupJob.is_active == True).all()
+            host_backup_jobs = db.query(HostBackupJob).filter(HostBackupJob.is_active == True).all()
+            migration_jobs_q = db.query(MigrationJob).filter(MigrationJob.is_active == True).all()
+            nas_sync_jobs_q = db.query(NasSyncJob).filter(NasSyncJob.is_active == True).all()
+            vm_snapshot_jobs_q = db.query(VmSnapshotJob).filter(VmSnapshotJob.is_active == True).all()
+
+            all_job_lists = [
+                sync_jobs, recovery_jobs, file_repl_jobs,
+                backup_pbs_jobs, host_backup_jobs, migration_jobs_q,
+                nas_sync_jobs_q, vm_snapshot_jobs_q,
+            ]
+            if not any(all_job_lists):
                 logger.info("Nessun job configurato, riepilogo non inviato")
                 return {"sent": False, "reason": "no_jobs_configured"}
             
@@ -582,8 +597,137 @@ class NotificationService:
                 failed += job_failed
                 total_duration += job_duration
 
+            # === Collector generico per i moduli aggiuntivi ===
+            def _logs_24h(job_id: int, jtypes: list):
+                logs = db.query(JobLog).filter(
+                    JobLog.job_id == job_id,
+                    JobLog.job_type.in_(jtypes),
+                    JobLog.started_at >= yesterday,
+                ).order_by(JobLog.started_at.desc()).all()
+                runs = len(logs)
+                ok = len([l for l in logs if l.status == "success"])
+                ko = len([l for l in logs if l.status == "failed"])
+                dur = sum(l.duration or 0 for l in logs)
+                l_err = l_err_t = None
+                for l in logs:
+                    if l.status == "failed" and l.error:
+                        l_err = l.error[:200]
+                        l_err_t = l.started_at.strftime("%H:%M") if l.started_at else None
+                        break
+                transferred = next(
+                    (l.transferred for l in logs if getattr(l, "transferred", None)), None
+                )
+                return runs, ok, ko, dur, l_err, l_err_t, transferred
+
+            def _fmt_last_run(dt) -> str:
+                return dt.strftime("%d/%m %H:%M") if dt else "Mai"
+
+            def _append(job, jtype, jtypes, **fields):
+                nonlocal total_runs, successful, failed, total_duration
+                runs, ok, ko, dur, l_err, l_err_t, transferred = _logs_24h(job.id, jtypes)
+                info = {
+                    "id": job.id,
+                    "name": job.name,
+                    "type": jtype,
+                    "schedule": getattr(job, "schedule", None) or "Manuale",
+                    "runs_24h": runs,
+                    "success_24h": ok,
+                    "failed_24h": ko,
+                    "duration_24h": dur,
+                    "last_transferred": transferred,
+                    "last_error": l_err,
+                    "last_error_time": l_err_t,
+                }
+                info.update(fields)
+                jobs_summary.append(info)
+                total_runs += runs
+                successful += ok
+                failed += ko
+                total_duration += dur
+
+            node_by_id = {n.id: n for n in db.query(Node).all()}
+            ep_by_id = {e.id: e for e in db.query(FileEndpoint).all()}
+
+            for job in backup_pbs_jobs:
+                src = node_by_id.get(job.source_node_id)
+                pbs = node_by_id.get(getattr(job, "pbs_node_id", None))
+                _append(
+                    job, "backup", ["backup"],
+                    vm_name=job.vm_name, vm_id=job.vm_id,
+                    source_node=src.name if src else "N/A",
+                    dest_node=pbs.name if pbs else "N/A",
+                    source_dataset=f"vm/{job.vm_id}",
+                    dest_dataset=getattr(job, "pbs_storage_id", None) or "PBS",
+                    last_status=getattr(job, "last_status", None) or "never_run",
+                    last_run=_fmt_last_run(getattr(job, "last_run", None)),
+                )
+
+            for job in host_backup_jobs:
+                node = node_by_id.get(job.node_id)
+                size = getattr(job, "last_backup_size", None)
+                size_h = None
+                if size:
+                    for unit in ("B", "KB", "MB", "GB"):
+                        if size < 1024 or unit == "GB":
+                            size_h = f"{size:.1f} {unit}" if unit != "B" else f"{int(size)} B"
+                            break
+                        size = size / 1024
+                _append(
+                    job, "host_backup", ["host_backup"],
+                    source_node=node.name if node else "N/A",
+                    dest_node=node.name if node else "N/A",
+                    source_dataset="configurazione host",
+                    dest_dataset=job.dest_path,
+                    last_status=getattr(job, "last_status", None) or "never_run",
+                    last_run=_fmt_last_run(getattr(job, "last_run", None)),
+                    last_transferred=size_h,
+                )
+
+            for job in migration_jobs_q:
+                src = node_by_id.get(job.source_node_id)
+                dst = node_by_id.get(getattr(job, "dest_node_id", None))
+                _append(
+                    job, "migration", ["migration"],
+                    vm_name=job.vm_name, vm_id=job.vm_id,
+                    source_node=src.name if src else "N/A",
+                    dest_node=dst.name if dst else "N/A",
+                    source_dataset=f"vm/{job.vm_id}",
+                    dest_dataset=f"vm/{getattr(job, 'dest_vm_id', None) or job.vm_id}",
+                    last_status=getattr(job, "last_status", None)
+                    or getattr(job, "current_status", None) or "never_run",
+                    last_run=_fmt_last_run(getattr(job, "last_run", None)),
+                )
+
+            for job in nas_sync_jobs_q:
+                src = ep_by_id.get(job.source_endpoint_id)
+                dst = ep_by_id.get(job.dest_endpoint_id)
+                paths = ", ".join(job.source_paths or [])
+                _append(
+                    job, "nas_sync", ["nas_sync"],
+                    source_node=src.name if src else "N/A",
+                    dest_node=dst.name if dst else "N/A",
+                    source_dataset=(paths[:60] + "…") if len(paths) > 60 else (paths or "—"),
+                    dest_dataset=job.dest_base_path,
+                    last_status=job.last_run_status or "never_run",
+                    last_run=_fmt_last_run(job.last_run_at),
+                )
+
+            for job in vm_snapshot_jobs_q:
+                run_state = job.run_state or {}
+                results_n = len((run_state.get("results") or []))
+                summary_rs = run_state.get("summary") or {}
+                _append(
+                    job, "vm_snapshot", ["vm_snapshot"],
+                    source_node=f"{results_n} VM" if results_n else "—",
+                    dest_node="snapshot Proxmox",
+                    source_dataset=f"label {job.label}",
+                    dest_dataset=f"keep {job.keep} — potati 24h: {summary_rs.get('pruned_total', '—')}",
+                    last_status=job.last_run_status or "never_run",
+                    last_run=_fmt_last_run(job.last_run_at),
+                )
+
             summary_data = {
-                "total_jobs": len(sync_jobs) + len(recovery_jobs) + len(file_repl_jobs),
+                "total_jobs": sum(len(lst) for lst in all_job_lists),
                 "total_runs": total_runs,
                 "successful": successful,
                 "failed": failed,
@@ -712,7 +856,15 @@ class NotificationService:
                     <span style="color: #6c757d;">{job.get('last_transferred', '-')}</span>
                 """
             else:
-                job_type_label = "📦 Sync (ZFS/BTRFS)"
+                _type_labels = {
+                    "sync": "📦 Sync (ZFS/BTRFS)",
+                    "backup": "💾 Backup (PBS)",
+                    "migration": "🚀 Migration (Live)",
+                    "nas_sync": "📁 Repliche dati (NAS)",
+                    "vm_snapshot": "📸 Snapshot VM",
+                    "host_backup": "🛡️ Host Backup",
+                }
+                job_type_label = _type_labels.get(job.get("type"), "📋 Job")
                 vm_line = ""
                 if job.get("vm_name") or job.get("vm_id"):
                     vm_label = job.get("vm_name") or f"VM {job.get('vm_id')}"
