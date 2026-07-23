@@ -432,6 +432,8 @@ class NotificationService:
                     "id": job.id,
                     "name": job.name,
                     "type": "sync",
+                    "vm_name": job.vm_name,
+                    "vm_id": job.vm_id,
                     "source_node": source_node.name if source_node else "N/A",
                     "dest_node": dest_node.name if dest_node else "N/A",
                     "source_dataset": job.source_dataset,
@@ -711,7 +713,14 @@ class NotificationService:
                 """
             else:
                 job_type_label = "📦 Sync (ZFS/BTRFS)"
-                source_info = f"{job['source_node']}<br><code style='background: #f1f1f1; padding: 2px 4px; border-radius: 3px; font-size: 10px;'>{job.get('source_dataset', 'N/A')}</code>"
+                vm_line = ""
+                if job.get("vm_name") or job.get("vm_id"):
+                    vm_label = job.get("vm_name") or f"VM {job.get('vm_id')}"
+                    vm_id_part = f" (ID: {job['vm_id']})" if job.get("vm_id") else ""
+                    vm_line = (
+                        f"<span style='font-size: 11px;'><strong>{vm_label}</strong>{vm_id_part}</span><br>"
+                    )
+                source_info = f"{job['source_node']}<br>{vm_line}<code style='background: #f1f1f1; padding: 2px 4px; border-radius: 3px; font-size: 10px;'>{job.get('source_dataset', 'N/A')}</code>"
                 dest_info = f"{job['dest_node']}<br><code style='background: #f1f1f1; padding: 2px 4px; border-radius: 3px; font-size: 10px;'>{job.get('dest_dataset', 'N/A')}</code>"
                 duration_info = f"""
                     {job_duration}<br>
@@ -979,6 +988,9 @@ class NotificationService:
                     job_emoji = "⚠️"
                 
                 msg += f"\n\n{job_emoji} *{job['name']}*"
+                if job.get("vm_name") or job.get("vm_id"):
+                    vm_label = job.get("vm_name") or "VM"
+                    msg += f"\n   {vm_label} (ID: {job.get('vm_id', '?')})"
                 msg += f"\n   `{job['source_node']}` → `{job['dest_node']}`"
                 msg += f"\n   24h: {job['success_24h']}✓ {job['failed_24h']}✗ | Ultimo: {job['last_run']}"
                 

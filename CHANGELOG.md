@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.17.36] - 2026-07-23
+
+### Correzioni
+- **Riepilogo giornaliero**: le righe dei job di replica ZFS ora mostrano nome e ID della VM (email e Telegram), come già per i job Recovery — prima compariva solo il dataset con il VMID (`notification_service.py`).
+
 ## [3.17.35] - 2026-07-22
 
 ### Correzioni
