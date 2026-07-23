@@ -5,6 +5,29 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.18.0] - 2026-07-23
+
+Remediation Wave 0 + sicurezza non-breaking (audit 2026-07-23). Backup DB pre-release effettuato.
+
+### Correzioni
+- **Scheduler doppio (C-01/B1)**: `main.py` avviava una seconda istanza `SchedulerService()` diversa dal singleton usato da router/servizi — cron modificati non venivano applicati fino a riavvio e i lock erano incoerenti. Ora una sola istanza condivisa (`main.py`).
+- **Retention snapshot VM (C-07/B4)**: un errore nel listing snapshot veniva scambiato per "nessuno snapshot" e la retention non potava (crescita illimitata). Ora il listing fallito salta il pruning con avviso, senza cancellare al buio (`proxmox_service.py`, `vm_snapshot/retention.py`).
+- **Rollback/delete snapshot LXC (C-08/B2)**: il frontend non passava `vm_type`, così i container usavano `qm` invece di `pct`. Propagato `vm_type` end-to-end (`vms.ts`, `VmSnapshotBrowserModal.vue`).
+- **Avvio VM dopo rollback (C-08/B3)**: l'endpoint rollback non dichiarava `start_vm`; il toggle UI era ignorato. Ora rispettato (`routers/vms.py`).
+- **Host backup bloccato «running» (C-10/B12)**: dopo un crash il job restava running per sempre. Ora stato `failed` nell'except e riconciliazione allo startup (`scheduler.py`).
+- **Notifiche giornaliere collidenti (C-11/B6)**: job di tipo diverso con stesso id numerico si sopprimevano a vicenda. Chiave dedupe `(job_type, job_id)` (`notification_service.py`).
+- **Bug UI aggiorna Sanoid (C-02)**: `confirmDangerous` non importato in `updateSanoid` causava ReferenceError al click (`Nodes.vue`).
+- **Bug UI log viewer (C-05)**: rimossa riga no-op nel cambio job (`JobLogViewer.vue`).
+
+### Sicurezza
+- **Command injection (S-01/S-02/S-04/S-12)**: quoting robusto (`shlex.quote`) su description snapshot, password di cifratura host backup, password/fingerprint PBS e path — nessun breakout via metacaratteri (`proxmox_service.py`, `host_backup_service.py`, `pbs_service.py`, `recovery_job_helpers.py`).
+- **Tar traversal restore config (S-03/S5)**: estrazione con validazione membri (rifiuta `..`, path assoluti, symlink/device fuori cartella) (`config_backup.py`).
+- **Path traversal SPA (S-05/S11)**: il catch-all verifica che il file risolto stia sotto `frontend/dist` (`main.py`).
+- **SSRF webhook (S-12/S6)**: URL webhook validato (solo http/https, blocco loopback/link-local/metadata `169.254.169.254`) prima dell'invio (`services/url_guard.py`, `notification_service.py`, `settings.py`).
+- **allowed_nodes su Snapshot VM (S-10)**: indice VM, anteprima e creazione job filtrati/limitati ai nodi consentiti all'utente (`vm_snapshot_jobs.py`).
+- **Ruoli Proxmox (S-08)**: `Sys.Audit` (sola lettura) non promuove più ad admin; il ruolo è risincronizzato a ogni login (`proxmox_auth_service.py`, `auth.py`).
+- **Revoca sessione (S-09/Q-04)**: l'errore nel controllo di revoca non è più silenziato (log a warning) (`auth.py`).
+
 ## [3.17.37] - 2026-07-23
 
 ### Correzioni

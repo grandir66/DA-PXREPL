@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import shlex
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -65,10 +66,10 @@ async def ensure_pbs_storage_registered(
         "--username", pbs_user
     ]
     if pbs_node.pbs_fingerprint:
-        # Quote the fingerprint to handle colons in shell
-        cmd_parts.extend(["--fingerprint", f'"{pbs_node.pbs_fingerprint}"'])
+        # shlex.quote per due punti/metacaratteri senza injection
+        cmd_parts.extend(["--fingerprint", shlex.quote(pbs_node.pbs_fingerprint)])
     if pbs_node.pbs_password:
-        cmd_parts.extend(["--password", f'"{pbs_node.pbs_password}"'])
+        cmd_parts.extend(["--password", shlex.quote(pbs_node.pbs_password)])
 
     # Build command with PBS_FINGERPRINT env var prefix if present
     cmd = " ".join(cmd_parts)

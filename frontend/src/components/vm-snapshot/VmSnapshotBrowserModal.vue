@@ -48,7 +48,7 @@ async function rollback(vm: VmSnapshotVmEntry, snapname: string) {
   busyKey.value = `${vm.vmid}:${snapname}`
   actionMsg.value = ''
   try {
-    await vmsService.rollbackSnapshot(vm.node_id, vm.vmid, snapname, startVm)
+    await vmsService.rollbackSnapshot(vm.node_id, vm.vmid, snapname, startVm, vm.vm_type)
     actionMsg.value = `Rollback di ${vm.vm_name || vm.vmid} a «${snapname}» completato.`
     await load()
   } catch (e: unknown) {
@@ -65,7 +65,7 @@ async function removeSnapshot(vm: VmSnapshotVmEntry, snapname: string) {
   busyKey.value = `${vm.vmid}:${snapname}`
   actionMsg.value = ''
   try {
-    await vmsService.deleteSnapshot(vm.node_id, vm.vmid, snapname)
+    await vmsService.deleteSnapshot(vm.node_id, vm.vmid, snapname, vm.vm_type)
     actionMsg.value = `Snapshot «${snapname}» eliminato.`
     await load()
   } catch (e: unknown) {

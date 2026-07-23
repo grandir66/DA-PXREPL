@@ -187,11 +187,11 @@ async def get_current_user(
                 )
     except HTTPException:
         raise
-    except Exception:
-        # Best-effort: una verifica di revoca non deve mai bloccare
-        # l'autenticazione di un utente con token valido se il DB ha
-        # problemi temporanei. Loggiamo soltanto.
-        pass
+    except Exception as revoke_exc:  # noqa: BLE001
+        # Best-effort: un errore transitorio del DB non deve bloccare
+        # l'autenticazione. S-09/Q-04: non silenziare — logghiamo a warning
+        # così un problema di revoca è diagnosticabile invece di sparire.
+        logger.warning("Verifica revoca sessione fallita (fail-open): %s", revoke_exc)
     _ = token_hash  # placeholder per future blacklist hash-based
 
     return user
@@ -320,6 +320,9 @@ def create_user_from_proxmox(
         user.email = proxmox_user.email or user.email
         user.full_name = proxmox_user.full_name or user.full_name
         user.auth_method = "proxmox"
+        # S-08: risincronizza il ruolo a ogni login — un downgrade dei privilegi
+        # su Proxmox si riflette in DAPX (prima il role restava quello iniziale).
+        user.role = role
         user.last_login = datetime.utcnow()
     else:
         # Crea nuovo utente

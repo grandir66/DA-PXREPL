@@ -40,15 +40,23 @@ async def prune_vm(
     label: str,
     keep: int,
 ) -> tuple[list[str], list[str]]:
-    """Applica la retention su una VM. Ritorna (nomi_potati, errori)."""
-    snapshots = await proxmox_service.get_snapshots(
-        hostname=node.hostname,
-        vmid=vmid,
-        vm_type=vm_type,
-        port=node.ssh_port,
-        username=node.ssh_user,
-        key_path=node.ssh_key_path,
-    )
+    """Applica la retention su una VM. Ritorna (nomi_potati, errori).
+
+    Se il listing fallisce, NON si pota (evita di scambiare l'errore per "zero
+    snapshot" e lasciar crescere gli snapshot senza limite): l'errore finisce
+    nella lista errori e la retention viene saltata per questa VM (C-07/B4)."""
+    try:
+        snapshots = await proxmox_service.get_snapshots(
+            hostname=node.hostname,
+            vmid=vmid,
+            vm_type=vm_type,
+            port=node.ssh_port,
+            username=node.ssh_user,
+            key_path=node.ssh_key_path,
+            raise_on_error=True,
+        )
+    except Exception as exc:  # noqa: BLE001 — listing fallito → niente pruning
+        return [], [f"retention saltata (listing snapshot fallito): {exc}"]
     pruned: list[str] = []
     errors: list[str] = []
     for snapname in select_prunable(snapshots, label, keep):

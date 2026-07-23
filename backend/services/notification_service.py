@@ -147,14 +147,17 @@ class NotificationService:
         # La limitazione si applica sia per job schedulati che manuali
         if notify_mode == "daily" and job_id and status == "success":
             today = datetime.utcnow().date()
-            last_notification = self._daily_job_notifications.get(job_id)
-            
+            # Chiave composita (job_type, job_id): job di tipo diverso con lo
+            # stesso id numerico non si sopprimono più a vicenda (C-11/B6).
+            dedupe_key = f"{job_type or 'job'}:{job_id}"
+            last_notification = self._daily_job_notifications.get(dedupe_key)
+
             if last_notification and last_notification.date() == today:
-                logger.debug(f"Notifica già inviata oggi per job {job_id}, skip (notify_mode=daily)")
+                logger.debug(f"Notifica già inviata oggi per {dedupe_key}, skip (notify_mode=daily)")
                 return {"sent": False, "reason": "daily_limit_reached"}
-            
+
             # Aggiorna tracking
-            self._daily_job_notifications[job_id] = datetime.utcnow()
+            self._daily_job_notifications[dedupe_key] = datetime.utcnow()
             
             # Pulizia entries vecchie (più di 2 giorni)
             self._cleanup_old_notifications()
@@ -1011,6 +1014,13 @@ class NotificationService:
     ) -> Dict[str, Any]:
         """Invia notifica via webhook"""
         try:
+            from services.url_guard import assert_safe_webhook_url, UnsafeUrlError
+            try:
+                assert_safe_webhook_url(config.webhook_url)
+            except UnsafeUrlError as guard_exc:
+                logger.error(f"Webhook bloccato dal guard SSRF: {guard_exc}")
+                return {"success": False, "message": f"URL webhook non sicuro: {guard_exc}"}
+
             headers = {"Content-Type": "application/json"}
             if config.webhook_secret:
                 headers["X-Webhook-Secret"] = config.webhook_secret

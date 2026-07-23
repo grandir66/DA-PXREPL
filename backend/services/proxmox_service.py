@@ -7,6 +7,7 @@ from typing import Optional, Dict, List, Tuple, Any
 import logging
 import json
 import re
+import shlex
 
 from services.ssh_service import ssh_service, SSHResult
 from services.pve_tags import ensure_vm_replication_tag, merge_tag_in_vm_config
@@ -178,9 +179,14 @@ class ProxmoxService:
         vm_type: str = "qemu",
         port: int = 22,
         username: str = "root",
-        key_path: str = "/root/.ssh/id_rsa"
+        key_path: str = "/root/.ssh/id_rsa",
+        raise_on_error: bool = False,
     ) -> List[Dict]:
-        """Ottiene lista snapshot VM"""
+        """Ottiene lista snapshot VM.
+
+        Con ``raise_on_error=True`` (usato dalla retention) un fallimento del
+        comando di listing solleva RuntimeError invece di ritornare ``[]`` — così
+        un errore non viene scambiato per "nessuno snapshot" (bug C-07/B4)."""
         cmd_base = "qm" if vm_type == "qemu" else "pct"
         # qm listsnapshot <vmid> non ha output json nativo facile, ma proviamo a parsarle
         # Output tipico:
@@ -240,15 +246,26 @@ class ProxmoxService:
         
         pvesh_cmd = f"pvesh get /nodes/{node_name}/{'qemu' if vm_type == 'qemu' else 'lxc'}/{vmid}/snapshot --output-format json"
         res = await ssh_service.execute(hostname, pvesh_cmd, port, username, key_path)
-        
-        if res.success and res.stdout.strip():
+
+        if not res.success:
+            if raise_on_error:
+                raise RuntimeError(
+                    f"Listing snapshot fallito per VM {vmid} su {hostname}: "
+                    f"{(res.stderr or res.stdout or 'errore sconosciuto').strip()[:300]}"
+                )
+            return snapshots
+
+        if res.stdout.strip():
             try:
                 snapshots = json.loads(res.stdout)
                 # Filter 'current' entry usually returned
                 snapshots = [s for s in snapshots if s.get('name') != 'current']
-            except:
-                pass
-                
+            except Exception as exc:
+                if raise_on_error:
+                    raise RuntimeError(
+                        f"Output listing snapshot non interpretabile per VM {vmid}: {exc}"
+                    )
+
         return snapshots
 
     
@@ -1465,9 +1482,10 @@ echo "Configuration created"
         """Crea snapshot VM"""
         
         cmd_base = "qm" if vm_type == "qemu" else "pct"
-        cmd = f"{cmd_base} snapshot {vmid} {snapname}"
+        cmd = f"{cmd_base} snapshot {int(vmid)} {shlex.quote(str(snapname))}"
         if description:
-            cmd += f" --description \"{description}\""
+            # shlex.quote: description contiene job_name user-controlled → no shell injection
+            cmd += f" --description {shlex.quote(str(description))}"
         if vmstate and vm_type == "qemu":
             cmd += " --vmstate 1"
             

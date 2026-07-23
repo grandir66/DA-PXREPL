@@ -369,10 +369,12 @@ class ProxmoxAuthService:
         if userid == "root@pam":
             return True
         
-        # Verifica permessi sul path root
+        # Verifica permessi sul path root.
+        # S-08: Sys.Audit è di sola lettura e NON deve promuovere ad admin DAPX;
+        # servono privilegi realmente modificativi.
         root_perms = permissions.get("/", [])
-        admin_perms = ["Sys.Audit", "Sys.Modify", "Permissions.Modify"]
-        
+        admin_perms = ["Sys.Modify", "Permissions.Modify"]
+
         if any(p in root_perms for p in admin_perms):
             return True
         

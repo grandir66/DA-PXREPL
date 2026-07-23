@@ -21,7 +21,7 @@ from routers import file_endpoints, file_replication_jobs
 from routers import nas_sync_jobs
 from routers import vm_snapshot_jobs
 from routers import schedule as schedule_router
-from services.scheduler import SchedulerService
+from services.scheduler import scheduler_service
 from services.logging_config import setup_logging, get_logger
 
 # Configurazione logging avanzato
@@ -36,8 +36,10 @@ setup_logging(
 )
 logger = get_logger(__name__)
 
-# Inizializzazione scheduler
-scheduler = SchedulerService()
+# Scheduler: UNA sola istanza condivisa (il singleton usato da router/servizi).
+# Costruire un secondo SchedulerService() qui creerebbe un'istanza morta su cui
+# update/remove/lock non avrebbero effetto (bug C-01/B1).
+scheduler = scheduler_service
 
 
 @asynccontextmanager
@@ -88,7 +90,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="DAPX-backandrepl",
     description="Sistema centralizzato di backup e replica per Proxmox VE. Supporta ZFS (Sanoid/Syncoid), BTRFS (btrfs send/receive) e PBS (Proxmox Backup Server).",
-    version="3.17.37",
+    version="3.18.0",
     lifespan=lifespan
 )
 
@@ -174,7 +176,7 @@ async def health_check():
     from datetime import datetime as _dt
     payload: dict = {
         "status": "healthy",
-        "version": "3.17.37",
+        "version": "3.18.0",
         "auth_enabled": True,
         "mode": dapx_mode,
         "checks": {},
@@ -261,8 +263,14 @@ if frontend_path:
         if full_path.startswith("api/"):
             raise HTTPException(status_code=404, detail="API endpoint not found")
 
-        file_path = os.path.join(frontend_path, full_path)
-        if os.path.exists(file_path) and os.path.isfile(file_path):
+        # Anti path-traversal: il file risolto deve stare sotto frontend_path.
+        file_path = os.path.realpath(os.path.join(frontend_path, full_path))
+        _fp_root = os.path.realpath(frontend_path)
+        if (
+            os.path.commonpath([_fp_root, file_path]) == _fp_root
+            and os.path.exists(file_path)
+            and os.path.isfile(file_path)
+        ):
             return FileResponse(file_path, headers=_NO_CACHE_HEADERS)
 
         return FileResponse(

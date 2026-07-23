@@ -752,6 +752,9 @@ const formatSize = (bytes: number) => {
 };
 
 const updateSanoid = async (node: Node) => {
+ // C-02: import locale (come installSanoid) — senza questo confirmDangerous
+ // è undefined qui e il click causa un ReferenceError.
+ const { confirmDangerous } = await import('../stores/confirm');
  if(!await confirmDangerous(`Aggiornare Sanoid sul nodo ${node.name}? L'operazione potrebbe richiedere alcuni minuti.`)) return;
  try {
  _toast.info(`Aggiornamento Sanoid avviato su ${node.name}…`);

@@ -415,6 +415,11 @@ async def test_notification(
             raise HTTPException(status_code=400, detail="URL Webhook non configurato")
         
         import httpx
+        from services.url_guard import assert_safe_webhook_url, UnsafeUrlError
+        try:
+            assert_safe_webhook_url(config.webhook_url)
+        except UnsafeUrlError as guard_exc:
+            raise HTTPException(status_code=400, detail=f"URL webhook non sicuro: {guard_exc}")
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(

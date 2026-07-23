@@ -38,6 +38,34 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _allowed_node_ids(user: User) -> Optional[set]:
+    """Insieme dei node_id accessibili all'utente, o None se illimitato (admin/allowed_nodes null)."""
+    if getattr(user, "role", None) == "admin" or getattr(user, "allowed_nodes", None) is None:
+        return None
+    return set(user.allowed_nodes)
+
+
+def _filter_index_for_user(user: User, index: list[dict]) -> list[dict]:
+    allowed = _allowed_node_ids(user)
+    if allowed is None:
+        return index
+    return [e for e in index if e.get("node_id") in allowed]
+
+
+def _assert_targets_allowed(user: User, targets: list, selectors) -> None:
+    """S-10: un operator con allowed_nodes non può creare job su nodi fuori perimetro."""
+    allowed = _allowed_node_ids(user)
+    if allowed is None:
+        return
+    bad = [t.node_id for t in (targets or []) if t.node_id not in allowed]
+    bad += [n for n in (selectors.node_ids or []) if n not in allowed]
+    if bad:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Nodi non consentiti per l'utente: {sorted(set(bad))}",
+        )
+
+
 def _latest_log_errors(db: Session, job_ids: list[int]) -> dict[int, str]:
     if not job_ids:
         return {}
@@ -109,21 +137,23 @@ def stats_summary(db: Session = Depends(get_db), _user: User = Depends(get_curre
 
 
 @router.get("/vm-index")
-async def vm_index(db: Session = Depends(get_db), _user: User = Depends(get_current_user)):
-    """Indice VM cluster con tag, status e flag pvesr (per il wizard di selezione)."""
-    return await fetch_cluster_vm_index(db)
+async def vm_index(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Indice VM cluster con tag, status e flag pvesr (per il wizard di selezione).
+
+    S-10: filtrato per allowed_nodes dell'utente."""
+    return _filter_index_for_user(user, await fetch_cluster_vm_index(db))
 
 
 @router.post("/resolve-preview")
 async def resolve_preview(
     body: dict,
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     """Anteprima VM risolte da targets+selectors (dry-run per il wizard)."""
     targets = [TargetRef(**t).model_dump() for t in body.get("targets") or []]
     selectors = Selectors(**(body.get("selectors") or {})).model_dump()
-    index = await fetch_cluster_vm_index(db)
+    index = _filter_index_for_user(user, await fetch_cluster_vm_index(db))
     return apply_selectors(index, targets, selectors)
 
 
@@ -141,13 +171,14 @@ def list_jobs(db: Session = Depends(get_db), _user: User = Depends(get_current_u
 def create_job(
     body: VmSnapshotJobCreate,
     db: Session = Depends(get_db),
-    _user: User = Depends(require_operator),
+    user: User = Depends(require_operator),
 ):
     if not body.targets and not (body.selectors.tags or body.selectors.node_ids):
         raise HTTPException(
             status_code=400,
             detail="Selezionare almeno una VM o un selettore (tag/nodo)",
         )
+    _assert_targets_allowed(user, body.targets, body.selectors)
     job = VmSnapshotJob(
         name=body.name,
         description=body.description,

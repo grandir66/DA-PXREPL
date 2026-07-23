@@ -6,6 +6,7 @@ Esegue il backup dei file di configurazione critici per il disaster recovery.
 """
 
 import os
+import shlex
 import tarfile
 import tempfile
 import logging
@@ -211,21 +212,26 @@ class HostBackupService:
                 "error": "Nessun file di configurazione trovato da backuppare"
             }
         
-        # Crea il tar
-        paths_str = " ".join(f"'{p}'" for p in existing_paths)
-        
+        # Crea il tar — shlex.quote su ogni path/segreto (no shell injection)
+        paths_str = " ".join(shlex.quote(p) for p in existing_paths)
+
         if compress and encrypt and encrypt_password:
-            # Tar + gzip + openssl
+            # Tar + gzip + openssl. La password resta visibile in `ps` sul nodo
+            # remoto (residuo noto), ma non è più iniettabile.
             backup_file = f"{dest_path}/{backup_name}.tar.gz.enc"
-            cmd = f"tar czf - {paths_str} 2>/dev/null | openssl enc -aes-256-cbc -salt -pbkdf2 -pass pass:'{encrypt_password}' -out '{backup_file}'"
+            cmd = (
+                f"tar czf - {paths_str} 2>/dev/null | "
+                f"openssl enc -aes-256-cbc -salt -pbkdf2 "
+                f"-pass pass:{shlex.quote(encrypt_password)} -out {shlex.quote(backup_file)}"
+            )
         elif compress:
             # Solo tar + gzip
             backup_file = f"{dest_path}/{backup_name}.tar.gz"
-            cmd = f"tar czf '{backup_file}' {paths_str} 2>/dev/null"
+            cmd = f"tar czf {shlex.quote(backup_file)} {paths_str} 2>/dev/null"
         else:
             # Solo tar
             backup_file = f"{dest_path}/{backup_name}.tar"
-            cmd = f"tar cf '{backup_file}' {paths_str} 2>/dev/null"
+            cmd = f"tar cf {shlex.quote(backup_file)} {paths_str} 2>/dev/null"
         
         result = await ssh_service.execute(
             hostname=hostname,

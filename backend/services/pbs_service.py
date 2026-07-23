@@ -8,6 +8,7 @@ from typing import Optional, Dict, List, Tuple, Any
 import logging
 import json
 import re
+import shlex
 import time
 from datetime import datetime, timedelta
 import aiohttp
@@ -744,10 +745,10 @@ class PBSService:
         # Add password via environment if provided
         env_prefix = ""
         if pbs_password:
-            env_prefix = f"PBS_PASSWORD='{pbs_password}' "
-        
+            env_prefix = f"PBS_PASSWORD={shlex.quote(pbs_password)} "
+
         if pbs_fingerprint:
-            env_prefix += f"PBS_FINGERPRINT='{pbs_fingerprint}' "
+            env_prefix += f"PBS_FINGERPRINT={shlex.quote(pbs_fingerprint)} "
         
         cmd = env_prefix + " ".join(cmd_parts) + " 2>/dev/null"
         
@@ -902,11 +903,11 @@ for match in re.finditer(r'pbs:\\s+(\\S+)\\n((?:^\\s+.*\\n)*)', content, re.MULT
         ]
         
         if pbs_fingerprint:
-            # Quote the fingerprint to handle colons in shell
-            add_cmd_parts.extend(["--fingerprint", f'"{pbs_fingerprint}"'])
-        
+            # shlex.quote per gestire due punti/metacaratteri senza injection
+            add_cmd_parts.extend(["--fingerprint", shlex.quote(pbs_fingerprint)])
+
         if pbs_password:
-            add_cmd_parts.extend(["--password", f'"{pbs_password}"'])
+            add_cmd_parts.extend(["--password", shlex.quote(pbs_password)])
         
         add_cmd = " ".join(add_cmd_parts)
         

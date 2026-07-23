@@ -24,6 +24,37 @@ from routers.auth import require_admin, User
 router = APIRouter(prefix="/api/config-backup", tags=["Configuration Backup"])
 logger = logging.getLogger(__name__)
 
+
+def _is_within_directory(directory: str, target: str) -> bool:
+    abs_dir = os.path.realpath(directory)
+    abs_target = os.path.realpath(target)
+    return os.path.commonpath([abs_dir, abs_target]) == abs_dir
+
+
+def _safe_extractall(tar: "tarfile.TarFile", dest_dir: str) -> None:
+    """Estrazione tar sicura (anti tar-slip): rifiuta path assoluti, ``..``,
+    symlink/hardlink e device che uscirebbero da ``dest_dir``."""
+    for member in tar.getmembers():
+        target = os.path.join(dest_dir, member.name)
+        if not _is_within_directory(dest_dir, target):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Archivio non sicuro: '{member.name}' esce dalla cartella di estrazione",
+            )
+        if member.issym() or member.islnk():
+            link_target = os.path.join(os.path.dirname(target), member.linkname)
+            if not _is_within_directory(dest_dir, link_target):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Archivio non sicuro: link '{member.name}' punta fuori dalla cartella",
+                )
+        if member.ischr() or member.isblk() or member.isfifo():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Archivio non sicuro: '{member.name}' è un device/fifo",
+            )
+    tar.extractall(dest_dir)
+
 # Configurazione percorsi
 INSTALL_DIR = os.environ.get("DAPX_INSTALL_DIR", "/opt/dapx-unified")
 DATA_DIR = os.environ.get("DAPX_DATA_DIR", "/var/lib/dapx-unified")
@@ -340,7 +371,9 @@ async def restore_backup(
         
         try:
             with tarfile.open(temp_file, "r:gz") as tar:
-                tar.extractall(extract_dir)
+                _safe_extractall(tar, extract_dir)
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Errore estrazione archivio: {e}")
         

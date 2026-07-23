@@ -81,7 +81,7 @@ class SchedulerService:
         """All'avvio, marca come failed/idle i job lasciati in stato
         'running' o 'backing_up'/'restoring'/'registering' da un crash.
         """
-        from database import RecoveryJob, BackupJob  # lazy import per evitare cicli
+        from database import RecoveryJob, BackupJob, HostBackupJob  # lazy import per evitare cicli
         db = SessionLocal()
         try:
             stale_msg = "reset allo startup (backend riavviato durante esecuzione)"
@@ -100,6 +100,13 @@ class SchedulerService:
                 bj.current_status = "failed"
                 bj.last_status = "failed"
                 bj.last_error = stale_msg
+            # C-10/B12: anche HostBackupJob può restare 'running' dopo un crash.
+            for hj in db.query(HostBackupJob).filter(
+                HostBackupJob.current_status == "running"
+            ).all():
+                hj.current_status = "failed"
+                hj.last_status = "failed"
+                hj.last_error = stale_msg
             db.commit()
             logger.info("Stato job stale (running/in-progress) riazzerato")
         except Exception as e:
@@ -912,11 +919,21 @@ class SchedulerService:
             
         except Exception as e:
             logger.error(f"Errore esecuzione HostBackupJob {job_id}: {e}")
+            # C-10/B12: senza questo il job resta 'running' per sempre dopo un crash.
+            try:
+                job = db.query(HostBackupJob).filter(HostBackupJob.id == job_id).first()
+                if job:
+                    job.current_status = "failed"
+                    job.last_status = "failed"
+                    job.last_error = str(e)[:1000]
+                    job.error_count = (job.error_count or 0) + 1
+            except Exception:
+                pass
             if log_entry:
                 log_entry.status = "failed"
                 log_entry.error = str(e)
                 log_entry.completed_at = datetime.utcnow()
-                db.commit()
+            db.commit()
         finally:
             db.close()
     

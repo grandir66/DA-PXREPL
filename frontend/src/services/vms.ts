@@ -85,12 +85,12 @@ export default {
         return apiClient.post(`/vms/node/${node}/vm/${vmid}/snapshot`, { snapname, description, vmstate });
     },
 
-    rollbackSnapshot(node: number | string, vmid: number | string, snapname: string, start_vm: boolean = false) {
-        return apiClient.post(`/vms/node/${node}/vm/${vmid}/snapshot/${snapname}/rollback?start_vm=${start_vm}`);
+    rollbackSnapshot(node: number | string, vmid: number | string, snapname: string, start_vm: boolean = false, vm_type: string = 'qemu') {
+        return apiClient.post(`/vms/node/${node}/vm/${vmid}/snapshot/${snapname}/rollback?start_vm=${start_vm}&vm_type=${vm_type}`);
     },
 
-    deleteSnapshot(node: number | string, vmid: number | string, snapname: string) {
-        return apiClient.delete(`/vms/node/${node}/vm/${vmid}/snapshot/${snapname}`);
+    deleteSnapshot(node: number | string, vmid: number | string, snapname: string, vm_type: string = 'qemu') {
+        return apiClient.delete(`/vms/node/${node}/vm/${vmid}/snapshot/${snapname}?vm_type=${vm_type}`);
     },
 
     // Sanoid & ZFS

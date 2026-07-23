@@ -567,6 +567,7 @@ async def rollback_vm_snapshot(
     vmid: int,
     snapname: str,
     vm_type: str = "qemu",
+    start_vm: bool = False,
     user: User = Depends(require_operator),
     db: Session = Depends(get_db)
 ):
@@ -574,7 +575,7 @@ async def rollback_vm_snapshot(
     node = db.query(Node).filter(Node.id == node_id).first()
     if not node:
         raise HTTPException(status_code=404, detail="Nodo non trovato")
-    
+
     if not check_node_access(user, node):
         raise HTTPException(status_code=403, detail="Accesso negato")
 
@@ -582,6 +583,7 @@ async def rollback_vm_snapshot(
         hostname=node.hostname,
         vmid=vmid,
         snapname=snapname,
+        start_vm=start_vm,
         vm_type=vm_type,
         port=node.ssh_port,
         username=node.ssh_user,

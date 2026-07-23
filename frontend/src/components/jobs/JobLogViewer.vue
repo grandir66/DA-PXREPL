@@ -344,8 +344,9 @@ watch(
   () => [props.visible, props.jobId],
   ([vis]) => {
     if (vis) {
+      // output è computed da progress → azzerando progress si azzera anche
+      // l'output del job precedente (rimossa la vecchia riga no-op `output.value`).
       progress.value = null
-      output.value
       startPolling()
     } else {
       stopPolling()
