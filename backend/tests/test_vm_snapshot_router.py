@@ -129,3 +129,21 @@ def test_toggle(client):
     r = c.post(f"/api/vm-snapshots/{job_id}/toggle")
     assert r.status_code == 200
     assert r.json()["is_active"] is False
+
+
+def test_update_cannot_empty_selection(client):
+    c, _, _ = client
+    job_id = c.post("/api/vm-snapshots", json=PAYLOAD).json()["id"]
+    # B8: svuotare targets e selettori deve dare 400 (come in create)
+    r = c.put(f"/api/vm-snapshots/{job_id}", json={
+        "targets": [], "selectors": {"tags": [], "node_ids": [], "exclude_vmids": []},
+    })
+    assert r.status_code == 400
+
+
+def test_delete_running_job_conflict(client, monkeypatch):
+    c, _, _ = client
+    job_id = c.post("/api/vm-snapshots", json=PAYLOAD).json()["id"]
+    monkeypatch.setattr(vm_snapshot_jobs, "is_job_running", lambda _id: True)
+    r = c.delete(f"/api/vm-snapshots/{job_id}")
+    assert r.status_code == 409

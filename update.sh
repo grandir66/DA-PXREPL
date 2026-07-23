@@ -6,6 +6,23 @@
 
 set -e
 
+# C-12: rete di sicurezza anti-downtime. Con `set -e` un errore dopo lo stop del
+# servizio (git/pip/npm/migrazione) farebbe uscire lo script lasciando il servizio
+# spento. Questo trap, se l'update esce con errore e il servizio era attivo prima,
+# tenta di riavviarlo per non lasciare l'app giù fino a intervento manuale.
+SERVICE_WAS_RUNNING=0
+_dapx_on_exit() {
+    local code=$?
+    if [ "$code" -ne 0 ] && [ "${SERVICE_WAS_RUNNING}" = "1" ]; then
+        if ! systemctl is-active --quiet dapx-unified 2>/dev/null; then
+            echo ""
+            echo "[!] Update fallito (exit $code): riavvio il servizio per evitare downtime…"
+            systemctl start dapx-unified 2>/dev/null || true
+        fi
+    fi
+}
+trap _dapx_on_exit EXIT
+
 # Configurazioni
 INSTALL_DIR="/opt/dapx-unified"
 DATA_DIR="/var/lib/dapx-unified"
@@ -276,6 +293,7 @@ fi
 echo -e "\n${BOLD}Arresto Servizio${NC}\n"
 
 if systemctl is-active --quiet dapx-unified 2>/dev/null; then
+    SERVICE_WAS_RUNNING=1
     systemctl stop dapx-unified
     log_success "Servizio arrestato"
 else

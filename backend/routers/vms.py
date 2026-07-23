@@ -596,11 +596,6 @@ async def rollback_vm_snapshot(
     log_audit(db, user.id, "vm_snapshot_rollback", "vm", resource_id=vmid, details=f"Rollback to snapshot {snapname}")
     return {"message": msg}
 
-    return list(all_vms.values())
-
-
-    return list(all_vms.values())
-
 
 @router.get("/node/{node_id}/vm/{vmid}/sanoid-config")
 async def get_vm_sanoid_config(

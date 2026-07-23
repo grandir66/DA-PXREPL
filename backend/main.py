@@ -54,8 +54,13 @@ async def lifespan(app: FastAPI):
     try:
         from update_db_schema import update_schema
         update_schema()
+        app.state.schema_error = None
     except Exception as e:
-        logger.warning(f"update_db_schema fallito (non bloccante): {e}")
+        # C-09: non più silenzioso a warning — è un problema strutturale che va
+        # visto (log ERROR) e segnalato in /api/health, così un endpoint che poi
+        # fallisce per colonna mancante è correlabile subito.
+        logger.error(f"update_db_schema FALLITO (schema potenzialmente incompleto): {e}", exc_info=True)
+        app.state.schema_error = str(e)
 
     try:
         from services.nas_sync.execution import reconcile_stale_running_jobs as _nas2_reconcile
@@ -180,7 +185,7 @@ async def health_check():
         "auth_enabled": True,
         "mode": dapx_mode,
         "checks": {},
-        "features": ["zfs", "btrfs", "pbs", "ha", "cluster"] if dapx_mode == "full" else [],
+        "features": ["zfs", "btrfs", "pbs", "ha", "cluster", "nas-sync", "vm-snapshots"] if dapx_mode == "full" else [],
         "ts": _dt.utcnow().isoformat() + "Z",
     }
     healthy = True
@@ -205,6 +210,9 @@ async def health_check():
     except Exception as e:
         payload["checks"]["scheduler"] = f"error: {type(e).__name__}"
         healthy = False
+    # Schema DB: se la migrazione allo startup è fallita, segnalalo (C-09).
+    schema_err = getattr(app.state, "schema_error", None)
+    payload["checks"]["schema"] = "ok" if not schema_err else f"error: {schema_err[:120]}"
 
     if not healthy:
         payload["status"] = "degraded"

@@ -9,14 +9,21 @@ const apiClient: AxiosInstance = axios.create({
 })
 
 let isRefreshing = false
-let refreshWaiters: Array<(token: string) => void> = []
+// Ogni waiter porta resolve E reject: se il refresh fallisce, le richieste in
+// coda vengono rigettate SUBITO invece di restare appese fino al timeout (C-13).
+let refreshWaiters: Array<{ resolve: (token: string) => void; reject: (err: unknown) => void }> = []
 
-function subscribeTokenRefresh(callback: (token: string) => void) {
-    refreshWaiters.push(callback)
+function subscribeTokenRefresh(resolve: (token: string) => void, reject: (err: unknown) => void) {
+    refreshWaiters.push({ resolve, reject })
 }
 
 function notifyRefreshed(token: string) {
-    refreshWaiters.forEach(cb => cb(token))
+    refreshWaiters.forEach(w => w.resolve(token))
+    refreshWaiters = []
+}
+
+function failRefreshWaiters(err: unknown) {
+    refreshWaiters.forEach(w => w.reject(err))
     refreshWaiters = []
 }
 
@@ -81,10 +88,15 @@ apiClient.interceptors.response.use(
 
         if (isRefreshing) {
             return new Promise((resolve, reject) => {
-                subscribeTokenRefresh((token) => {
-                    originalRequest.headers.Authorization = `Bearer ${token}`
-                    resolve(apiClient(originalRequest))
-                })
+                subscribeTokenRefresh(
+                    (token) => {
+                        originalRequest.headers.Authorization = `Bearer ${token}`
+                        resolve(apiClient(originalRequest))
+                    },
+                    (err) => reject(err),
+                )
+                // Rete di sicurezza: se il refresh non notifica mai, non restare
+                // appesi all'infinito.
                 setTimeout(() => reject(error), 15000)
             })
         }
@@ -98,12 +110,15 @@ apiClient.interceptors.response.use(
                 originalRequest.headers.Authorization = `Bearer ${newToken}`
                 return apiClient(originalRequest)
             }
-        } catch {
-            // fall through to logout
+        } catch (refreshErr) {
+            // Refresh fallito: sblocca subito le richieste in coda.
+            failRefreshWaiters(refreshErr)
         } finally {
             isRefreshing = false
         }
 
+        // Refresh senza token valido: rigetta anche eventuali waiter residui.
+        failRefreshWaiters(error)
         clearSession()
         if (!window.location.pathname.startsWith('/login')) {
             window.location.href = '/login'

@@ -1049,6 +1049,12 @@ class SchedulerService:
     def remove_nas_sync_schedule(self, job_id: int) -> None:
         self._jobs.pop(f"nas_sync_{job_id}", None)
 
+    def next_run_for(self, job_key: str) -> Optional[datetime]:
+        """Prossima esecuzione pianificata per una chiave job (dal registry live).
+
+        Usato dalle API per esporre next_run senza scrivere il DB a ogni tick (B7)."""
+        return self._jobs.get(job_key)
+
     def update_vm_snapshot_schedule(
         self,
         job_id: int,

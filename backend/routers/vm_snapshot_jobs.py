@@ -116,7 +116,7 @@ def _job_out(db: Session, job: VmSnapshotJob, last_run_error: Optional[str] = No
         last_run_at=job.last_run_at,
         last_run_status=job.last_run_status,
         last_run_duration_sec=job.last_run_duration_sec,
-        next_run_at=job.next_run_at,
+        next_run_at=scheduler_service.next_run_for(f"vm_snapshot_{job.id}") or job.next_run_at,
         notify_mode=job.notify_mode,
         notify_subject=job.notify_subject,
         run_state=job.run_state or {},
@@ -206,7 +206,9 @@ def get_job(job_id: int, db: Session = Depends(get_db), _user: User = Depends(ge
     job = db.query(VmSnapshotJob).filter(VmSnapshotJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job non trovato")
-    return _job_out(db, job)
+    # B19: come list_jobs, includi l'ultimo errore (se il job non è in esecuzione).
+    err = None if job.current_status == "running" else _latest_log_errors(db, [job.id]).get(job.id)
+    return _job_out(db, job, err)
 
 
 @router.put("/{job_id}", response_model=VmSnapshotJobOut)
@@ -224,6 +226,14 @@ def update_job(
         data["targets"] = [TargetRef(**t).model_dump() for t in data["targets"]]
     if "selectors" in data and data["selectors"] is not None:
         data["selectors"] = Selectors(**data["selectors"]).model_dump()
+    # B8: come in create, la selezione finale non può restare vuota.
+    final_targets = data.get("targets", job.targets) or []
+    final_selectors = data.get("selectors", job.selectors) or {}
+    if not final_targets and not (final_selectors.get("tags") or final_selectors.get("node_ids")):
+        raise HTTPException(
+            status_code=400,
+            detail="Selezionare almeno una VM o un selettore (tag/nodo)",
+        )
     for key, value in data.items():
         setattr(job, key, value)
     job.updated_at = datetime.utcnow()
@@ -241,6 +251,9 @@ def delete_job(job_id: int, db: Session = Depends(get_db), _user: User = Depends
     job = db.query(VmSnapshotJob).filter(VmSnapshotJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job non trovato")
+    # B9: non eliminare un job mentre sta girando (lascerebbe l'esecuzione orfana).
+    if is_job_running(job_id) or job.current_status == "running":
+        raise HTTPException(status_code=409, detail="Job in esecuzione: fermarlo prima di eliminarlo")
     scheduler_service.remove_vm_snapshot_schedule(job.id)
     db.delete(job)
     db.commit()
