@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.20.3] - 2026-07-24
+
+### Ottimizzazioni
+- **Polling frontend (P-09/P-10/P-17)**: rimosso il doppio meccanismo di poll in Replica file (loop 2s×90 parallelo all'interval 3s); intervallo log viewer 1.5s → 3s; capacità endpoint in Repliche dati non più ricalcolate a ogni ciclo di poll (cache, refetch solo su refresh manuale o endpoint nuovo) (`FileReplication.vue`, `JobLogViewer.vue`, `NasSync.vue`).
+
 ## [3.20.2] - 2026-07-24
 
 ### Sicurezza

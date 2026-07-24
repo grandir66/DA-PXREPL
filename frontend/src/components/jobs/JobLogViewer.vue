@@ -123,7 +123,7 @@ const props = withDefaults(
     pollMs?: number
   }>(),
   {
-    pollMs: 1500,
+    pollMs: 3000,  // P-09: 1.5s era troppo aggressivo
   }
 )
 const emit = defineEmits<{ (e: 'update:visible', v: boolean): void }>()

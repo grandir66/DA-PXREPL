@@ -29,9 +29,13 @@ const activeCount = computed(() => stats.value.active)
 const runningCount = computed(() => stats.value.running)
 const failedCount = computed(() => stats.value.failed)
 
-async function loadCapabilities() {
+async function loadCapabilities(force = false) {
+  // P-17: durante il poll live (force=false) non ricalcolare le capacità di ogni
+  // endpoint a ogni ciclo — solo quelle non ancora in cache. Sul refresh manuale
+  // (force=true) o per un endpoint nuovo si rifà.
   await Promise.all(
     endpoints.value.map(async (ep) => {
+      if (!force && endpointCaps.value[ep.id]) return
       try {
         const { data } = await nasSyncApi.capabilities(ep.id)
         endpointCaps.value[ep.id] = data
@@ -54,7 +58,7 @@ async function refresh(silent = false) {
   } finally {
     if (!silent) loading.value = false
   }
-  await loadCapabilities()
+  await loadCapabilities(!silent)
 }
 
 function jobIsRunning(job: NasSyncJob) {

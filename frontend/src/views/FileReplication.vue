@@ -97,14 +97,10 @@ async function runJob(job: FileReplicationJob) {
     logJob.value = job
     showLogModal.value = true
     await refresh()
+    // P-10: un solo meccanismo di poll (startLivePoll a 3s che si ferma da solo
+    // quando nessun job è più in esecuzione). Rimosso il loop 2s×90 parallelo
+    // che raddoppiava richieste e refresh.
     startLivePoll()
-    for (let i = 0; i < 90; i++) {
-      await new Promise((r) => setTimeout(r, 2000))
-      const { data } = await fileReplicationApi.progress(job.id)
-      if (data.status !== 'running') break
-      await refresh()
-    }
-    await refresh()
   } catch (e: unknown) {
     const msg =
       typeof e === 'object' &&
