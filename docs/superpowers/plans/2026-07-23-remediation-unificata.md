@@ -155,3 +155,25 @@ Q-12 (env var incoerenti).
 3. Bump 5 versioni + CHANGELOG + rebuild dist + commit + tag + `gh release create` (flusso CLAUDE.md).
 4. `update.sh --yes` su CT 332, verifica health+openapi; poi CT 124 quando raggiungibile.
 5. Se un check fallisce: rollback a `git tag` precedente + ripristino `dapx.db.backup-*`.
+
+---
+
+## Stato esecuzione (aggiornato 2026-07-24)
+
+Eseguito e deployato su .199 (dev), .145 (cliente) intatta a 3.17.36.
+
+- **3.18.0** Wave 0 + sicurezza non-breaking — FATTO
+- **3.18.1** Wave 3 robustezza — FATTO
+- **3.19.0** Wave 2 performance (event-loop, stats SQL, indici, pool SSH, kill du, debounce) — FATTO
+- **3.20.0** N+1 liste, log per allowed_nodes (S-14), Docker (Q-07/08/11/14) — FATTO
+- **3.20.1** cifratura segreti notifiche a riposo, non-breaking (S-06 parziale) — FATTO
+- **3.20.2** limiti upload/query (S-13), memoria output (P-12), env alias (Q-12) — FATTO
+- **3.20.3** polling frontend (P-09/P-10/P-17) — FATTO
+
+### Non fatto — richiede DECISIONE (rischio rottura) o è grande cleanup
+
+- **S-07 TLS/SSH verify default=True**: romperebbe i nodi Proxmox self-signed finché non si configura l'opt-out. DECISIONE UTENTE.
+- **S-06 completo (pbs_password/api_password/encrypt_password)**: 19+ punti di lettura → cifrarli rischia di rompere PBS/cluster. Da fare con passaggio dedicato e test approfonditi.
+- **S-11 npm audit**: bump dipendenze, potenzialmente breaking; serve ambiente npm pulito.
+- **C-04 type-check frontend**: ~50 errori TS pre-esistenti, cleanup ampio; prerequisito per i gate CI (Q-01/Q-13).
+- Minori a basso valore: Q-05 (console FE), Q-04 residuo (except hygiene), P-05/P-10 (host SSH N+1, complesso).
