@@ -5,6 +5,18 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.18.1] - 2026-07-24
+
+Remediation Wave 3 (robustezza e bug residui). Deploy solo su installazione dev (.199).
+
+### Correzioni
+- **Migrazioni schema (C-09)**: un errore di `update_db_schema` allo startup non è più silenziato a warning — ora log a livello ERROR con stacktrace e stato riportato in `/api/health` (`checks.schema`), così un endpoint che fallisce per colonna mancante è correlabile subito (`main.py`).
+- **update.sh anti-downtime (C-12)**: trap che, se l'aggiornamento fallisce dopo l'arresto del servizio (git/pip/npm/migrazione), riavvia il servizio invece di lasciarlo spento fino a intervento manuale (`update.sh`).
+- **Refresh token frontend (C-13)**: le richieste in coda durante un refresh non restano più appese fino al timeout se il refresh fallisce — vengono rigettate subito (`api.ts`).
+- **Snapshot VM — validazioni (B8/B9)**: la modifica job rifiuta una selezione vuota (come la creazione); l'eliminazione rifiuta un job in esecuzione (409) (`vm_snapshot_jobs.py`).
+- **Snapshot VM — dati (B7/B19)**: `next_run_at` esposto dal registry dello scheduler; `GET /{id}` include `last_run_error` come la lista (`vm_snapshot_jobs.py`, `scheduler.py`).
+- **Pulizia**: rimosso `return` irraggiungibile nell'endpoint rollback (`vms.py`, B16); `/api/health` `features` include `nas-sync` e `vm-snapshots` (`main.py`, B20).
+
 ## [3.18.0] - 2026-07-23
 
 Remediation Wave 0 + sicurezza non-breaking (audit 2026-07-23). Backup DB pre-release effettuato.
