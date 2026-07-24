@@ -89,13 +89,19 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Arresto DAPX-backandrepl...")
     await scheduler.stop()
+    # P-14/B11: chiudi tutte le connessioni SSH del pool per non lasciare socket aperte.
+    try:
+        from services.ssh_service import ssh_service
+        ssh_service.close_all()
+    except Exception as _exc:  # noqa: BLE001
+        logger.warning(f"close_all pool SSH allo shutdown fallito: {_exc}")
     logger.info("DAPX-backandrepl arrestato")
 
 
 app = FastAPI(
     title="DAPX-backandrepl",
     description="Sistema centralizzato di backup e replica per Proxmox VE. Supporta ZFS (Sanoid/Syncoid), BTRFS (btrfs send/receive) e PBS (Proxmox Backup Server).",
-    version="3.18.1",
+    version="3.19.0",
     lifespan=lifespan
 )
 
@@ -181,7 +187,7 @@ async def health_check():
     from datetime import datetime as _dt
     payload: dict = {
         "status": "healthy",
-        "version": "3.18.1",
+        "version": "3.19.0",
         "auth_enabled": True,
         "mode": dapx_mode,
         "checks": {},

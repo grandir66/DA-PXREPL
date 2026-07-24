@@ -96,6 +96,17 @@ def update_schema():
             from services.vm_snapshot import models as _vm_snapshot_models  # noqa: F401
             Base.metadata.create_all(bind=engine)
 
+            # P-07: indici sui percorsi caldi di job_logs (lista per job, stats per
+            # finestra temporale). Idempotenti.
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_joblog_type_job_started "
+                "ON job_logs (job_type, job_id, started_at)"
+            ))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_joblog_started_status "
+                "ON job_logs (started_at, status)"
+            ))
+
             conn.commit()
         except Exception as e:
             conn.rollback()

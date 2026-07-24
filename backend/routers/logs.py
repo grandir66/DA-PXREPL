@@ -5,10 +5,12 @@ Con autenticazione
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import func, case
 from typing import List, Optional
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 import os
+import asyncio
 import subprocess
 import logging
 
@@ -98,24 +100,33 @@ async def get_log_stats(
     """Ottiene statistiche sui log"""
     since = datetime.utcnow() - timedelta(days=days)
     
-    query = db.query(JobLog).filter(JobLog.started_at >= since)
-    
+    # P-06/P11: conteggi e media via SQL (COUNT/SUM/AVG), non caricando l'intera
+    # finestra di log in Python. Solo la colonna `transferred` (stringhe human,
+    # non aggregabili in SQL) viene letta, e solo dove valorizzata.
+    base = db.query(JobLog).filter(JobLog.started_at >= since)
     if job_type:
-        query = query.filter(JobLog.job_type == job_type)
-    
-    logs = query.all()
-    
-    total = len(logs)
-    success = len([l for l in logs if l.status == "success"])
-    failed = len([l for l in logs if l.status == "failed"])
-    running = len([l for l in logs if l.status in ("started", "running")])
-    
-    durations = [l.duration for l in logs if l.duration]
-    avg_duration = sum(durations) / len(durations) if durations else None
-    
+        base = base.filter(JobLog.job_type == job_type)
+
+    agg = base.with_entities(
+        func.count().label("total"),
+        func.sum(case((JobLog.status == "success", 1), else_=0)).label("success"),
+        func.sum(case((JobLog.status == "failed", 1), else_=0)).label("failed"),
+        func.sum(case((JobLog.status.in_(["started", "running"]), 1), else_=0)).label("running"),
+        func.avg(JobLog.duration).label("avg_duration"),
+    ).one()
+
+    total = int(agg.total or 0)
+    success = int(agg.success or 0)
+    failed = int(agg.failed or 0)
+    running = int(agg.running or 0)
+    avg_duration = float(agg.avg_duration) if agg.avg_duration is not None else None
+
     success_rate = (success / total * 100) if total > 0 else 0
 
-    transferred_values = [l.transferred for l in logs if l.transferred]
+    transferred_values = [
+        t for (t,) in base.with_entities(JobLog.transferred)
+        .filter(JobLog.transferred.isnot(None), JobLog.transferred != "").all()
+    ]
     total_transferred = sum_transferred_values(transferred_values) if transferred_values else None
     
     return LogStatsResponse(
@@ -274,13 +285,14 @@ async def get_system_logs(
     
     try:
         # Leggi ultime N righe del file
-        result = subprocess.run(
+        result = await asyncio.to_thread(
+            subprocess.run,
             ["tail", "-n", str(lines), log_file],
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=10,
         )
-        
+
         if result.returncode != 0:
             raise HTTPException(status_code=500, detail=f"Errore lettura log: {result.stderr}")
         
@@ -338,7 +350,7 @@ async def get_journalctl_logs(lines: int, level: Optional[str], search: Optional
         if level and level.upper() in priority_map:
             cmd.extend(["-p", priority_map[level.upper()]])
         
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        result = await asyncio.to_thread(subprocess.run, cmd, capture_output=True, text=True, timeout=10)
         
         log_lines = result.stdout.strip().split('\n')
         
@@ -455,11 +467,12 @@ async def list_log_files(user: User = Depends(require_admin)):
     
     # Aggiungi info su journalctl
     try:
-        result = subprocess.run(
+        result = await asyncio.to_thread(
+            subprocess.run,
             ["journalctl", "-u", SYSTEMD_UNIT, "--disk-usage"],
             capture_output=True,
             text=True,
-            timeout=5
+            timeout=5,
         )
         if result.returncode == 0:
             files.append({
@@ -494,11 +507,12 @@ async def get_live_logs(
     
     if os.path.exists(log_file):
         try:
-            result = subprocess.run(
+            result = await asyncio.to_thread(
+                subprocess.run,
                 ["tail", "-n", str(lines), log_file],
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=5,
             )
             log_lines = result.stdout.strip().split('\n') if result.stdout else []
         except Exception:
@@ -506,11 +520,12 @@ async def get_live_logs(
     else:
         # Fallback a journalctl
         try:
-            result = subprocess.run(
+            result = await asyncio.to_thread(
+                subprocess.run,
                 ["journalctl", "-u", SYSTEMD_UNIT, "-n", str(lines), "--no-pager"],
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=5,
             )
             log_lines = result.stdout.strip().split('\n') if result.stdout else []
         except Exception:

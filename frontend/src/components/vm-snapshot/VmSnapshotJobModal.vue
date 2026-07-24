@@ -144,9 +144,17 @@ async function refreshPreview() {
   }
 }
 
+// P-16: debounce — le variazioni rapide (digitazione exclude, click multipli)
+// non generano una chiamata API a ogni evento.
+let previewDebounce: ReturnType<typeof setTimeout> | null = null
+function schedulePreview() {
+  if (previewDebounce) clearTimeout(previewDebounce)
+  previewDebounce = setTimeout(() => { void refreshPreview() }, 350)
+}
+
 watch(
   () => [form.targets, form.sel_tags, form.sel_node_ids, form.sel_exclude],
-  () => { void refreshPreview() },
+  () => { schedulePreview() },
   { deep: true },
 )
 

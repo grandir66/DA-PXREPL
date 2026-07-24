@@ -5,6 +5,19 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.19.0] - 2026-07-24
+
+Remediation Wave 2 (performance). Deploy solo su installazione dev (.199).
+
+### Ottimizzazioni
+- **Event loop non più bloccato (P-09/P7)**: invio email SMTP (bloccante) spostato in thread (`asyncio.to_thread`) in notifiche job, riepilogo giornaliero e test email (`notification_service.py`, `settings.py`).
+- **Subprocess non bloccanti (P-08)**: `tail`/`journalctl` negli endpoint log ora eseguiti in thread (`routers/logs.py`).
+- **Statistiche log via SQL (P-06/P11)**: `/api/logs/stats` usa `COUNT`/`SUM`/`AVG` invece di caricare l'intera finestra in Python; solo i valori `transferred` (stringhe) vengono letti (`routers/logs.py`).
+- **Indici JobLog (P-07)**: aggiunti `(job_type, job_id, started_at)` e `(started_at, status)` per liste e statistiche (`update_db_schema.py`).
+- **Pool SSH sicuro (P-14/B11)**: accesso al pool connessioni protetto da lock (niente race Paramiko / connessioni duplicate); `close_all()` allo shutdown chiude tutte le socket (`ssh_service.py`, `main.py`).
+- **Processi du non orfani (P-18)**: al timeout del catalogo `du` viene terminato il process group remoto invece di lasciarlo attivo (`nas_sync/du_catalog.py`).
+- **Anteprima wizard con debounce (P-16)**: la selezione VM del wizard Snapshot non genera più una chiamata API a ogni tasto (`VmSnapshotJobModal.vue`).
+
 ## [3.18.1] - 2026-07-24
 
 Remediation Wave 3 (robustezza e bug residui). Deploy solo su installazione dev (.199).

@@ -4,6 +4,7 @@ SSH Service - Gestione connessioni SSH ai nodi Proxmox
 
 import asyncio
 import paramiko
+import threading
 from typing import Optional, Tuple, List, Dict
 import logging
 import os
@@ -46,6 +47,10 @@ class SSHService:
 
     def __init__(self):
         self._connections: Dict[str, paramiko.SSHClient] = {}
+        # P-14/B11: il pool è letto/scritto da thread diversi (run_in_executor).
+        # Il lock protegge SOLO le mutazioni del dict; le connect (lente) restano
+        # fuori dal lock così host diversi non si serializzano.
+        self._lock = threading.Lock()
         # Override se siamo root
         if os.geteuid() == 0:
             self.DEFAULT_KEY_PATH = "/root/.ssh/id_rsa"
@@ -60,20 +65,27 @@ class SSHService:
         """Ottiene o crea una connessione SSH"""
         key_path = key_path or self.DEFAULT_KEY_PATH
         key = f"{username}@{hostname}:{port}"
-        
-        if key in self._connections:
-            client = self._connections[key]
+
+        with self._lock:
+            client = self._connections.get(key)
+        if client is not None:
             # Verifica se la connessione è ancora attiva
             try:
                 transport = client.get_transport()
                 if transport and transport.is_active():
                     return client
-            except:
+            except Exception:
                 pass
-            # Connessione non attiva, la rimuoviamo
-            del self._connections[key]
-        
-        # Crea nuova connessione
+            # Connessione non attiva: rimuovila e chiudila
+            with self._lock:
+                stale = self._connections.pop(key, None)
+            if stale is not None:
+                try:
+                    stale.close()
+                except Exception:
+                    pass
+
+        # Crea nuova connessione (fuori dal lock: la connect è lenta)
         client = paramiko.SSHClient()
         # Load system known_hosts for host key verification
         known_hosts_paths = [
@@ -99,8 +111,28 @@ class SSHService:
                 timeout=10,
                 banner_timeout=10
             )
-            self._connections[key] = client
-            return client
+            # Race: se un altro thread ha già creato una connessione valida per
+            # questa chiave nel frattempo, riusa quella e chiudi la duplicata.
+            with self._lock:
+                existing = self._connections.get(key)
+                is_active = False
+                if existing is not None:
+                    try:
+                        t = existing.get_transport()
+                        is_active = bool(t and t.is_active())
+                    except Exception:
+                        is_active = False
+                if is_active:
+                    winner = existing
+                else:
+                    self._connections[key] = client
+                    winner = client
+            if winner is not client:
+                try:
+                    client.close()
+                except Exception:
+                    pass
+            return winner
         except Exception as e:
             logger.error(f"Errore connessione SSH a {hostname}: {e}")
             raise
@@ -464,13 +496,15 @@ class SSHService:
 
     
     def close_all(self):
-        """Chiude tutte le connessioni"""
-        for key, client in self._connections.items():
+        """Chiude tutte le connessioni (chiamato allo shutdown dell'app)."""
+        with self._lock:
+            clients = list(self._connections.values())
+            self._connections.clear()
+        for client in clients:
             try:
                 client.close()
-            except:
+            except Exception:
                 pass
-        self._connections.clear()
 
 
 # Singleton instance

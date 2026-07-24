@@ -250,7 +250,9 @@ class NotificationService:
         if config.smtp_enabled:
             try:
                 self._configure_email_service(config)
-                success, message = email_service.send_job_notification(
+                # P-09/P7: smtplib è bloccante → in un thread per non fermare l'event loop.
+                success, message = await asyncio.to_thread(
+                    email_service.send_job_notification,
                     job_name=job_name,
                     status=status,
                     source=source,
@@ -748,7 +750,7 @@ class NotificationService:
         if config.smtp_enabled:
             try:
                 self._configure_email_service(config)
-                success, message = self._send_daily_summary_email(summary_data)
+                success, message = await asyncio.to_thread(self._send_daily_summary_email, summary_data)
                 results["channels"]["email"] = {"success": success, "message": message}
             except Exception as e:
                 logger.error(f"Errore invio email riepilogo: {e}")

@@ -101,8 +101,27 @@ async def refresh_job_du_catalog(job_id: int) -> None:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,
                 env={**os.environ, **env},
+                start_new_session=True,  # process group proprio → kill pulito al timeout
             )
-            out_b, _ = await asyncio.wait_for(proc.communicate(), timeout=3600)
+            try:
+                out_b, _ = await asyncio.wait_for(proc.communicate(), timeout=3600)
+            except asyncio.TimeoutError:
+                # P-18: al timeout applicativo termina il process group (ssh+du),
+                # altrimenti resta orfano a consumare CPU/IO/connessioni.
+                import signal
+                if proc.returncode is None and proc.pid:
+                    try:
+                        os.killpg(proc.pid, signal.SIGTERM)
+                    except (ProcessLookupError, PermissionError):
+                        proc.terminate()
+                    try:
+                        await asyncio.wait_for(proc.wait(), timeout=5)
+                    except asyncio.TimeoutError:
+                        try:
+                            os.killpg(proc.pid, signal.SIGKILL)
+                        except (ProcessLookupError, PermissionError):
+                            proc.kill()
+                raise
             folders, total = parse_du_output(
                 out_b.decode(errors="replace"), fs_root, src_path
             )

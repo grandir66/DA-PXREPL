@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, field_validator
 from datetime import datetime
+import asyncio
 import logging
 
 from database import (
@@ -400,8 +401,8 @@ async def test_notification(
             use_tls=config.smtp_tls
         )
         
-        # Invia email di test
-        success, message = email_service.send_test_email()
+        # Invia email di test (smtplib bloccante → thread, P-09/P7)
+        success, message = await asyncio.to_thread(email_service.send_test_email)
         
         if success:
             return {"success": True, "message": f"Email di test inviata a {config.smtp_to}"}
