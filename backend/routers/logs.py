@@ -5,7 +5,7 @@ Con autenticazione
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, case
+from sqlalchemy import func, case, or_
 from typing import List, Optional
 from datetime import datetime, timedelta
 from pydantic import BaseModel
@@ -76,7 +76,16 @@ async def list_logs(
 ):
     """Lista i log delle operazioni"""
     query = db.query(JobLog)
-    
+
+    # S-14: un utente non-admin con allowed_nodes vede solo i log dei propri nodi
+    # (più i log non legati a un nodo specifico, node_name null).
+    if user.role != "admin" and user.allowed_nodes is not None:
+        from database import Node
+        allowed_names = {
+            n.name for n in db.query(Node).filter(Node.id.in_(user.allowed_nodes)).all()
+        }
+        query = query.filter(or_(JobLog.node_name.in_(allowed_names), JobLog.node_name.is_(None)))
+
     if job_type:
         query = query.filter(JobLog.job_type == job_type)
     if status:

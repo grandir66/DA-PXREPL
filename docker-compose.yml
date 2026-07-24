@@ -24,13 +24,15 @@ services:
       # Opzionale: certificati SSL personalizzati
       - ./certs:/certs:ro
     
+    # Q-08: environment in forma mapping YAML + interpolazione del secret quotata
+    # (con messaggio senza doppi apici/`:` che rompevano `docker compose config`).
     environment:
-      - DAPX_DB=/data/dapx-backandrepl.db
-      - DAPX_PORT=8420
-      - DAPX_LOG_LEVEL=INFO
-      - DAPX_SECRET_KEY=${DAPX_SECRET_KEY:?DAPX_SECRET_KEY is required. Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"}
-      - DAPX_TOKEN_EXPIRE=480
-      - DAPX_CORS_ORIGINS=
+      DAPX_DB: /data/dapx-backandrepl.db
+      DAPX_PORT: "8420"
+      DAPX_LOG_LEVEL: INFO
+      DAPX_SECRET_KEY: "${DAPX_SECRET_KEY:?DAPX_SECRET_KEY richiesto (genera con python -c 'import secrets; print(secrets.token_urlsafe(32))')}"
+      DAPX_TOKEN_EXPIRE: "480"
+      DAPX_CORS_ORIGINS: ""
     
     # Se necessario, esegui come root per accesso SSH completo
     # Rimuovi questa riga se vuoi usare utente non-root (dovrai configurare SSH diversamente)

@@ -1,0 +1,20 @@
+# Q-14: escludi dal contesto di build file locali/pesanti/sensibili
+.git
+.gitignore
+**/__pycache__/
+**/*.pyc
+backend/venv/
+backend/logs/
+frontend/node_modules/
+node_modules/
+data/
+logs/
+config/
+certs/
+*.db
+*.db.backup-*
+docs/
+.cursor/
+.claude/
+*.md
+!README.md

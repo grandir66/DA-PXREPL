@@ -5,6 +5,22 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.20.0] - 2026-07-24
+
+Remediation non-breaking a tappeto: N+1, sicurezza log, Docker. Deploy solo su dev (.199).
+
+### Ottimizzazioni
+- **Query N+1 nelle liste (P-04)**: le liste job Backup PBS, Recovery, Host Backup e Migration precaricano i nodi una volta sola invece di 1-2 query per job; Recovery usa una query unica per le durate ultime fasi (`backup_jobs.py`, `recovery_jobs.py`, `host_backup.py`, `migration_jobs.py`).
+
+### Sicurezza
+- **Log filtrati per allowed_nodes (S-14)**: un utente non-admin con `allowed_nodes` vede in `/api/logs` solo i log dei propri nodi (più quelli non legati a un nodo) (`routers/logs.py`).
+
+### Correzioni
+- **Immagine Docker avviabile (Q-07)**: `WORKDIR /app/backend` + `PYTHONPATH` corretto e `uvicorn main:app`, così gli import assoluti del backend si risolvono (prima `ModuleNotFoundError: database`) (`Dockerfile`).
+- **Binari runtime nel container (Q-11)**: aggiunti `rsync`, `sshpass`, `rclone`, `cifs-utils` (File Replication / Repliche dati) (`Dockerfile`).
+- **docker-compose interpretabile (Q-08)**: `environment` in forma mapping YAML con secret quotato (`docker-compose.yml`).
+- **Build più pulita (Q-14, Q-03)**: aggiunto `.dockerignore`; `APP_VERSION` allineato (`Dockerfile`, `.dockerignore`).
+
 ## [3.19.0] - 2026-07-24
 
 Remediation Wave 2 (performance). Deploy solo su installazione dev (.199).

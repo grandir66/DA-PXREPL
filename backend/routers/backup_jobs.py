@@ -152,10 +152,17 @@ class BackupJobResponse(BaseModel):
 
 # ============== HELPER FUNCTIONS ==============
 
-def job_to_response(job: BackupJob, db: Session) -> BackupJobResponse:
-    """Converte BackupJob in response con nomi nodi"""
-    source_node = db.query(Node).filter(Node.id == job.source_node_id).first()
-    pbs_node = db.query(Node).filter(Node.id == job.pbs_node_id).first()
+def job_to_response(job: BackupJob, db: Session, nodes_by_id: dict = None) -> BackupJobResponse:
+    """Converte BackupJob in response con nomi nodi.
+
+    P-04: se `nodes_by_id` è fornito (dalla lista, precaricato una volta) evita le
+    due query Node per job."""
+    if nodes_by_id is not None:
+        source_node = nodes_by_id.get(job.source_node_id)
+        pbs_node = nodes_by_id.get(job.pbs_node_id)
+    else:
+        source_node = db.query(Node).filter(Node.id == job.source_node_id).first()
+        pbs_node = db.query(Node).filter(Node.id == job.pbs_node_id).first()
     
     return BackupJobResponse(
         id=job.id,
@@ -218,7 +225,8 @@ async def list_backup_jobs(
 ):
     """Lista i backup jobs visibili all'utente (filtrati per allowed_nodes)."""
     jobs = db.query(BackupJob).order_by(desc(BackupJob.created_at)).all()
-    return [job_to_response(job, db) for job in jobs if _job_visible_to(user, job)]
+    nodes_by_id = {n.id: n for n in db.query(Node).all()}
+    return [job_to_response(job, db, nodes_by_id) for job in jobs if _job_visible_to(user, job)]
 
 
 @router.get("/stats")

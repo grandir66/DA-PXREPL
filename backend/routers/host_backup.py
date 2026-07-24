@@ -98,9 +98,10 @@ async def list_host_backup_jobs(
         allowed = set(user.allowed_nodes)
         jobs = [j for j in jobs if j.node_id in allowed]
     
+    nodes_by_id = {n.id: n for n in db.query(Node).all()}  # P-04: preload
     result = []
     for job in jobs:
-        node = db.query(Node).filter(Node.id == job.node_id).first()
+        node = nodes_by_id.get(job.node_id)
         result.append({
             "id": job.id,
             "name": job.name,

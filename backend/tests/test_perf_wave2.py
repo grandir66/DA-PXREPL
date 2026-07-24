@@ -114,3 +114,51 @@ def test_ssh_pool_close_all_thread_safe():
     svc.close_all()
     assert c1.closed and c2.closed
     assert svc._connections == {}
+
+
+def test_logs_filtered_by_allowed_nodes():
+    """S-14: utente non-admin con allowed_nodes vede solo i log dei propri nodi."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from datetime import datetime
+    from database import Base, JobLog, Node, get_db
+    from routers import logs as logs_router
+    from routers.auth import get_current_user
+
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(bind=engine)
+    S = sessionmaker(bind=engine)
+    db = S()
+    n1 = Node(name="px1", hostname="1"); n2 = Node(name="px2", hostname="2")
+    db.add_all([n1, n2]); db.commit()
+    n1_id = n1.id
+    now = datetime.utcnow()
+    db.add_all([
+        JobLog(job_type="sync", status="success", node_name="px1", started_at=now),
+        JobLog(job_type="sync", status="success", node_name="px2", started_at=now),
+        JobLog(job_type="host_backup", status="success", node_name=None, started_at=now),
+    ])
+    db.commit(); db.close()
+
+    class _RestrictedUser:
+        role = "operator"
+        allowed_nodes = [n1_id]  # solo px1
+
+    app = FastAPI()
+    app.include_router(logs_router.router, prefix="/api/logs")
+    def _fake_db():
+        s = S()
+        try: yield s
+        finally: s.close()
+    app.dependency_overrides[get_db] = _fake_db
+    app.dependency_overrides[get_current_user] = lambda: _RestrictedUser()
+    c = TestClient(app)
+    r = c.get("/api/logs/")
+    assert r.status_code == 200, r.text
+    names = {log["node_name"] for log in r.json()}
+    assert "px2" not in names          # nodo non consentito nascosto
+    assert "px1" in names              # nodo consentito visibile
+    assert None in names or any(n is None for n in names)  # log senza nodo visibili

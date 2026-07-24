@@ -375,17 +375,18 @@ async def list_migration_jobs(
 ):
     """Lista tutti i job di migrazione"""
     jobs = db.query(MigrationJob).all()
-    
+    nodes_by_id = {n.id: n for n in db.query(Node).all()}  # P-04: preload
+
     result = []
     for job in jobs:
         if not check_job_access(user, job, db):
             continue
-        
+
         job_dict = MigrationJobResponse.model_validate(job).model_dump()
-        
-        source_node = db.query(Node).filter(Node.id == job.source_node_id).first()
-        dest_node = db.query(Node).filter(Node.id == job.dest_node_id).first()
-        
+
+        source_node = nodes_by_id.get(job.source_node_id)
+        dest_node = nodes_by_id.get(job.dest_node_id)
+
         job_dict["source_node_name"] = source_node.name if source_node else None
         job_dict["dest_node_name"] = dest_node.name if dest_node else None
         

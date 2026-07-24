@@ -21,7 +21,7 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 # ============== Stage 2: Runtime ==============
 FROM python:3.11-slim
 
-ARG APP_VERSION=3.17.4
+ARG APP_VERSION=3.19.0
 
 # Metadati
 LABEL maintainer="Domarc S.r.l. <info@domarc.it>"
@@ -38,10 +38,16 @@ ENV PYTHONUNBUFFERED=1 \
 # Crea utente non-root
 RUN groupadd -r dapx && useradd -r -g dapx -u 1000 dapx
 
-# Installa dipendenze runtime minime
+# Installa dipendenze runtime.
+# Q-11: rsync, sshpass, rclone e cifs-utils servono a File Replication / Repliche
+# dati: senza, quei moduli falliscono sistematicamente nel container.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     openssh-client \
     ca-certificates \
+    rsync \
+    sshpass \
+    rclone \
+    cifs-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # Crea directory
@@ -58,9 +64,12 @@ COPY backend/ ./backend/
 COPY frontend/dist/ ./frontend/dist/
 COPY version.json ./version.json
 
-# Imposta PATH per Python packages e PYTHONPATH
+# Imposta PATH per Python packages e PYTHONPATH.
+# Q-07: il backend fa import assoluti (`from database import ...`), quindi la root
+# di import deve essere /app/backend (come il WorkingDirectory del systemd unit),
+# non /app. Con `uvicorn main:app` da lì gli import interni si risolvono.
 ENV PATH=/home/dapx/.local/bin:$PATH \
-    PYTHONPATH=/app
+    PYTHONPATH=/app/backend
 
 # Cambia proprietario
 RUN chown -R dapx:dapx /app
@@ -75,7 +84,7 @@ EXPOSE 8420
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8420/api/health')" || exit 1
 
-# Entry point
-WORKDIR /app
-ENTRYPOINT ["python", "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8420"]
+# Entry point — WorkingDirectory su backend/ e main:app (coerente col systemd unit).
+WORKDIR /app/backend
+ENTRYPOINT ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8420"]
 

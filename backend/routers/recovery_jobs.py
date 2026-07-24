@@ -89,6 +89,21 @@ async def list_recovery_jobs(
         logger.warning(f"Failed to build VM map: {e}")
         vm_map = {}
 
+    # P-04: precarica in UNA query l'ultima durata backup/restore per ogni job,
+    # invece di 2 query per job. Ordinato desc → la prima per chiave è la più recente.
+    _latest_dur: dict = {}
+    _job_ids = [j.id for j in jobs]
+    if _job_ids:
+        for row in (
+            db.query(JobLog.job_id, JobLog.job_type, JobLog.duration)
+            .filter(JobLog.job_id.in_(_job_ids), JobLog.job_type.in_(["backup", "restore"]))
+            .order_by(JobLog.started_at.desc())
+            .all()
+        ):
+            key = (row.job_id, row.job_type)
+            if key not in _latest_dur:
+                _latest_dur[key] = row.duration
+
     # Aggiungi durate delle ultime fasi per ogni job
     result = []
     for job in jobs:
@@ -109,24 +124,10 @@ async def list_recovery_jobs(
             "last_restore_duration": None
         }
         
-        # Recupera ultimo log backup
-        last_backup_log = db.query(JobLog).filter(
-            JobLog.job_id == job.id,
-            JobLog.job_type == "backup"
-        ).order_by(JobLog.started_at.desc()).first()
-        
-        if last_backup_log and last_backup_log.duration:
-            job_dict["last_backup_duration"] = last_backup_log.duration
-        
-        # Recupera ultimo log restore
-        last_restore_log = db.query(JobLog).filter(
-            JobLog.job_id == job.id,
-            JobLog.job_type == "restore"
-        ).order_by(JobLog.started_at.desc()).first()
-        
-        if last_restore_log and last_restore_log.duration:
-            job_dict["last_restore_duration"] = last_restore_log.duration
-        
+        # Durate ultime fasi dal preload (P-04)
+        job_dict["last_backup_duration"] = _latest_dur.get((job.id, "backup"))
+        job_dict["last_restore_duration"] = _latest_dur.get((job.id, "restore"))
+
         result.append(RecoveryJobResponse(**job_dict))
     
     return result
