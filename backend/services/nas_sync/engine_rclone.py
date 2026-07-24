@@ -214,6 +214,8 @@ async def run_rclone_step(
                 break
             line = line_b.decode(errors="replace")
             result.output_lines.append(line)
+            if len(result.output_lines) > 6000:  # P-12: memoria limitata (si tiene la coda)
+                del result.output_lines[:2000]
             event = parse_rclone_json_line(line)
             if event and on_event:
                 on_event(event)

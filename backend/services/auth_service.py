@@ -22,7 +22,12 @@ if not _secret_key:
     )
 SECRET_KEY = _secret_key
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("SANOID_MANAGER_TOKEN_EXPIRE", 480))
+# Q-12: accetta anche il nome documentato DAPX_TOKEN_EXPIRE (prima solo il legacy
+# SANOID_MANAGER_TOKEN_EXPIRE veniva letto, rendendo la variabile "nuova" un no-op).
+ACCESS_TOKEN_EXPIRE_MINUTES = int(
+    os.environ.get("DAPX_TOKEN_EXPIRE")
+    or os.environ.get("SANOID_MANAGER_TOKEN_EXPIRE", 480)
+)
 
 
 class AuthService:

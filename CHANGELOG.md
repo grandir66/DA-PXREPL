@@ -5,6 +5,17 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.20.2] - 2026-07-24
+
+### Sicurezza
+- **Limiti su upload e query (S-13)**: tetto di 100 MiB sull'upload di ripristino config (413 se superato); `limit`/`days` degli endpoint log ora hanno massimi (`config_backup.py`, `routers/logs.py`).
+
+### Ottimizzazioni
+- **Memoria output limitata (P-12)**: l'output di rsync/rclone tenuto in memoria durante job lunghi/verbosi è ora limitato (deque/trim) mantenendo comunque la coda per il log finale (`file_replication_execution.py`, `nas_sync/engine_direct_rsync.py`, `nas_sync/engine_rclone.py`).
+
+### Correzioni
+- **Variabile DAPX_TOKEN_EXPIRE (Q-12)**: ora effettivamente letta (prima solo il nome legacy `SANOID_MANAGER_TOKEN_EXPIRE` aveva effetto) (`auth_service.py`).
+
 ## [3.20.1] - 2026-07-24
 
 ### Sicurezza

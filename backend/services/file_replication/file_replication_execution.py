@@ -7,6 +7,7 @@ import logging
 import os
 import shutil
 import tempfile
+from collections import deque
 from datetime import datetime
 from typing import Optional
 
@@ -177,8 +178,10 @@ async def execute_file_replication_job(job_id: int) -> None:
             staging_dir,
             filter_file=filter_path,
         )
-        combined_stdout: list[str] = []
-        combined_stderr: list[str] = []
+        # P-12: memoria limitata su job lunghi/verbosi (il log finale prende
+        # comunque solo la coda). deque supporta append/extend/join.
+        combined_stdout: "deque[str]" = deque(maxlen=20000)
+        combined_stderr: "deque[str]" = deque(maxlen=20000)
         total_bytes = 0
 
         async def _run_rsync(cmd: list[str], env_extra: dict | None = None) -> None:

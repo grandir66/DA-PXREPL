@@ -65,8 +65,8 @@ class LogStatsResponse(BaseModel):
 
 @router.get("/", response_model=List[JobLogResponse])
 async def list_logs(
-    limit: int = 100,
-    offset: int = 0,
+    limit: int = Query(default=100, ge=1, le=1000),   # S-13: tetto massimo
+    offset: int = Query(default=0, ge=0),
     job_type: Optional[str] = None,
     status: Optional[str] = None,
     job_id: Optional[int] = None,
@@ -101,7 +101,7 @@ async def list_logs(
 
 @router.get("/stats", response_model=LogStatsResponse)
 async def get_log_stats(
-    days: int = 7,
+    days: int = Query(default=7, ge=1, le=365),   # S-13: finestra massima
     job_type: Optional[str] = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)

@@ -363,6 +363,14 @@ async def restore_backup(
         temp_file = os.path.join(temp_dir, "upload.tar.gz")
         with open(temp_file, "wb") as f:
             content = await file.read()
+            # S-13: tetto massimo upload (backup config sono piccoli): evita che un
+            # archivio enorme saturi RAM/disco.
+            _MAX_UPLOAD = 100 * 1024 * 1024  # 100 MiB
+            if len(content) > _MAX_UPLOAD:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"Archivio troppo grande (max {_MAX_UPLOAD // (1024*1024)} MiB)",
+                )
             f.write(content)
         
         # Estrai archivio

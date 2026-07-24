@@ -332,6 +332,8 @@ async def run_direct_rsync(
             break
         line = line_b.decode(errors="replace")
         result.output_lines.append(line)
+        if len(result.output_lines) > 6000:  # P-12: memoria limitata (si tiene la coda)
+            del result.output_lines[:2000]
         stripped = line.strip()
         if stripped.startswith(_PID_MARKER):
             try:
