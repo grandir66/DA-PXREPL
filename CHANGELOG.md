@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.20.1] - 2026-07-24
+
+### Sicurezza
+- **Cifratura segreti notifiche a riposo (S-06)**: `smtp_password`, `webhook_secret` e `telegram_bot_token` vengono ora cifrati nel DB (Fernet, chiave `DAPX_SECRET_KEY`). Implementazione **non-breaking con fallback trasparente**: i valori già salvati in chiaro continuano a funzionare (letti tali e quali), le nuove scritture vengono cifrate, la cifratura è idempotente. Nuovo `services/secrets.py`; punti di lettura decifrati (`notification_service.py`, `settings.py`). PBS/cluster restano in chiaro per ora (troppi punti di lettura: rinviati a un passaggio dedicato).
+
 ## [3.20.0] - 2026-07-24
 
 Remediation non-breaking a tappeto: N+1, sicurezza log, Docker. Deploy solo su dev (.199).

@@ -356,7 +356,15 @@ async def update_notification_config(
     
     for key, value in update.model_dump(exclude_unset=True).items():
         setattr(config, key, value)
-    
+
+    # S-06: cifra i segreti notifiche a riposo (idempotente; i valori legacy in
+    # chiaro restano leggibili grazie al fallback trasparente in secrets.py).
+    from services.secrets import encrypt_secret
+    for _sk in ("smtp_password", "webhook_secret", "telegram_bot_token"):
+        _val = getattr(config, _sk, None)
+        if _val:
+            setattr(config, _sk, encrypt_secret(_val))
+
     config.updated_at = datetime.utcnow()
     
     log_audit(
@@ -388,13 +396,14 @@ async def test_notification(
             raise HTTPException(status_code=400, detail="Destinatario email non configurato")
         
         from services.email_service import email_service
-        
+        from services.secrets import decrypt_secret
+
         # Configura il servizio email
         email_service.configure(
             host=config.smtp_host,
             port=config.smtp_port or 587,
             user=config.smtp_user,
-            password=config.smtp_password,
+            password=decrypt_secret(config.smtp_password),
             from_addr=config.smtp_from,
             to_addrs=config.smtp_to,
             subject_prefix=config.smtp_subject_prefix or "[DAPX]",
@@ -417,6 +426,7 @@ async def test_notification(
         
         import httpx
         from services.url_guard import assert_safe_webhook_url, UnsafeUrlError
+        from services.secrets import decrypt_secret
         try:
             assert_safe_webhook_url(config.webhook_url)
         except UnsafeUrlError as guard_exc:
@@ -430,7 +440,7 @@ async def test_notification(
                         "message": "Test notifica da DAPX-backandrepl",
                         "timestamp": datetime.utcnow().isoformat()
                     },
-                    headers={"X-Webhook-Secret": config.webhook_secret} if config.webhook_secret else {},
+                    headers={"X-Webhook-Secret": decrypt_secret(config.webhook_secret)} if config.webhook_secret else {},
                     timeout=10
                 )
                 if response.status_code < 300:
@@ -447,10 +457,11 @@ async def test_notification(
             raise HTTPException(status_code=400, detail="Token o Chat ID Telegram non configurati")
         
         import httpx
+        from services.secrets import decrypt_secret
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(
-                    f"https://api.telegram.org/bot{config.telegram_bot_token}/sendMessage",
+                    f"https://api.telegram.org/bot{decrypt_secret(config.telegram_bot_token)}/sendMessage",
                     json={
                         "chat_id": config.telegram_chat_id,
                         "text": "🧪 *Test DAPX-backandrepl*\n\nSe ricevi questo messaggio, Telegram è configurato correttamente!",

@@ -54,11 +54,12 @@ class NotificationService:
     def _configure_email_service(self, config: NotificationConfig):
         """Configura il servizio email con i dati dal database"""
         if config and config.smtp_enabled and config.smtp_host:
+            from services.secrets import decrypt_secret
             email_service.configure(
                 host=config.smtp_host,
                 port=config.smtp_port or 587,
                 user=config.smtp_user,
-                password=config.smtp_password,
+                password=decrypt_secret(config.smtp_password),
                 from_addr=config.smtp_from,
                 to_addrs=config.smtp_to,
                 subject_prefix=config.smtp_subject_prefix or "[DAPX]",
@@ -1023,9 +1024,10 @@ class NotificationService:
                 logger.error(f"Webhook bloccato dal guard SSRF: {guard_exc}")
                 return {"success": False, "message": f"URL webhook non sicuro: {guard_exc}"}
 
+            from services.secrets import decrypt_secret
             headers = {"Content-Type": "application/json"}
             if config.webhook_secret:
-                headers["X-Webhook-Secret"] = config.webhook_secret
+                headers["X-Webhook-Secret"] = decrypt_secret(config.webhook_secret)
             
             payload = {
                 "event": event_type,
@@ -1060,9 +1062,10 @@ class NotificationService:
     ) -> Dict[str, Any]:
         """Invia notifica via Telegram"""
         try:
+            from services.secrets import decrypt_secret
             async with httpx.AsyncClient() as client:
                 response = await client.post(
-                    f"https://api.telegram.org/bot{config.telegram_bot_token}/sendMessage",
+                    f"https://api.telegram.org/bot{decrypt_secret(config.telegram_bot_token)}/sendMessage",
                     json={
                         "chat_id": config.telegram_chat_id,
                         "text": message,
