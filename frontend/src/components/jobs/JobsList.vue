@@ -56,7 +56,7 @@
               <span v-else class="jl-toggle-spacer"></span>
               <div class="jl-vm-block">
                 <span v-if="g.vm_id" class="jl-vm-id">#{{ g.vm_id }}</span>
-                <span class="jl-vm-name">{{ g.vm_name || (g.jobs[0].name) }}</span>
+                <span class="jl-vm-name">{{ g.vm_name || (g.primary.name) }}</span>
                 <span
                   v-if="g.vm_type"
                   class="jl-vm-type"
@@ -69,16 +69,16 @@
             </td>
             <td>
               <div class="jl-route">
-                <span class="jl-node">{{ routeSrc(g.jobs[0]) }}</span>
+                <span class="jl-node">{{ routeSrc(g.primary) }}</span>
                 <span class="jl-arrow">→</span>
-                <span class="jl-node">{{ routeDst(g.jobs[0]) }}</span>
+                <span class="jl-node">{{ routeDst(g.primary) }}</span>
               </div>
             </td>
             <td>
-              <span class="jl-schedule">{{ humanSchedule(g.jobs[0]) }}</span>
+              <span class="jl-schedule">{{ humanSchedule(g.primary) }}</span>
             </td>
             <td>
-              <span class="jl-run">{{ formatRun(g.jobs[0].last_run) }}</span>
+              <span class="jl-run">{{ formatRun(g.primary.last_run) }}</span>
             </td>
             <td>
               <div v-if="groupIsLive(g)" class="jl-progress-cell">
@@ -87,8 +87,8 @@
                     <span class="status-dot" /> In esecuzione
                   </span>
                   <span v-if="groupProgress(g)" class="jl-progress-pct">{{ groupProgress(g)!.percent.toFixed(1) }}%</span>
-                  <span v-else-if="g.jobs[0]?.group_disks_total && g.jobs[0].group_disks_total > 1" class="jl-progress-pct subtle">
-                    {{ g.jobs.filter(j => jobStatus(j) === 'success').length }}/{{ g.jobs[0].group_disks_total }} dischi
+                  <span v-else-if="g.primary?.group_disks_total && g.primary.group_disks_total > 1" class="jl-progress-pct subtle">
+                    {{ g.jobs.filter(j => jobStatus(j) === 'success').length }}/{{ g.primary.group_disks_total }} dischi
                   </span>
                 </div>
                 <div class="jl-progress-bar">
@@ -109,28 +109,28 @@
             <td class="jl-actions" @click.stop>
               <button
                 class="btn btn-secondary btn-sm"
-                :title="g.jobs[0].is_active ? 'Disattiva job' : 'Attiva job'"
-                @click="$emit('toggle-active', g.jobs[0])"
-              >{{ g.jobs[0].is_active !== false ? '⏸' : '▶' }}</button>
+                :title="g.primary.is_active ? 'Disattiva job' : 'Attiva job'"
+                @click="$emit('toggle-active', g.primary)"
+              >{{ g.primary.is_active !== false ? '⏸' : '▶' }}</button>
               <button
                 class="btn btn-secondary btn-sm"
-                @click="$emit('run', g.jobs[0], g)"
+                @click="$emit('run', g.primary, g)"
                 :title="g.jobs.length > 1 ? `Esegui tutti i ${g.jobs.length} job di questa VM` : 'Esegui ora'"
               >▶</button>
               <button
-                v-if="g.jobs[0].kind === 'syncoid' || g.jobs[0].kind === 'pve_native'"
+                v-if="g.primary.kind === 'syncoid' || g.primary.kind === 'pve_native'"
                 class="btn btn-secondary btn-sm"
-                @click="$emit('show-log', g.jobs[0])"
+                @click="$emit('show-log', g.primary)"
                 title="Mostra log live"
               >…</button>
               <button
                 class="btn btn-secondary btn-sm"
-                @click="$emit('edit', g.jobs[0])"
+                @click="$emit('edit', g.primary)"
                 title="Modifica"
               >✎</button>
               <button
                 class="btn btn-danger btn-sm"
-                @click="$emit('delete', g.jobs[0])"
+                @click="$emit('delete', g.primary)"
                 title="Elimina"
               >×</button>
             </td>
@@ -193,7 +193,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { UnifiedJob, JobKind } from '../../stores/replication'
-import scheduleService from '../../services/schedule'
 
 interface JobGroup {
   key: string
@@ -201,6 +200,7 @@ interface JobGroup {
   vm_name?: string
   vm_type?: string
   jobs: UnifiedJob[]
+  primary: UnifiedJob  // primo job del gruppo (sempre presente): evita jobs[0] possibly undefined
 }
 
 const props = withDefaults(
@@ -269,7 +269,7 @@ const groups = computed<JobGroup[]>(() => {
         : `solo:${j.kind}:${j.id}`
     let g = idx.get(key)
     if (!g) {
-      g = { key, vm_id: j.vm_id, vm_name: j.vm_name, vm_type: j.vm_type, jobs: [] }
+      g = { key, vm_id: j.vm_id, vm_name: j.vm_name, vm_type: j.vm_type, jobs: [], primary: j }
       idx.set(key, g)
       out.push(g)
     }
@@ -312,7 +312,7 @@ function groupIsLive(g: JobGroup) {
 
 function groupProgress(g: JobGroup) {
   if (!groupIsLive(g)) return null
-  const p = g.jobs[0]?.group_transfer_progress ?? g.jobs[0]?.raw?.group_transfer_progress
+  const p = g.primary?.group_transfer_progress ?? g.primary?.raw?.group_transfer_progress
   if (p && typeof p.percent === 'number') return p
   return null
 }

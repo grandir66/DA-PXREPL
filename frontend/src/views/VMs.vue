@@ -557,7 +557,7 @@
 <script setup lang="ts">
 import { useToast, errorMessage } from '../stores/toast';
 import { ref, onMounted, computed } from 'vue';
-import { confirmDangerous, confirmDelete } from '../stores/confirm';
+import { confirmDangerous } from '../stores/confirm';
 import { useRoute } from 'vue-router';
 import PageHeader from '../components/ui/PageHeader.vue';
 import Icon from '../components/ui/Icon.vue';
@@ -844,10 +844,6 @@ const deletePveSnapshot = async (name: string) => {
 };
 
 // ZFS
-const openZFSSection = () => {
- snapshotTab.value = 'zfs';
- loadZfsSnapshots();
-};
 
 const loadZfsSnapshots = async () => {
  if (!selectedVM.value) return;

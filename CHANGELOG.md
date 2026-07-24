@@ -5,6 +5,14 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.20.4] - 2026-07-25
+
+### Correzioni
+- **Type-safety frontend (C-04)**: azzerati i ~130 errori di `vue-tsc` accumulati (il build Vite non esegue il type-check). Aggiunte le interfacce `HostInfo`/`HostInfoStorageItem` (`services/nodes.ts`), tipizzato `JobGroup.primary`, `User.id`, `FileReplicationJob.notify_subject`; guardie su accessi ad array/indice (`noUncheckedIndexedAccess`) in `Cluster.vue`, `NasSync.vue`, viste PBS, log modal e utils; coercizioni `String(...)` coerenti con la convenzione esistente; rimosso dead code non referenziato (`deleteCert`, `openZFSSection`, `currentCluster`). Nessun cambiamento di comportamento a runtime.
+
+### Sicurezza
+- **Hardening dipendenze di build (S-11)**: `npm audit fix` non-breaking porta le vulnerabilità note da 13 a 5 aggiornando dipendenze transitive di sole toolchain di build (`vite` 7.3.6, `rollup` 4.62.2, `postcss` 8.5.23, `picomatch` 4.0.5, `immutable` 5.1.9). Nessuna dipendenza runtime coinvolta (il bundle non ne è toccato); le 5 residue riguardano la catena `eslint` (dev-only) e richiederebbero un bump major breaking, quindi rimandate (`package-lock.json`).
+
 ## [3.20.3] - 2026-07-24
 
 ### Ottimizzazioni

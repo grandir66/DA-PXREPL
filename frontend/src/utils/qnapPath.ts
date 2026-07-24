@@ -21,7 +21,7 @@ export function synologyToQnapDestPath(srcPath: string, destSharePath: string): 
   const parts = srcPath.replace(/^\/+/, '').split('/').filter(Boolean)
   if (!parts.length) return `${normalizeQnapDestShare(destSharePath)}/`
   let i = 0
-  if (parts[0].startsWith('volume') && parts.length >= 2) i = 1
+  if (parts[0]?.startsWith('volume') && parts.length >= 2) i = 1
   const share = parts[i]
   const sub = parts.slice(i + 1).join('/')
   const root = normalizeQnapDestShare(destSharePath).replace(/\/+$/, '')

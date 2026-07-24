@@ -455,7 +455,7 @@ onUnmounted(stopLivePoll)
     <div class="card mb-4">
       <div class="card-header">
         <h3>Endpoint registrati ({{ endpoints.length }})</h3>
-        <button class="btn btn-sm btn-secondary" :disabled="loading" @click="refresh">Aggiorna</button>
+        <button class="btn btn-sm btn-secondary" :disabled="loading" @click="refresh()">Aggiorna</button>
       </div>
       <div class="card-body p-0">
         <p v-if="endpointError" class="p-3 text-danger">{{ endpointError }}</p>
@@ -478,9 +478,9 @@ onUnmounted(stopLivePoll)
               <td>{{ ep.role }}</td>
               <td class="caps-cell">
                 <template v-if="endpointCaps[ep.id]">
-                  <span class="badge" :class="endpointCaps[ep.id].rsync_source ? 'badge-ok' : 'badge-off'">SSH</span>
-                  <span class="badge" :class="endpointCaps[ep.id].rsync_dest ? 'badge-ok' : 'badge-off'">rsync</span>
-                  <span class="badge" :class="endpointCaps[ep.id].smb ? 'badge-ok' : 'badge-off'">SMB</span>
+                  <span class="badge" :class="endpointCaps[ep.id]?.rsync_source ? 'badge-ok' : 'badge-off'">SSH</span>
+                  <span class="badge" :class="endpointCaps[ep.id]?.rsync_dest ? 'badge-ok' : 'badge-off'">rsync</span>
+                  <span class="badge" :class="endpointCaps[ep.id]?.smb ? 'badge-ok' : 'badge-off'">SMB</span>
                 </template>
                 <span v-else class="muted">—</span>
               </td>
@@ -511,7 +511,7 @@ onUnmounted(stopLivePoll)
     <div class="card">
       <div class="card-header">
         <h3>Job configurati</h3>
-        <button class="btn btn-sm btn-secondary" :disabled="loading" @click="refresh">Aggiorna</button>
+        <button class="btn btn-sm btn-secondary" :disabled="loading" @click="refresh()">Aggiorna</button>
       </div>
       <div class="card-body p-0">
         <p v-if="runError" class="p-3 text-danger">{{ runError }}</p>

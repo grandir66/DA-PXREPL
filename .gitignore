@@ -73,3 +73,4 @@ temp/
 
 # Allow frontend build artifacts
 !frontend/dist/
+.claude/settings.local.json

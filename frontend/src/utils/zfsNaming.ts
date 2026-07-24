@@ -5,7 +5,7 @@ export function collapseDashSegments(name: string): string {
   const parts = name.split('-')
   const out: string[] = []
   for (const part of parts) {
-    if (out.length && out[out.length - 1].toLowerCase() === part.toLowerCase()) continue
+    if (out.length && out[out.length - 1]?.toLowerCase() === part.toLowerCase()) continue
     out.push(part)
   }
   return out.join('-')
@@ -44,7 +44,7 @@ export function deriveZfsStorageName(
 
   const parts = zfsPool.split('/')
   const root = parts[0]
-  const base = (storageName || root).trim()
+  const base = (storageName || root || "").trim()
   if (parts.length <= 1 || zfsPool === base || zfsPool === root) {
     return collapseDashSegments(base)
   }

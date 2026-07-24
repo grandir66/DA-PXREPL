@@ -7,9 +7,9 @@
 import { defineStore } from 'pinia'
 import nodesService, { type Node } from '../services/nodes'
 import vmsService, { type VM } from '../services/vms'
-import syncJobsService, { type SyncJob } from '../services/syncJobs'
-import backupJobsService, { type BackupJob } from '../services/backupJobs'
-import recoveryJobsService, { type RecoveryJob } from '../services/recoveryJobs'
+import syncJobsService from '../services/syncJobs'
+import backupJobsService from '../services/backupJobs'
+import recoveryJobsService from '../services/recoveryJobs'
 import type { ScheduleConfig } from '../services/schedule'
 
 export type JobKind = 'syncoid' | 'pve_native' | 'backup_pbs' | 'recovery_pbs'

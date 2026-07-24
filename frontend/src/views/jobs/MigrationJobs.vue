@@ -148,7 +148,7 @@ import PageHeader from '../../components/ui/PageHeader.vue'
 import ModalDialog from '../../components/ModalDialog.vue'
 import migrationJobsService, { type MigrationJob } from '../../services/migrationJobs'
 import nodesService, { type Node } from '../../services/nodes'
-import vmsService from '../../services/vms'
+import vmsService, { type VM } from '../../services/vms'
 
 const toast = useToast()
 
@@ -206,8 +206,8 @@ async function onSourceChange() {
   try {
     const res = await vmsService.getNodeVMs(form.value.source_node_id)
     const list = Array.isArray(res.data) ? res.data : []
-    sourceVms.value = list.map((v: { vmid: number; name?: string; type?: string }) => ({
-      vmid: v.vmid,
+    sourceVms.value = list.map((v: VM) => ({
+      vmid: Number(v.vmid),
       name: v.name || `VM-${v.vmid}`,
       type: v.type || 'qemu',
     }))

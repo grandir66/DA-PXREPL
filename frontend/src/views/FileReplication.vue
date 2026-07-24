@@ -291,7 +291,7 @@ onUnmounted(stopLivePoll)
     <div class="card mb-4">
       <div class="card-header">
         <h3>Endpoint registrati ({{ endpoints.length }})</h3>
-        <button class="btn btn-sm btn-secondary" :disabled="loading" @click="refresh">Aggiorna</button>
+        <button class="btn btn-sm btn-secondary" :disabled="loading" @click="refresh()">Aggiorna</button>
       </div>
       <div class="card-body p-0">
         <p v-if="endpointError" class="p-3 text-danger">{{ endpointError }}</p>
@@ -338,7 +338,7 @@ onUnmounted(stopLivePoll)
     <div class="card">
       <div class="card-header">
         <h3>Job configurati</h3>
-        <button class="btn btn-sm btn-secondary" :disabled="loading" @click="refresh">Aggiorna</button>
+        <button class="btn btn-sm btn-secondary" :disabled="loading" @click="refresh()">Aggiorna</button>
       </div>
       <div class="card-body p-0">
         <p v-if="runError" class="p-3 text-danger">{{ runError }}</p>

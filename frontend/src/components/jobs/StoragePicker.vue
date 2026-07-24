@@ -104,7 +104,7 @@ async function reload() {
   error.value = null
   try {
     const r = await nodesService.getStorages(props.nodeId)
-    storages.value = (r.data?.storages || []) as StorageEntry[]
+    storages.value = (r.data?.storages || []) as unknown as StorageEntry[]
     emit('loaded', storages.value)
   } catch (e: any) {
     error.value = e?.response?.data?.detail || e?.message || String(e)

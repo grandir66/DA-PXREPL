@@ -11,7 +11,7 @@ export interface FileReplMappingRow {
 export function parseSynologyPathSegments(path: string): string[] {
   const parts = path.replace(/^\/+/, '').split('/').filter(Boolean)
   if (!parts.length) return []
-  if (parts[0].startsWith('volume') && parts.length >= 2) return parts.slice(1)
+  if (parts[0]?.startsWith('volume') && parts.length >= 2) return parts.slice(1)
   return parts
 }
 

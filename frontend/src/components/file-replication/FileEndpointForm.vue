@@ -89,7 +89,7 @@ function onTypeChange() {
     linux: { port: 22, protocol: 'ssh' },
     windows: { port: 445, protocol: 'smb' },
   }
-  const d = defaults[form.endpoint_type]
+  const d = defaults[form.endpoint_type]!
   form.port = d.port
   form.protocol = d.protocol
 }

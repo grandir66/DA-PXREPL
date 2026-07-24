@@ -27,6 +27,7 @@ export interface FileReplicationJob {
   source_endpoint_name?: string | null
   dest_endpoint_name?: string | null
   notify_mode?: string
+  notify_subject?: string | null
 }
 
 export const fileReplicationApi = {

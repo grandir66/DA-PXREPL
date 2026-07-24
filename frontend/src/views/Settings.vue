@@ -186,7 +186,6 @@
 <script setup lang="ts">
 import { useToast, errorMessage } from '../stores/toast';
 import { ref, onMounted, computed } from 'vue';
-import Icon from '../components/ui/Icon.vue';
 import settingsService, { type NotificationConfig, type AuthConfig } from '../services/settings';
 import apiClient from '../services/api';
 import authService from '../services/auth';

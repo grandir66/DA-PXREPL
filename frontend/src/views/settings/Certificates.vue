@@ -98,8 +98,7 @@
 <script setup lang="ts">
 import { useToast, errorMessage } from '../../stores/toast';
 import { ref, reactive, onMounted } from 'vue';
-import Icon from '../../components/ui/Icon.vue';
-import { confirmDangerous, confirmDelete } from '../../stores/confirm';
+import { confirmDangerous } from '../../stores/confirm';
 import settingsService from '../../services/settings';
 
 const toast = useToast()
@@ -202,18 +201,6 @@ const uploadCert = async () => {
  }
 };
 
-const deleteCert = async () => {
- if (!await confirmDangerous("Eliminare il certificato SSL? HTTPS smetterà di funzionare.")) return;
- 
- try {
- await settingsService.deleteCert();
- toast.success("Certificato eliminato");
- loadStatus();
- loadServerConfig();
- } catch (e) {
- toast.error("Errore eliminazione");
- }
-};
 </script>
 
 <style scoped>

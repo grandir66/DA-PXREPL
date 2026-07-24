@@ -131,7 +131,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { confirmDangerous, confirmDelete } from '../stores/confirm';
+import { confirmDangerous } from '../stores/confirm';
 import { useToast, errorMessage } from '../stores/toast'
 import { useReplicationStore, type UnifiedJob, type JobKind } from '../stores/replication'
 import JobsList from '../components/jobs/JobsList.vue'
@@ -163,7 +163,7 @@ const presetPvesr = ref<PVEReplicationJob | null>(null)
 
 const replicationJobs = computed(() => store.jobs.filter(j => j.kind !== 'backup_pbs'))
 
-const tabs = computed(() => [
+const tabs = computed<{ id: 'all' | 'syncoid' | 'pve_native' | 'recovery_pbs' | 'pve'; label: string; count: number | null }[]>(() => [
   { id: 'all', label: 'Tutti', count: replicationJobs.value.length },
   { id: 'syncoid', label: 'Repliche ZFS', count: replicationJobs.value.filter(j => j.kind === 'syncoid').length },
   { id: 'pve_native', label: 'Replica PVE-native', count: replicationJobs.value.filter(j => j.kind === 'pve_native').length },
@@ -260,7 +260,7 @@ function onShowLog(j: UnifiedJob) {
   logVisible.value = true
 }
 
-async function onRun(j: UnifiedJob, group?: { jobs: UnifiedJob[] }) {
+async function onRun(j: UnifiedJob, _group?: { jobs: UnifiedJob[] }) {
   try {
     if (
       (j.kind === 'syncoid' || j.kind === 'pve_native') &&

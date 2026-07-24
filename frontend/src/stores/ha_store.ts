@@ -34,7 +34,7 @@ export const useHAStore = defineStore('ha_store', () => {
             const nodes = nodesRes.data;
             const pve = nodes.find((n) => n.node_type === 'pve' || !n.node_type);
             if (pve) return pve.id;
-            if (nodes.length > 0) return nodes[0].id;
+            if (nodes.length > 0) return nodes[0]!.id;
         } catch {
             /* ignore */
         }

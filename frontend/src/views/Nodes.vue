@@ -183,7 +183,7 @@
  <div class="detail-card">
  <h4>🧠 Memoria</h4>
  <div class="progress-bar-container" v-if="selectedNode.memory">
- <div class="progress-bar" :style="{width: ((selectedNode.memory.used_gb / selectedNode.memory.total_gb) * 100) + '%'}"></div>
+ <div class="progress-bar" :style="{width: (((selectedNode.memory.used_gb || 0) / (selectedNode.memory.total_gb || 1)) * 100) + '%'}"></div>
  </div>
  <div class="kpi-row mt-2">
  <div class="kpi small">
@@ -232,7 +232,7 @@
  <h4>🌡️ Temperatura</h4>
  <div class="kpi-row">
  <div class="kpi">
- <span class="val" :class="{'text-danger': (selectedNode.temperature_highest_c || selectedNode.host_info.temperature?.highest) > 80}">
+ <span class="val" :class="{'text-danger': (selectedNode.temperature_highest_c || selectedNode.host_info.temperature?.highest || 0) > 80}">
  {{ selectedNode.temperature_highest_c || selectedNode.host_info.temperature?.highest || '-' }}°C
  </span>
  <span class="lbl">Max</span>
@@ -266,7 +266,7 @@
  </div>
  <div class="pool-stats">
  <div class="progress-bar-container" style="height:6px; margin:4px 0;">
- <div class="progress-bar" :style="{width: (store.used_percent || 0) + '%', background: (store.used_percent > 90 ? 'var(--failure)' : store.used_percent > 75 ? 'var(--warning)' : 'var(--accent-primary)')}"></div>
+ <div class="progress-bar" :style="{width: (store.used_percent || 0) + '%', background: ((store.used_percent || 0) > 90 ? 'var(--failure)' : (store.used_percent || 0) > 75 ? 'var(--warning)' : 'var(--accent-primary)')}"></div>
  </div>
  <span class="text-sm">{{ store.used_gb?.toFixed(1) || 0 }} / {{ store.total_gb?.toFixed(1) || 0 }} GB ({{ store.used_percent?.toFixed(1) || 0 }}%)</span>
  <span v-if="store.content" class="text-xs text-secondary ml-2">{{ store.content }}</span>
@@ -544,7 +544,6 @@ const refreshData = async () => {
  if (refreshing.value) return;
  refreshing.value = true;
  // Feedback immediato
- const originalText = "Aggiorna Dati Ora";
  
  try {
  await nodesService.refreshAllCache();

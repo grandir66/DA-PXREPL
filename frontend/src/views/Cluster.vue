@@ -423,14 +423,14 @@
                     <!-- Guest Indicators (Running Guests) -->
                     <div class="guest-indicators">
                         <div class="guest-indicators-header">
-                            <span class="indicator-title">Running Guests ({{ getGuestsForNode(nodeName).length }})</span>
-                            <button class="btn-xs btn-text" @click="toggleTopology(nodeName)">
+                            <span class="indicator-title">Running Guests ({{ getGuestsForNode(String(nodeName)).length }})</span>
+                            <button class="btn-xs btn-text" @click="toggleTopology(String(nodeName))">
                                 {{ showTopology[nodeName] ? 'Hide Topology' : 'Show Network Topology' }}
                             </button>
                         </div>
                         <div class="guest-chips-grid">
                             <div 
-                                v-for="guest in getGuestsForNode(nodeName)" 
+                                v-for="guest in getGuestsForNode(String(nodeName))" 
                                 :key="guest.id"
                                 class="guest-chip clickable-guest"
                                 :class="guest.type"
@@ -447,7 +447,7 @@
                     <!-- Network Topology View -->
                     <div v-if="showTopology[nodeName]" class="network-topology">
                         <h4>🔌 Network Topology</h4>
-                        <div v-for="(bridge, bridgeName) in getNetworkTopology(nodeName)" :key="bridgeName" class="topology-bridge">
+                        <div v-for="(bridge, bridgeName) in getNetworkTopology(String(nodeName))" :key="bridgeName" class="topology-bridge">
                             <div class="bridge-header">🌉 {{ bridgeName }}</div>
                             <div v-for="(vlan, vlanId) in bridge" :key="vlanId" class="topology-vlan">
                                 <div class="vlan-header">🏷️ VLAN {{ vlanId === 'untagged' ? 'Untagged' : vlanId }}</div>
@@ -462,8 +462,8 @@
 
                     <div class="node-footer">
                         <div class="guest-counts">
-                            <span class="guest-badge vm">{{ getGuestCount(nodeName, 'qemu') }} VMs</span>
-                            <span class="guest-badge ct">{{ getGuestCount(nodeName, 'lxc') }} CTs</span>
+                            <span class="guest-badge vm">{{ getGuestCount(String(nodeName), 'qemu') }} VMs</span>
+                            <span class="guest-badge ct">{{ getGuestCount(String(nodeName), 'lxc') }} CTs</span>
                         </div>
                     </div>
                 </div>
@@ -674,11 +674,6 @@ const selectedClusterId = ref<number | null>(null);
 const isEditingCluster = ref(false);
 const editingClusterId = ref<number | null>(null);
 
-// Computed for current cluster (if managed via new API)
-const currentCluster = computed(() => {
-    return clusters.value.find(c => c.id === selectedClusterId.value);
-});
-
 // API Config State for "Config" tab (legacy + new form)
 const clusterConfig = reactive({
     name: '',
@@ -871,7 +866,7 @@ const fetchClusters = async () => {
             if (!exists) {
                 // Select default or first
                 const def = clusters.value.find(c => c.is_default);
-                selectedClusterId.value = def ? def.id : clusters.value[0].id;
+                selectedClusterId.value = def ? def.id : clusters.value[0]!.id;
             }
         } else {
             selectedClusterId.value = null;
@@ -988,7 +983,7 @@ const getFirstPVENodeId = async () => {
         const nodes = nodesRes.data;
         const pve = nodes.find((n) => n.node_type === 'pve' || !n.node_type);
         if (pve) return pve.id;
-        if (nodes.length > 0) return nodes[0].id;
+        if (nodes.length > 0) return nodes[0]!.id;
     } catch {
         /* ignore */
     }
@@ -1217,7 +1212,7 @@ const toggleTopology = (nodeName: string) => {
 
 const getNetworkTopology = (nodeName: string) => {
     const topology: Record<string, Record<string, any[]>> = {};
-    const guests = getGuestsForNode(nodeName);
+    const guests = getGuestsForNode(String(nodeName));
     
     guests.forEach(g => {
         const networks = g.networks || [];
@@ -1242,12 +1237,12 @@ const getNetworkTopology = (nodeName: string) => {
     const sortedTopology: Record<string, any> = {};
     Object.keys(topology).sort().forEach(bridge => {
         sortedTopology[bridge] = {};
-        Object.keys(topology[bridge]).sort((a, b) => {
+        Object.keys(topology[bridge] || {}).sort((a, b) => {
             if (a === 'untagged') return -1;
             if (b === 'untagged') return 1;
             return parseInt(a) - parseInt(b);
         }).forEach(vlan => {
-            sortedTopology[bridge][vlan] = topology[bridge][vlan];
+            sortedTopology[bridge]![vlan] = topology[bridge]![vlan];
         });
     });
     

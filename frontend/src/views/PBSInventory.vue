@@ -296,9 +296,9 @@ function inventoryParams(forceRefresh = false): Record<string, string | number |
 onMounted(async () => {
   await loadNodes()
   if (pbsNodes.value.length === 1) {
-    filters.pbsNodeId = pbsNodes.value[0].id
-    if (pbsNodes.value[0].pbs_datastore) {
-      filters.datastore = pbsNodes.value[0].pbs_datastore
+    filters.pbsNodeId = pbsNodes.value[0]!.id
+    if (pbsNodes.value[0]!.pbs_datastore) {
+      filters.datastore = pbsNodes.value[0]!.pbs_datastore
     }
     await loadBackups()
   }

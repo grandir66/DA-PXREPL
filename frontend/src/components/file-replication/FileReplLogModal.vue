@@ -40,7 +40,7 @@ const reportText = computed(() => {
   if (progress.value?.status === 'running') return progressText.value
   if (progress.value?.report) return progress.value.report as string
   if (latest.value?.output?.includes('Cartelle replicate:')) {
-    return latest.value.output.split('\n\n--- rclone')[0].trim()
+    return (latest.value?.output?.split('\n\n--- rclone')[0] || '').trim()
   }
   return latest.value?.message || ''
 })

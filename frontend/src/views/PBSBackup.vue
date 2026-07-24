@@ -161,7 +161,7 @@ const tabs = computed(() => [
   { id: 'logs' as TabId, label: 'Alert & log', count: null },
 ])
 
-const backupJobs = computed(() =>
+const backupJobs = computed<UnifiedJob[]>(() =>
   backupJobsRaw.value.map(j => ({
     kind: 'backup_pbs' as const,
     id: j.id,
@@ -181,7 +181,7 @@ const backupJobs = computed(() =>
     last_status: j.last_status,
     current_status: j.current_status,
     raw: j,
-  })),
+  }) as UnifiedJob),
 )
 
 const failedJobs = computed(() =>

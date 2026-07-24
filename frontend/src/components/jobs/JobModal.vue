@@ -798,7 +798,7 @@ function onDestStoragesLoaded(storages: Array<{ storage?: string; type?: string 
     if (!form.value.dest_subfolder) form.value.dest_subfolder = 'replica'
     return
   }
-  if (zfs.length === 1) form.value.dest_pool = zfs[0]
+  if (zfs.length === 1) form.value.dest_pool = zfs[0]!
 }
 
 /** Allinea pool/subfolder evitando nomi ridondanti (es. ZFS-LARGE-replica + replica). */

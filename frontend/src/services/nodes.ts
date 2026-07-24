@@ -11,6 +11,51 @@ export interface NodeStorage {
   used_gb?: number
 }
 
+export interface HostInfoStorageItem {
+  name?: string
+  type?: string
+  status?: string
+  shared?: boolean | number
+  content?: string
+  used_gb?: number
+  total_gb?: number
+  used_percent?: number
+}
+
+export interface HostInfo {
+  cpu?: {
+    threads?: number
+    sockets?: number
+    load_1m?: number
+    load_5m?: number
+    load_15m?: number
+    model?: string
+  }
+  memory?: {
+    available_gb?: number
+    swap_total_gb?: number
+    swap_used_gb?: number
+  }
+  hardware?: {
+    manufacturer?: string
+    model?: string
+    serial?: string
+    bios_vendor?: string
+    bios_version?: string
+    board?: string
+  }
+  temperature?: { highest?: number }
+  license?: { status?: string; subscription?: string }
+  storage?: HostInfoStorageItem[]
+  // Configurazioni di rete/guest PVE (struttura eterogenea, gestite dai helper)
+  network?: any[]
+  guests?: any[]
+  proxmox_version?: string
+  kernel_version?: string
+  uptime_seconds?: number
+  node_name?: string
+}
+
 export interface Node {
   id: number
   name: string
@@ -18,7 +63,7 @@ export interface Node {
   is_online: boolean
   node_type?: string
   storage_type?: string
-  cpu?: { cores?: number }
+  cpu?: { cores?: number; model?: string }
   memory?: { total_gb?: number; used_gb?: number }
   storage_total_gb?: number
   storage_used_gb?: number
@@ -33,7 +78,7 @@ export interface Node {
   pbs_version?: string
   sanoid_installed?: boolean
   sanoid_version?: string
-  host_info?: Record<string, unknown>
+  host_info?: HostInfo
 }
 
 export default {

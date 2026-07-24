@@ -114,7 +114,7 @@
  @dragleave="isDragging = false"
  :class="{ 'dragging': isDragging }">
  <input type="file" ref="fileInput" @change="handleFileSelect" accept=".tar.gz,.dapx-backup.tar.gz" hidden />
- <div class="upload-content" @click="$refs.fileInput.click()">
+ <div class="upload-content" @click="fileInput?.click()">
  <span class="upload-icon">📁</span>
  <span class="upload-text">Trascina qui il file di backup o clicca per selezionare</span>
  <span class="upload-hint">.dapx-backup.tar.gz</span>
@@ -234,10 +234,10 @@
 </template>
 
 <script setup lang="ts">
-import { useToast, errorMessage } from '../../stores/toast';
+import { useToast } from '../../stores/toast';
 import { ref, onMounted, reactive } from 'vue';
 import Icon from '../../components/ui/Icon.vue';
-import { confirmDangerous, confirmDelete } from '../../stores/confirm';
+import { confirmDangerous } from '../../stores/confirm';
 import PageHeader from '../../components/ui/PageHeader.vue';
 import configBackupService from '../../services/configBackup';
 import type { BackupInfo, BackupSystemInfo, RestoreResult } from '../../services/configBackup';
@@ -339,7 +339,7 @@ const downloadBackup = async (filename: string) => {
 const handleFileSelect = (event: Event) => {
  const input = event.target as HTMLInputElement;
  if (input.files && input.files.length > 0) {
- selectedFile.value = input.files[0];
+ selectedFile.value = input.files[0]!;
  restoreResult.value = null;
  }
 };
@@ -347,7 +347,7 @@ const handleFileSelect = (event: Event) => {
 const handleDrop = (event: DragEvent) => {
  isDragging.value = false;
  if (event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
- selectedFile.value = event.dataTransfer.files[0];
+ selectedFile.value = event.dataTransfer.files[0]!;
  restoreResult.value = null;
  }
 };

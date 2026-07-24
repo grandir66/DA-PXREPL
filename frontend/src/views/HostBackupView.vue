@@ -231,7 +231,7 @@
 import { useToast, errorMessage } from '../stores/toast';
 import { ref, reactive, onMounted } from 'vue';
 import Icon from '../components/ui/Icon.vue';
-import { confirmDangerous, confirmDelete } from '../stores/confirm';
+import { confirmDangerous } from '../stores/confirm';
 import PageHeader from '../components/ui/PageHeader.vue';
 import apiClient from '../services/api';
 import nodesService from '../services/nodes';
