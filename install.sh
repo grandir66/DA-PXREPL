@@ -16,6 +16,10 @@ LOG_DIR="/var/log/dapx-unified"
 CONFIG_DIR="/etc/dapx-unified"
 SERVICE_USER="root"
 SERVICE_PORT="8420"
+# HTTPS di default SOLO per nuove installazioni (fresh): porta 443 + certificato
+# self-signed. Sugli upgrade la porta/SSL esistenti NON vengono toccati.
+ENABLE_SSL=false
+SSL_CERT_DAYS=730
 PYTHON_MIN_VERSION="3.9"
 
 # Reset mode: when true, wipe DB and config so the install starts from
@@ -675,6 +679,9 @@ DAPX_LOG_DIR=$LOG_DIR
 # Web server port
 DAPX_PORT=$SERVICE_PORT
 
+# HTTPS abilitato (certificati in $DATA_DIR/certs)
+DAPX_SSL=$ENABLE_SSL
+
 # Token expiration (minutes)
 SANOID_MANAGER_TOKEN_EXPIRE=480
 
@@ -695,9 +702,47 @@ ENV_FILE
 
 # ============== CONFIGURAZIONE SERVIZIO ==============
 
+setup_https_default() {
+    # Solo su fresh install (ENABLE_SSL impostato in do_install): genera un
+    # certificato self-signed (validità SSL_CERT_DAYS) e abilita HTTPS su 443.
+    # In caso di errore, fallback trasparente a HTTP sulla porta legacy 8420.
+    [[ "$ENABLE_SSL" == true ]] || return 0
+    log_step "Configurazione HTTPS di default (self-signed, ${SSL_CERT_DAYS} giorni)"
+
+    local certs_dir="$DATA_DIR/certs"
+    mkdir -p "$certs_dir"
+    local host_ip host_fqdn
+    host_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+    host_fqdn=$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo "dapx-unified")
+
+    if "$INSTALL_DIR/venv/bin/python3" "$INSTALL_DIR/backend/scripts/generate_cert.py" \
+            --hostname "$host_fqdn" ${host_ip:+--ip "$host_ip"} \
+            --days "$SSL_CERT_DAYS" --output "$certs_dir" >/dev/null 2>&1 \
+        && [[ -f "$certs_dir/server.crt" ]] && [[ -f "$certs_dir/server.key" ]]; then
+        chmod 600 "$certs_dir/server.key" 2>/dev/null || true
+        # Config persistente letta da dapx_systemd/update.sh (sopravvive agli update)
+        cat > "$DATA_DIR/server_config.json" << SRVCFG
+{
+  "port": 443,
+  "ssl_enabled": true
+}
+SRVCFG
+        log_success "Certificato self-signed generato (validità ${SSL_CERT_DAYS} giorni); HTTPS su 443"
+    else
+        log_warning "Generazione certificato fallita: fallback a HTTP sulla porta 8420"
+        SERVICE_PORT=8420
+        ENABLE_SSL=false
+    fi
+}
+
 create_systemd_service() {
     log_step "Configurazione servizio systemd"
-    
+
+    local exec_ssl=""
+    if [[ "$ENABLE_SSL" == true ]] && [[ -f "$DATA_DIR/certs/server.crt" ]] && [[ -f "$DATA_DIR/certs/server.key" ]]; then
+        exec_ssl=" --ssl-keyfile $DATA_DIR/certs/server.key --ssl-certfile $DATA_DIR/certs/server.crt"
+    fi
+
     cat > /etc/systemd/system/dapx-unified.service << SYSTEMD_UNIT
 [Unit]
 Description=DAPX Unified Replication Manager
@@ -716,7 +761,7 @@ EnvironmentFile=-$CONFIG_DIR/dapx-unified.env
 Environment="PATH=$INSTALL_DIR/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 # Execution
-ExecStart=$INSTALL_DIR/venv/bin/uvicorn main:app --host 0.0.0.0 --port $SERVICE_PORT --workers 1
+ExecStart=$INSTALL_DIR/venv/bin/uvicorn main:app --host 0.0.0.0 --port $SERVICE_PORT --workers 1$exec_ssl
 ExecReload=/bin/kill -HUP \$MAINPID
 
 # Restart policy
@@ -926,9 +971,11 @@ start_service() {
 verify_installation() {
     log_step "Verifica installazione"
     
-    # Test API health
+    # Test API health (scheme in base a SSL; -k per cert self-signed)
     sleep 2
-    if curl -s -o /dev/null -w "%{http_code}" "http://localhost:$SERVICE_PORT/api/health" | grep -q "200"; then
+    local _scheme="http" _curlk=""
+    if [[ "$ENABLE_SSL" == true ]]; then _scheme="https"; _curlk="-k"; fi
+    if curl -s $_curlk -o /dev/null -w "%{http_code}" "$_scheme://localhost:$SERVICE_PORT/api/health" | grep -q "200"; then
         log_success "API health check: OK"
     else
         log_warning "API health check: FAILED (il servizio potrebbe essere ancora in avvio)"
@@ -970,10 +1017,17 @@ print_completion() {
 EOF
     echo -e "${NC}"
     
+    local _scheme="http" _hostport="${LOCAL_IP}:${SERVICE_PORT}" _lh="localhost:${SERVICE_PORT}"
+    [[ "$ENABLE_SSL" == true ]] && _scheme="https"
+    if [[ "$SERVICE_PORT" == "443" ]]; then _hostport="${LOCAL_IP}"; _lh="localhost"; fi
+
     echo -e "${BOLD}Accedi all'interfaccia web:${NC}"
     echo ""
-    echo -e "    ${GREEN}➜${NC}  http://${LOCAL_IP}:${SERVICE_PORT}"
-    echo -e "    ${GREEN}➜${NC}  http://localhost:${SERVICE_PORT}"
+    echo -e "    ${GREEN}➜${NC}  ${_scheme}://${_hostport}"
+    echo -e "    ${GREEN}➜${NC}  ${_scheme}://${_lh}"
+    if [[ "$ENABLE_SSL" == true ]]; then
+        echo -e "    ${YELLOW}(certificato self-signed: il browser mostrerà un avviso, è normale)${NC}"
+    fi
     echo ""
     
     echo -e "${BOLD}Primo accesso:${NC}"
@@ -1002,8 +1056,8 @@ EOF
     
     echo -e "${BOLD}Documentazione API:${NC}"
     echo ""
-    echo -e "    Swagger UI:     http://${LOCAL_IP}:${SERVICE_PORT}/docs"
-    echo -e "    Health Check:   http://${LOCAL_IP}:${SERVICE_PORT}/api/health"
+    echo -e "    Swagger UI:     ${_scheme}://${_hostport}/docs"
+    echo -e "    Health Check:   ${_scheme}://${_hostport}/api/health"
     echo ""
     
     echo -e "${BOLD}Porta:${NC} ${GREEN}$SERVICE_PORT${NC}"
@@ -1215,6 +1269,17 @@ reset_state_if_requested() {
 
 do_install() {
     check_existing_installation
+    # HTTPS su 443 di default SOLO su installazione realmente nuova: nessun unit
+    # systemd, nessuno stato (server_config.json / DB) preesistente. Robusto anche
+    # con deploy_lxc che pre-popola INSTALL_DIR. Gli upgrade reali (unit+DB presenti,
+    # es. installazioni cliente su 8420) restano INVARIATI.
+    if [[ ! -f /etc/systemd/system/dapx-unified.service ]] \
+        && [[ ! -f "$DATA_DIR/server_config.json" ]] \
+        && [[ ! -f "$DATA_DIR/dapx.db" ]]; then
+        SERVICE_PORT=443
+        ENABLE_SSL=true
+        log_info "Installazione nuova: default HTTPS su 443 con certificato self-signed (${SSL_CERT_DAYS} giorni)"
+    fi
     select_mode
     
     echo ""
@@ -1242,6 +1307,7 @@ do_install() {
     install_python_dependencies
     copy_application_files
     generate_secret_key
+    setup_https_default
     create_systemd_service
     configure_firewall
     setup_ssh_keys

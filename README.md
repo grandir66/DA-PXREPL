@@ -61,7 +61,7 @@ The wizard creates and starts the container, clones this repo to `/opt/dapx-unif
 NONINTERACTIVE=true ./install.sh --local
 ```
 
-No separate “LXC installer”: it is the same `install.sh` as below. When the wizard finishes, open `http://<container-ip>:8420`.
+No separate “LXC installer”: it is the same `install.sh` as below. When the wizard finishes, open `https://<container-ip>` (new installs default to HTTPS on the standard port **443** with a self-signed certificate; the browser will warn about the cert — that's expected).
 
 ### Same installer on an existing Debian CT/VM
 
@@ -87,10 +87,10 @@ Interactive: `./install.sh` with no arguments. Options: `./install.sh --help`.
 Once installed, the web interface is available at:
 
 ```
-http://<YOUR-SERVER-IP>:8420
+https://<YOUR-SERVER-IP>
 ```
 
-*   **Port**: 8420 (default)
+*   **Port**: 443 (HTTPS, default for new installs — self-signed certificate; upgrades keep their existing port, e.g. 8420)
 *   **Credentials**: Use your Proxmox VE credentials (e.g., `root` / `password`).
 
 ## 📂 Project Structure

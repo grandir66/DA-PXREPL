@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.20.9] - 2026-07-26
+
+### Modifiche
+- **Default HTTPS su porta 443 per le NUOVE installazioni**: `install.sh`, su installazione realmente nuova (rilevata dall'assenza di unit systemd, `server_config.json` e DB), genera un certificato **self-signed valido 2 anni** (730 giorni, via `backend/scripts/generate_cert.py` con SAN su IP/hostname), abilita HTTPS e configura il servizio sulla porta standard **443**, scrivendo `server_config.json` persistente (`install.sh`, `deploy_lxc.sh`, `README.md`). Le installazioni **esistenti e gli upgrade non vengono toccati** (mantengono porta/SSL correnti, es. 8420). Fallback automatico e trasparente a HTTP/8420 se la generazione del certificato fallisce. Il `DEFAULT_PORT` del backend resta 8420 (nessun impatto su chi non ha `server_config.json`).
+
 ## [3.20.8] - 2026-07-26
 
 ### Modifiche

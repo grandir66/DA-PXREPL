@@ -552,8 +552,9 @@ show_completion() {
         CT_FINAL_IP=$(echo "$CT_IP" | cut -d'/' -f1)
     fi
     
-    local PORT=8420
-    
+    # Le nuove installazioni usano HTTPS sulla porta standard 443 (cert self-signed)
+    local SCHEME="https"
+
     echo ""
     echo -e "${GREEN}"
     cat << 'EOF'
@@ -568,11 +569,12 @@ EOF
     echo -e "${BOLD}Accedi all'interfaccia web:${NC}"
     echo ""
     if [[ -n "$CT_FINAL_IP" ]]; then
-        echo -e "    ${GREEN}➜${NC}  http://${CT_FINAL_IP}:${PORT}"
+        echo -e "    ${GREEN}➜${NC}  ${SCHEME}://${CT_FINAL_IP}"
     else
-        echo -e "    ${YELLOW}➜${NC}  http://<IP-CONTAINER>:${PORT}"
+        echo -e "    ${YELLOW}➜${NC}  ${SCHEME}://<IP-CONTAINER>"
         echo -e "    ${CYAN}   Verifica IP con: pct exec $CTID -- hostname -I${NC}"
     fi
+    echo -e "    ${YELLOW}(certificato self-signed: il browser mostrerà un avviso, è normale)${NC}"
     echo ""
     
     echo -e "${BOLD}Primo accesso:${NC}"
