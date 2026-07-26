@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.20.7] - 2026-07-26
+
+### Modifiche
+- **Restyle UI business-oriented — Fasi 3-4 (componenti + motion)**: badge con angoli squadrati (`--radius-sm`) al posto delle pill arrotondate, per un aspetto più da console dati; tabelle più compatte (padding riga 12px → 8px) per maggiore densità e lettura veloce; card senza ombra (solo bordo 1px) per un look più sobrio; raggio `--radius-xl` 12px → 10px e ombra `--shadow-lg` ammorbidita. Aggiunto blocco `@media (prefers-reduced-motion: reduce)` che riduce animazioni/transizioni per chi lo preferisce (accessibilità). Tutto in `style.css` a livello di token/classi condivise; tema dark e colori invariati; nessun cambio di comportamento.
+
 ## [3.20.6] - 2026-07-26
 
 ### Modifiche
