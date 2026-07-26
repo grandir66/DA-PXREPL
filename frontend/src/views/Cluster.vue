@@ -31,25 +31,25 @@
         class="tab-btn" 
         :class="{ active: activeTab === 'config' }" 
         @click="activeTab = 'config'">
-        ⚙️ Config
+        <Icon name="settings" /> Config
       </button>
       <button 
         class="tab-btn" 
         :class="{ active: activeTab === 'monitor' }" 
         @click="activeTab = 'monitor'">
-        🖥️ Cluster Monitor
+        <Icon name="monitor" /> Cluster Monitor
       </button>
       <button 
         class="tab-btn" 
         :class="{ active: activeTab === 'ha' }" 
         @click="activeTab = 'ha'">
-        🛡️ HA Manager
+        <Icon name="shield" /> HA Manager
       </button>
       <button 
         class="tab-btn" 
         :class="{ active: activeTab === 'topology' }" 
         @click="activeTab = 'topology'">
-        🌐 Topology
+        <Icon name="network" /> Topology
       </button>
       <button 
         class="tab-btn danger-tab" 
@@ -68,7 +68,7 @@
         <div class="card mb-4">
           <div class="flex justify-between items-center">
             <div>
-              <h4>📊 Cluster Status</h4>
+              <h4><Icon name="activity" /> Cluster Status</h4>
               <p class="help-text">Current cluster initialization and connection status.</p>
             </div>
             <div class="cluster-status-badge" :class="clusterStatusClass">
@@ -96,7 +96,7 @@
             </div>
           </div>
           <div v-else class="mt-4 text-secondary">
-            <em>⚠️ No cluster data available. Configure entry point below and refresh.</em>
+            <em><Icon name="alert-triangle" /> No cluster data available. Configure entry point below and refresh.</em>
           </div>
         </div>
         
@@ -104,10 +104,10 @@
         <div class="card" v-if="!isEditingCluster">
           <div class="flex justify-between items-center mb-4">
                <div>
-                  <h4>🔌 Cluster Connections</h4>
+                  <h4><Icon name="plug" /> Cluster Connections</h4>
                   <p class="help-text">Manage connecting to one or more Proxmox clusters. These connections are used for Monitoring, HA, and Load Balancing.</p>
                </div>
-               <button class="btn btn-primary btn-sm" @click="startEditCluster()">➕ Add Cluster</button>
+               <button class="btn btn-primary btn-sm" @click="startEditCluster()"><Icon name="plus" /> Add Cluster</button>
           </div>
           
           <div v-if="clusters.length === 0" class="text-center p-8 bg-custom-gray rounded text-secondary border border-dashed border-gray-600">
@@ -117,7 +117,7 @@
           <div v-else class="cluster-list">
                <div v-for="cluster in clusters" :key="cluster.id" class="cluster-item p-4 border border-gray-700 rounded mb-2 flex justify-between items-center hover:bg-opacity-50 hover:bg-gray-800 transition-colors" :class="{'ring-2 ring-blue-500 bg-gray-800': selectedClusterId === cluster.id}">
                    <div class="flex items-center gap-3 cursor-pointer flex-grow" @click="selectCluster(cluster.id)">
-                       <span class="text-2xl">{{ selectedClusterId === cluster.id ? '🟢' : '⚪' }}</span>
+                       <span class="status-dot" :class="selectedClusterId === cluster.id ? 'text-success' : 'text-secondary'" style="width: 10px; height: 10px; margin-right: 0;"></span>
                        <div>
                            <div class="font-bold flex items-center gap-2 text-lg">
                                {{ cluster.name || `Cluster (${cluster.hosts.split(',')[0]})` }}
@@ -194,7 +194,7 @@
               <!-- Corosync Status -->
               <div class="card" style="margin-bottom: 24px;">
                   <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border-color);">
-                       <span style="font-size: 1.5rem;">🔗</span>
+                       <Icon name="link" :size="20" />
                        <h4 style="margin: 0; font-size: 1.1rem;">Corosync Cluster Status</h4>
                   </div>
                   <div class="table-container">
@@ -231,7 +231,7 @@
               <!-- Network Map -->
               <div>
                   <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px;">
-                      <span style="font-size: 1.5rem;">🕸️</span>
+                      <Icon name="waypoints" :size="20" />
                       <h4 style="margin: 0; font-size: 1.1rem;">Network Map</h4>
                   </div>
                   
@@ -241,7 +241,7 @@
                           <!-- Header Host -->
                           <div class="topology-node-header">
                               <div style="display: flex; align-items: center; gap: 12px;">
-                                  <div class="topology-node-icon">🖥️</div>
+                                  <div class="topology-node-icon"><Icon name="server" :size="20" /></div>
                                   <div>
                                       <h3 style="margin: 0; font-size: 1.1rem; cursor: pointer; color: var(--accent);" 
                                           @click="navigateToNode(String(nodeName))"
@@ -255,7 +255,7 @@
                           <div class="topology-node-content">
                               <!-- Physical Ports -->
                               <div class="topology-section">
-                                  <h5 class="topology-section-title">🔌 Physical Interfaces</h5>
+                                  <h5 class="topology-section-title"><Icon name="plug" :size="14" /> Physical Interfaces</h5>
                                   <div class="topology-iface-list">
                                       <div v-for="iface in (nodeData || []).filter((i: any) => i.type === 'eth' || i.type === 'bond')" 
                                            :key="iface.iface" 
@@ -269,7 +269,7 @@
 
                               <!-- Bridges -->
                               <div class="topology-section">
-                                  <h5 class="topology-section-title">🌉 Bridges & Virtual Machines</h5>
+                                  <h5 class="topology-section-title"><Icon name="network" :size="14" /> Bridges & Virtual Machines</h5>
                                   <div class="topology-bridges-list">
                                       <div v-for="bridge in (nodeData || []).filter((i: any) => i.type === 'bridge')" 
                                            :key="bridge.iface" 
@@ -313,7 +313,7 @@
                                                    :class="{ vm: (guest as any).type === 'vm', ct: (guest as any).type === 'ct' }"
                                                    @click="navigateToVM(guest)"
                                                    title="Click to view VM details">
-                                                  <span class="guest-icon">{{ (guest as any).type === 'vm' ? '💻' : '📦' }}</span>
+                                                  <span class="guest-icon"><Icon :name="(guest as any).type === 'vm' ? 'monitor' : 'box'" :size="14" /></span>
                                                   <div class="guest-info">
                                                       <strong style="color: var(--accent);">{{ (guest as any).name || (guest as any).id }}</strong>
                                                       <span class="guest-id">ID: {{ (guest as any).id }}</span>
@@ -408,13 +408,13 @@
                         <!-- Network -->
                         <div class="metric-item">
                             <div class="metric-label">
-                                <span>📉 Net In</span>
+                                <span><Icon name="download" :size="14" /> Net In</span>
                                 <span class="metric-value">{{ formatBytes(node.network_in || 0) }}/s</span>
                             </div>
                         </div>
                         <div class="metric-item">
                             <div class="metric-label">
-                                <span>📈 Net Out</span>
+                                <span><Icon name="upload" :size="14" /> Net Out</span>
                                 <span class="metric-value">{{ formatBytes(node.network_out || 0) }}/s</span>
                             </div>
                         </div>
@@ -438,7 +438,7 @@
                                 @click="navigateToVM(guest)"
                                 style="cursor: pointer;"
                             >
-                                <span class="chip-icon">{{ guest.type === 'vm' ? '🖥' : '📦' }}</span>
+                                <span class="chip-icon"><Icon :name="guest.type === 'vm' ? 'monitor' : 'box'" :size="14" /></span>
                                 <span class="chip-id">{{ guest.name || guest.id }}</span>
                             </div>
                         </div>
@@ -446,14 +446,14 @@
 
                     <!-- Network Topology View -->
                     <div v-if="showTopology[nodeName]" class="network-topology">
-                        <h4>🔌 Network Topology</h4>
+                        <h4><Icon name="network" /> Network Topology</h4>
                         <div v-for="(bridge, bridgeName) in getNetworkTopology(String(nodeName))" :key="bridgeName" class="topology-bridge">
-                            <div class="bridge-header">🌉 {{ bridgeName }}</div>
+                            <div class="bridge-header"><Icon name="network" :size="14" /> {{ bridgeName }}</div>
                             <div v-for="(vlan, vlanId) in bridge" :key="vlanId" class="topology-vlan">
-                                <div class="vlan-header">🏷️ VLAN {{ vlanId === 'untagged' ? 'Untagged' : vlanId }}</div>
+                                <div class="vlan-header"><Icon name="tag" :size="14" /> VLAN {{ vlanId === 'untagged' ? 'Untagged' : vlanId }}</div>
                                 <div class="vlan-guests">
                                     <div v-for="guest in vlan" :key="guest.id" class="topology-guest" :class="guest.type">
-                                        {{ guest.type === 'vm' ? '🖥' : '📦' }} <strong>{{ guest.name || guest.id }}</strong> ({{ guest.iface }})
+                                        <Icon :name="guest.type === 'vm' ? 'monitor' : 'box'" :size="14" /> <strong>{{ guest.name || guest.id }}</strong> ({{ guest.iface }})
                                     </div>
                                 </div>
                             </div>
@@ -472,7 +472,7 @@
 
          <!-- Add Node (Available if needed, or moved to Config) -->
          <div class="card mt-6">
-            <h4>➕ Join Node to Cluster</h4>
+            <h4><Icon name="plus" /> Join Node to Cluster</h4>
             <div class="form-grid">
                 <div class="form-group">
                     <label>New Node IP</label>
@@ -481,7 +481,7 @@
             </div>
             <div class="mt-3">
                 <button class="btn btn-primary" @click="addNodeToCluster" :disabled="!newNodeIP || loading">
-                    ➕ Add Node
+                    <Icon name="plus" /> Add Node
                 </button>
             </div>
         </div>
@@ -533,7 +533,7 @@
                             <td>{{ guest.vmid }}</td>
                             <td>{{ guest.name }}</td>
                             <td>{{ guest.node }}</td>
-                            <td>{{ guest.in_ha ? '✅ In HA' : guest.status }}</td>
+                            <td><span v-if="guest.in_ha" class="text-success"><Icon name="check-circle" :size="14" /> In HA</span><span v-else>{{ guest.status }}</span></td>
                         </tr>
                     </tbody>
                 </table>
@@ -600,7 +600,7 @@
                   Removing nodes incorrectly can break quorum and make your cluster read-only or inaccessible.
               </p>
               <p class="mt-2 font-bold">
-                  🛡️ An automatic configuration backup will be triggered before any operation.
+                  <Icon name="shield" :size="14" /> An automatic configuration backup will be triggered before any operation.
               </p>
           </div>
 
@@ -629,13 +629,13 @@
                          <td>
                             <div class="flex gap-2">
                                  <button class="btn btn-xs btn-warning" @click="cleanNodeReferences(node.name)" title="Remove leftover config">
-                                     🧹 Clean Refs
+                                     <Icon name="eraser" :size="14" /> Clean Refs
                                  </button>
                                  <button class="btn btn-xs btn-danger" 
                                      @click="removeNodeFromCluster(node.name)" 
                                      :disabled="node.is_local || node.status === 'online'"
                                      title="Remove from quorum (Must be offline)">
-                                     💣 Force Remove
+                                     <Icon name="trash" :size="14" /> Force Remove
                                  </button>
                             </div>
                          </td>

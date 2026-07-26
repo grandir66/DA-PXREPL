@@ -5,6 +5,14 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.20.5] - 2026-07-26
+
+### Modifiche
+- **Restyle UI business-oriented — Fase 1 (fondamenta + vista pilota)**: introdotto il sistema icone unificato su `lucide-vue-next` dietro l'API `<Icon>` esistente, retro-compatibile (i 19 file che già la usavano non cambiano; ~80 icone mappate, tree-shakeable). Convertita la vista **Cluster** come pilota: rimosse tutte le 32 emoji e sostituite da icone sobrie; indicatore di cluster selezionato con pallino di stato colorato al posto di 🟢/⚪; stato "In HA" con icona invece di ✅ (`components/ui/Icon.vue`, `views/Cluster.vue`). Tema dark e token colore invariati. Spec: `docs/superpowers/specs/2026-07-26-ui-restyle-business-design.md`.
+
+### Aggiunte
+- Dipendenza `lucide-vue-next` per il set icone del restyle (`frontend/package.json`).
+
 ## [3.20.4] - 2026-07-25
 
 ### Correzioni
