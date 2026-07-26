@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.20.8] - 2026-07-26
+
+### Modifiche
+- **Unificazione "Repliche file dati"**: le due voci di menu sovrapposte — "Replica file NAS" (file-replication/QNAP-WORM) e "Repliche dati" (nas-sync) — sono state fuse in **un'unica voce e vista** `Repliche file dati` (`views/FileDataReplication.vue`). Vista con anagrafica endpoint condivisa, stat aggregate, lista job unica con tab `Tutti / NAS→NAS / QNAP WORM` e azioni instradate al backend corretto per tipo. I due backend, tabelle (`nas_sync_jobs`, `file_replication_jobs`) e API restano invariati: nessuna migrazione dati, i job esistenti continuano a funzionare. Le vecchie route `nas-sync` e `file-replication` reindirizzano alla nuova (link/bookmark preservati). Le viste precedenti restano nel repo come fallback. Spec: `docs/superpowers/specs/2026-07-26-unify-file-replication-design.md`.
+
 ## [3.20.7] - 2026-07-26
 
 ### Modifiche

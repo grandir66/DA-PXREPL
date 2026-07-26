@@ -39,13 +39,9 @@
             <Icon name="archive" :size="16" />
             <span>Repliche</span>
           </router-link>
-          <router-link :to="{ name: 'file-replication' }" class="nav-item" active-class="active">
+          <router-link :to="{ name: 'file-data-replication' }" class="nav-item" active-class="active">
             <Icon name="folder" :size="16" />
-            <span>Replica file NAS</span>
-          </router-link>
-          <router-link :to="{ name: 'nas-sync' }" class="nav-item" active-class="active">
-            <Icon name="arrow-right-left" :size="16" />
-            <span>Repliche dati</span>
+            <span>Repliche file dati</span>
           </router-link>
           <router-link :to="{ name: 'vm-snapshots' }" class="nav-item" active-class="active">
             <Icon name="copy" :size="16" />

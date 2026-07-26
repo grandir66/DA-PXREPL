@@ -42,9 +42,14 @@ const router = createRouter({
                     component: () => import('../views/Replication.vue')
                 },
                 {
+                    path: 'file-data-replication',
+                    name: 'file-data-replication',
+                    component: () => import('../views/FileDataReplication.vue')
+                },
+                {
+                    // Alias retro-compatibile: vecchia voce "Replica file NAS"
                     path: 'file-replication',
-                    name: 'file-replication',
-                    component: () => import('../views/FileReplication.vue')
+                    redirect: { name: 'file-data-replication' }
                 },
                 {
                     path: 'vm-snapshots',
@@ -52,9 +57,9 @@ const router = createRouter({
                     component: () => import('../views/VmSnapshots.vue')
                 },
                 {
+                    // Alias retro-compatibile: vecchia voce "Repliche dati"
                     path: 'nas-sync',
-                    name: 'nas-sync',
-                    component: () => import('../views/NasSync.vue')
+                    redirect: { name: 'file-data-replication' }
                 },
                 {
                     path: 'sanoid-syncoid',
