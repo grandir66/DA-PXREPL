@@ -55,7 +55,7 @@
                 <option value="recovery_pbs">Replica via PBS (backup + restore)</option>
               </select>
               <small v-if="form.kind === 'pve_native'" class="jm-note jm-note-warn">
-                ⚠ Modalità <strong>full ad ogni run</strong> (no incrementale di banda).
+                <Icon name="alert-triangle" :size="14" /> Modalità <strong>full ad ogni run</strong> (no incrementale di banda).
                 Per replica incrementale tra cluster usa <em>Replica via PBS</em>.
               </small>
             </div>
@@ -377,7 +377,7 @@
               </div>
               <div class="field field-full">
                 <small class="jm-note jm-note-warn">
-                  ⚠ <strong>Replica completa ad ogni run</strong> (vzdump + scp + qmrestore):
+                  <Icon name="alert-triangle" :size="14" /> <strong>Replica completa ad ogni run</strong> (vzdump + scp + qmrestore):
                   trasferisce tutto da capo, non c'è risparmio di banda né delta.
                   Per replica incrementale tra cluster usa "Replica via PBS".
                 </small>
@@ -474,6 +474,7 @@ import apiClient from '../../services/api'
 import syncJobsService from '../../services/syncJobs'
 import recoveryJobsService from '../../services/recoveryJobs'
 import type { ScheduleConfig } from '../../services/schedule'
+import Icon from '../ui/Icon.vue'
 import StoragePicker from './StoragePicker.vue'
 import VMRegistrationFields, { type VMRegistration } from './VMRegistrationFields.vue'
 import ScheduleEditor from './ScheduleEditor.vue'

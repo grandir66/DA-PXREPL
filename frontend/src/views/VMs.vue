@@ -127,7 +127,7 @@
  </div>
 
  <!-- Snapshot Modal -->
- <ModalDialog v-model:visible="showSnapshotModal" :title="`📸 Snapshot Manager - ${selectedVM?.name}`" width="900px">
+ <ModalDialog v-model:visible="showSnapshotModal" :title="`Snapshot Manager - ${selectedVM?.name}`" width="900px">
  <div class="tabs mb-4">
  <button class="tab-btn" :class="{ active: snapshotTab === 'proxmox' }" @click="snapshotTab = 'proxmox'">Proxmox Snapshots</button>
  <button class="tab-btn" :class="{ active: snapshotTab === 'sanoid' }" @click="openSanoidSection()">Sanoid Config</button>
@@ -166,7 +166,7 @@
  <div v-else>
  <!-- PVE Snapshots Section -->
  <div v-if="snapshots.length > 0" class="mb-4">
- <h5 class="text-sm font-bold text-secondary mb-2">📷 Proxmox VM Snapshots</h5>
+ <h5 class="text-sm font-bold text-secondary mb-2"><Icon name="camera" :size="20" /> Proxmox VM Snapshots</h5>
  <div v-for="snap in snapshots" :key="'pve-' + snap.name" class="snapshot-item card flex justify-between items-center p-3 mb-2">
  <div>
  <div class="font-bold flex items-center gap-2">
@@ -185,7 +185,7 @@
  
  <!-- ZFS/Sanoid Snapshots Section -->
  <div v-if="groupedZfsSnapshots.length > 0">
- <h5 class="text-sm font-bold text-secondary mb-2">⚡ ZFS/Sanoid Snapshots</h5>
+ <h5 class="text-sm font-bold text-secondary mb-2"><Icon name="zap" :size="20" /> ZFS/Sanoid Snapshots</h5>
  <div v-for="snap in groupedZfsSnapshots" :key="'zfs-' + snap.name" class="snapshot-item card flex justify-between items-center p-3 mb-2">
  <div>
  <div class="font-bold flex items-center gap-2">
@@ -267,7 +267,7 @@
  </div>
  <div v-if="snapshotTab === 'sanoid'" class="w-full text-center mt-2">
  <p class="text-xs text-secondary">
- ℹ️ <strong>Nota:</strong> Gli snapshot automatici sono gestiti da <code>cron</code> e <code>sanoid</code> a livello di sistema.<br>
+ <Icon name="info" :size="14" /> <strong>Nota:</strong> Gli snapshot automatici sono gestiti da <code>cron</code> e <code>sanoid</code> a livello di sistema.<br>
  Le policy configurate qui vengono applicate alle prossime esecuzioni pianificate (es. ogni 15 minuti/ora).
  </p>
  </div>
@@ -278,7 +278,7 @@
  </ModalDialog>
 
  <!-- Backup Modal -->
- <ModalDialog v-model:visible="showBackupModal" :title="`💾 Backup & Restore - ${selectedVM?.name}`" width="900px">
+ <ModalDialog v-model:visible="showBackupModal" :title="`Backup & Restore - ${selectedVM?.name}`" width="900px">
  <div v-if="!restoreMode">
  <!-- List View -->
  <div class="mb-4 flex justify-between items-center">
@@ -338,10 +338,10 @@
  </div>
  
  <div class="alert alert-warning" v-if="!restoreOptions.newVmid">
- ⚠️ <strong>Attenzione:</strong> Il ripristino sovrascriverà i dati esistenti se si usa lo stesso VMID.
+ <Icon name="alert-triangle" :size="14" /> <strong>Attenzione:</strong> Il ripristino sovrascriverà i dati esistenti se si usa lo stesso VMID.
  </div>
  <div class="alert alert-info" v-else>
- ℹ️ Verrà creata una nuova VM con ID <strong>{{ restoreOptions.newVmid }}</strong>.
+ <Icon name="info" :size="14" /> Verrà creata una nuova VM con ID <strong>{{ restoreOptions.newVmid }}</strong>.
  </div>
  </div>
  
@@ -403,10 +403,10 @@
  </ModalDialog>
 
  <!-- ZFS Clone Modal (Dedicated) -->
- <ModalDialog :visible="showZfsCloneModal" @close="showZfsCloneModal = false" title="⚡ Clone da Snapshot ZFS" width="600px">
+ <ModalDialog :visible="showZfsCloneModal" @close="showZfsCloneModal = false" title="Clone da Snapshot ZFS" width="600px">
  <div class="zfs-clone-wizard">
  <div class="alert alert-warning mb-4">
- ⚠️ <strong>Attenzione:</strong> Questa operazione creerà una <b>nuova VM</b> clonando i dischi dallo snapshot selezionato.
+ <Icon name="alert-triangle" :size="14" /> <strong>Attenzione:</strong> Questa operazione creerà una <b>nuova VM</b> clonando i dischi dallo snapshot selezionato.
  La VM originale non verrà modificata.
  </div>
  
@@ -439,7 +439,7 @@
  </ModalDialog>
 
  <!-- VM Info Modal -->
- <ModalDialog v-model:visible="showVMInfoModal" :title="`📊 Dettagli VM: ${vmInfoData?.name || selectedVM?.name}`" width="800px">
+ <ModalDialog v-model:visible="showVMInfoModal" :title="`Dettagli VM: ${vmInfoData?.name || selectedVM?.name}`" width="800px">
  <div v-if="vmInfoLoading" class="text-center p-8">
  <div class="spinner-lg mb-4"></div>
  <p>Caricamento dettagli VM...</p>
@@ -447,7 +447,7 @@
  <div v-else-if="vmInfoData" class="vm-details-grid">
  <!-- Basic Info -->
  <div class="detail-card">
- <h4>🖥️ Info Base</h4>
+ <h4><Icon name="monitor" :size="20" /> Info Base</h4>
  <table class="simple-table">
  <tr><td>VMID:</td><td><strong class="text-accent">{{ vmInfoData.vmid }}</strong></td></tr>
  <tr><td>Nome:</td><td>{{ vmInfoData.config?.name || selectedVM?.name }}</td></tr>
@@ -459,7 +459,7 @@
 
  <!-- Resources -->
  <div class="detail-card">
- <h4>⚙️ Risorse Allocate</h4>
+ <h4><Icon name="settings" :size="20" /> Risorse Allocate</h4>
  <table class="simple-table">
  <tr><td>CPU Cores:</td><td><strong>{{ vmInfoData.config?.cores || vmInfoData.config?.cpulimit || 1 }}</strong></td></tr>
  <tr v-if="vmInfoData.config?.sockets"><td>Sockets:</td><td>{{ vmInfoData.config.sockets }}</td></tr>
@@ -471,7 +471,7 @@
 
  <!-- Disks -->
  <div class="detail-card full-width">
- <h4>💽 Dischi</h4>
+ <h4><Icon name="hard-drive" :size="20" /> Dischi</h4>
  <div class="disk-list">
  <div v-for="(value, key) in getDiskEntries(vmInfoData.config)" :key="key" class="disk-item">
  <span class="font-bold">{{ key }}:</span>
@@ -485,7 +485,7 @@
 
  <!-- Network -->
  <div class="detail-card full-width">
- <h4>🌐 Network</h4>
+ <h4><Icon name="globe" :size="20" /> Network</h4>
  <div class="network-list">
  <div v-for="(value, key) in getNetworkEntries(vmInfoData.config)" :key="key" class="network-item">
  <span class="font-bold">{{ key }}:</span>
@@ -503,10 +503,10 @@
 
  <!-- Boot & Options -->
  <div class="detail-card">
- <h4>🔧 Opzioni</h4>
+ <h4><Icon name="wrench" :size="20" /> Opzioni</h4>
  <table class="simple-table">
  <tr v-if="vmInfoData.config?.boot"><td>Boot Order:</td><td class="text-xs">{{ vmInfoData.config.boot }}</td></tr>
- <tr v-if="vmInfoData.config?.onboot !== undefined"><td>Start on Boot:</td><td>{{ vmInfoData.config.onboot ? '✅ Yes' : '❌ No' }}</td></tr>
+ <tr v-if="vmInfoData.config?.onboot !== undefined"><td>Start on Boot:</td><td><Icon :name="vmInfoData.config.onboot ? 'check-circle' : 'x-circle'" :size="14" :class="vmInfoData.config.onboot ? 'text-success' : 'text-danger'" /> {{ vmInfoData.config.onboot ? 'Yes' : 'No' }}</td></tr>
  <tr v-if="vmInfoData.config?.ostype"><td>OS Type:</td><td>{{ vmInfoData.config.ostype }}</td></tr>
  <tr v-if="vmInfoData.config?.machine"><td>Machine:</td><td class="text-xs">{{ vmInfoData.config.machine }}</td></tr>
  <tr v-if="vmInfoData.config?.bios"><td>BIOS:</td><td>{{ vmInfoData.config.bios }}</td></tr>
@@ -515,7 +515,7 @@
 
  <!-- Snapshots Summary -->
  <div class="detail-card">
- <h4>📷 Snapshots</h4>
+ <h4><Icon name="camera" :size="20" /> Snapshots</h4>
  <div v-if="vmInfoData.snapshots?.list?.length">
  <div class="text-2xl font-bold text-accent mb-2">{{ vmInfoData.snapshots.list.length }}</div>
  <div class="text-sm text-secondary">snapshot disponibili</div>
@@ -529,7 +529,7 @@
  <!-- Raw Config Toggle -->
  <div class="detail-card full-width">
  <details>
- <summary class="cursor-pointer text-secondary">📋 Mostra configurazione raw</summary>
+ <summary class="cursor-pointer text-secondary"><Icon name="clipboard" :size="14" /> Mostra configurazione raw</summary>
  <pre class="text-xs mt-2" style="max-height: 300px; overflow: auto; background: var(--bg-secondary); padding: 8px; border-radius: 4px;">{{ JSON.stringify(vmInfoData.config, null, 2) }}</pre>
  </details>
  </div>

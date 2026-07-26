@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import axios from 'axios'
 import { onMounted, ref } from 'vue'
+import Icon from '../ui/Icon.vue'
 import vmsService from '../../services/vms'
 import {
   vmSnapshotsApi,
@@ -103,7 +104,7 @@ onMounted(load)
             <strong><code>{{ vm.vmid }}</code> {{ vm.vm_name }}</strong>
             <span class="badge vm-type">{{ vm.vm_type === 'lxc' ? 'CT' : 'VM' }}</span>
             <span class="text-muted">@ {{ vm.node_name }}</span>
-            <span v-if="vm.has_pvesr" class="badge badge-warn" title="Replica pvesr attiva">⚠ pvesr</span>
+            <span v-if="vm.has_pvesr" class="badge badge-warn" title="Replica pvesr attiva"><Icon name="alert-triangle" :size="14" /> pvesr</span>
           </div>
           <p v-if="vm.error" class="text-danger">{{ vm.error }}</p>
           <p v-else-if="!vm.snapshots.length" class="text-muted">Nessuno snapshot.</p>

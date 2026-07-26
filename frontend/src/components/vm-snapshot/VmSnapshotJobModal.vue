@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import axios from 'axios'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import Icon from '../ui/Icon.vue'
 import {
   vmSnapshotsApi,
   type VmIndexEntry,
@@ -320,7 +321,7 @@ onMounted(loadIndex)
                 v-if="vm.has_pvesr"
                 class="badge badge-warn"
                 title="Questa VM ha una replica pvesr attiva: pvesr può rimuovere snapshot non suoi e un rollback può invalidare la replica"
-              >⚠ pvesr</span>
+              ><Icon name="alert-triangle" :size="14" /> pvesr</span>
             </label>
           </div>
         </div>
@@ -370,7 +371,7 @@ onMounted(loadIndex)
             </small>
             <small v-if="form.label && !labelValid" class="text-danger d-block">Label non valido.</small>
             <small v-if="labelConflict.length" class="text-warning d-block">
-              ⚠ Label già usato dai job: {{ labelConflict.join(', ') }}. Se i job condividono VM,
+              <Icon name="alert-triangle" :size="14" /> Label già usato dai job: {{ labelConflict.join(', ') }}. Se i job condividono VM,
               le retention si cancelleranno gli snapshot a vicenda.
             </small>
           </div>
@@ -435,7 +436,7 @@ onMounted(loadIndex)
           <li>RAM/vmstate: <strong>{{ form.include_vmstate ? 'Sì (solo qemu)' : 'No' }}</strong></li>
           <li>Schedule: <code>{{ form.schedule || 'solo manuale' }}</code></li>
           <li v-if="preview.some((vm) => vm.has_pvesr)" class="text-warning">
-            ⚠ {{ preview.filter((vm) => vm.has_pvesr).length }} VM hanno replica pvesr attiva:
+            <Icon name="alert-triangle" :size="14" /> {{ preview.filter((vm) => vm.has_pvesr).length }} VM hanno replica pvesr attiva:
             verrà segnalato un avviso a ogni run.
           </li>
         </ul>

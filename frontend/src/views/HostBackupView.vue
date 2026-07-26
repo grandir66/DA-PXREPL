@@ -7,7 +7,7 @@
  />
 
  <div class="info-banner mb-6">
- <div class="icon">💡</div>
+ <div class="icon"><Icon name="lightbulb" :size="20" /></div>
  <div class="content">
  <strong>Cos'è l'Host Config Backup?</strong>
  <p>Backup dei file di configurazione del sistema Proxmox (non delle VM). Include: /etc/pve, /etc/network, configurazione cluster, chiavi SSH, cron jobs.</p>
@@ -44,8 +44,8 @@
  <label>Schedule</label>
  <select v-model="form.schedule" class="form-input">
  <option :value="null">⏸️ Manuale (disattivato)</option>
- <option value="daily">📅 Giornaliero (00:00)</option>
- <option value="weekly">📅 Settimanale (Domenica)</option>
+ <option value="daily">Giornaliero (00:00)</option>
+ <option value="weekly">Settimanale (Domenica)</option>
  </select>
  </div>
  <div class="form-group">
@@ -60,11 +60,11 @@
 
  <div class="grid-2 mt-4">
  <label class="checkbox-label">
- <input type="checkbox" v-model="form.compress"> 📦 Comprimi (gzip)
+ <input type="checkbox" v-model="form.compress"> <Icon name="box" :size="14" /> Comprimi (gzip)
  </label>
  <div class="flex-col gap-2">
  <label class="checkbox-label">
- <input type="checkbox" v-model="form.encrypt"> 🔒 Cripta (AES-256)
+ <input type="checkbox" v-model="form.encrypt"> <Icon name="lock" :size="14" /> Cripta (AES-256)
  </label>
  <input v-if="form.encrypt" type="password" v-model="form.encrypt_password" class="form-input mt-1" placeholder="Password crittografia">
  </div>
@@ -77,7 +77,7 @@
  <option value="never">Mai</option>
  <option value="always">Sempre</option>
  <option value="failure">Solo su errore</option>
- <option value="daily">📅 Solo nel riepilogo giornaliero</option>
+ <option value="daily">Solo nel riepilogo giornaliero</option>
  </select>
  </div>
  <div class="form-group" v-if="form.notify_mode !== 'never' && form.notify_mode !== 'daily'">
@@ -202,7 +202,7 @@
  <td>
  <div class="btn-group">
  <button class="btn btn-xs btn-secondary" @click="downloadBackup(backup)" title="Download">
- 📥 Download
+ <Icon name="download" :size="14" /> Download
  </button>
  <button class="btn btn-xs btn-danger" @click="deleteBackup(backup)" title="Elimina">
  <Icon name="trash" :size="14" />

@@ -10,22 +10,22 @@
  <!-- Sidebar Navigation -->
  <div class="settings-sidebar">
  <div class="nav-item" :class="{ active: activeTab === 'general' }" @click="activeTab = 'general'">
- 🛠️ Generale
+ <Icon name="wrench" :size="14" /> Generale
  </div>
  <div class="nav-item" :class="{ active: activeTab === 'notifications' }" @click="activeTab = 'notifications'">
- 🔔 Notifiche
+ <Icon name="bell" :size="14" /> Notifiche
  </div>
  <div class="nav-item" :class="{ active: activeTab === 'users' }" @click="activeTab = 'users'" v-if="isAdmin">
- 👥 Utenti
+ <Icon name="users" :size="14" /> Utenti
  </div>
  <div class="nav-item" :class="{ active: activeTab === 'profile' }" @click="activeTab = 'profile'">
- 👤 Profilo
+ <Icon name="user" :size="14" /> Profilo
  </div>
  <div class="nav-item" :class="{ active: activeTab === 'certs' }" @click="activeTab = 'certs'" v-if="isAdmin">
- 🔒 Certificati SSL
+ <Icon name="lock" :size="14" /> Certificati SSL
  </div>
  <div class="nav-item" :class="{ active: activeTab === 'ssh' }" @click="activeTab = 'ssh'" v-if="isAdmin">
- 🔑 Chiavi SSH
+ <Icon name="key" :size="14" /> Chiavi SSH
  </div>
  </div>
 
@@ -128,19 +128,19 @@
 
  <!-- Triggers Section -->
  <div class="form-section">
- <h4 class="trigger-title">⚠️ Quando Notificare</h4>
+ <h4 class="trigger-title"><Icon name="alert-triangle" :size="20" /> Quando Notificare</h4>
  <div class="triggers-grid">
  <label class="trigger-option error">
  <input type="checkbox" v-model="notifications.notify_on_failure">
- <span>❌ Notifica su errori</span>
+ <span><Icon name="x-circle" :size="14" class="text-danger" /> Notifica su errori</span>
  </label>
  <label class="trigger-option warning">
  <input type="checkbox" v-model="notifications.notify_on_warning">
- <span>⚠️ Notifica su warning</span>
+ <span><Icon name="alert-triangle" :size="14" /> Notifica su warning</span>
  </label>
  <label class="trigger-option success">
  <input type="checkbox" v-model="notifications.notify_on_success">
- <span>✅ Notifica su successi</span>
+ <span><Icon name="check-circle" :size="14" class="text-success" /> Notifica su successi</span>
  </label>
  </div>
  </div>
@@ -150,7 +150,7 @@
  <!-- Daily Summary Placeholder -->
  <div class="form-section">
  <div style="display: flex; justify-content: space-between; align-items: center;">
- <h4>📧 Riepilogo Giornaliero</h4>
+ <h4><Icon name="mail" :size="20" /> Riepilogo Giornaliero</h4>
  <button class="btn btn-xs btn-secondary" @click="sendDailySummary">Invia ORA</button>
  </div>
  <p class="text-secondary text-sm mb-2">Ricevi ogni giorno un riepilogo con lo stato di tutti i job.</p>
@@ -190,6 +190,7 @@ import settingsService, { type NotificationConfig, type AuthConfig } from '../se
 import apiClient from '../services/api';
 import authService from '../services/auth';
 import PageHeader from '../components/ui/PageHeader.vue';
+import Icon from '../components/ui/Icon.vue';
 import UserManagement from './settings/UserManagement.vue';
 import UserProfile from './settings/UserProfile.vue';
 import Certificates from './settings/Certificates.vue';

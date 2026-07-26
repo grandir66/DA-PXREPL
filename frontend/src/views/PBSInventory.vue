@@ -7,7 +7,7 @@
     />
 
     <div class="info-banner mb-6">
-      <div class="icon">📦</div>
+      <div class="icon"><Icon name="box" :size="20" /></div>
       <div class="content">
         <strong>Esplora i backup sul PBS</strong>
         <p>
@@ -227,6 +227,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import PageHeader from '../components/ui/PageHeader.vue'
+import Icon from '../components/ui/Icon.vue'
 import ModalDialog from '../components/ModalDialog.vue'
 import nodesService, { type Node, type NodeStorage } from '../services/nodes'
 import pbsInventoryService, {

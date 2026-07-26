@@ -84,7 +84,7 @@
     </nav>
 
     <div v-if="activeTab === 'recovery_pbs'" class="info-banner mb-4">
-      <div class="icon">🔄</div>
+      <div class="icon"><Icon name="refresh" :size="20" /></div>
       <div class="content">
         <strong>Replica via PBS</strong>
         <p>
@@ -141,6 +141,7 @@ import PVELegacy from './replication/PVEReplicationJobs.vue'
 import syncJobsService from '../services/syncJobs'
 import recoveryJobsService from '../services/recoveryJobs'
 import { pveReplicationService, type PVEReplicationJob, type PVEReplicationSummary } from '../services/pveReplication'
+import Icon from '../components/ui/Icon.vue'
 
 const store = useReplicationStore()
 const toast = useToast()

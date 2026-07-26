@@ -20,6 +20,8 @@ import {
   RotateCcw, Gauge, Folder, TrendingUp, TrendingDown, Thermometer, Power, Circle, Hash,
   MemoryStick, Layers, Zap, Save, Key, Mail, Send, Clipboard, History, GitBranch, Share2,
   Link, Plug, Eraser, Tag, Waypoints, Boxes,
+  Wrench, Camera, Square as SquareIcon, BarChart3, Lightbulb, Hand, ScrollText,
+  AlarmClock, SkipForward, CalendarDays, CalendarRange,
 } from 'lucide-vue-next'
 
 // Mappa nome-kebab → componente lucide. Backend a icone lucide con API invariata
@@ -52,6 +54,10 @@ const MAP: Record<string, Component> = {
   user: User, users: Users, lock: Lock, unlock: LockOpen,
   key: Key, eye: Eye, 'eye-off': EyeOff, hash: Hash, 'git-branch': GitBranch,
   eraser: Eraser, tag: Tag, waypoints: Waypoints, boxes: Boxes,
+  wrench: Wrench, camera: Camera, square: SquareIcon, chart: BarChart3,
+  lightbulb: Lightbulb, hand: Hand, 'scroll-text': ScrollText,
+  'alarm-clock': AlarmClock, 'skip-forward': SkipForward,
+  'calendar-days': CalendarDays, 'calendar-range': CalendarRange,
 }
 
 const props = withDefaults(

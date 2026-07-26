@@ -93,7 +93,7 @@
  <td>
  <div v-if="node.node_type === 'pve'">
  <span v-if="node.sanoid_installed" class="badge badge-success" title="Sanoid Installato">
- ✅ {{ node.sanoid_version || 'OK' }}
+ <Icon name="check-circle" :size="14" class="text-success" /> {{ node.sanoid_version || 'OK' }}
  <button class="btn-icon-sm" @click.stop="updateSanoid(node)" title="Aggiorna Sanoid">⬆️</button>
  </span>
  <button v-else class="btn btn-warning btn-xs" @click="installSanoid(node)" title="Installa Sanoid">Installa</button>
@@ -145,7 +145,7 @@
  <div v-else class="details-grid">
  <!-- CPU -->
  <div class="detail-card">
- <h4>🔲 CPU</h4>
+ <h4><Icon name="square" :size="20" /> CPU</h4>
  <div class="kpi-row">
  <div class="kpi">
  <span class="val">{{ selectedNode.cpu?.cores || '-' }}</span>
@@ -181,7 +181,7 @@
 
  <!-- RAM -->
  <div class="detail-card">
- <h4>🧠 Memoria</h4>
+ <h4><Icon name="memory" :size="20" /> Memoria</h4>
  <div class="progress-bar-container" v-if="selectedNode.memory">
  <div class="progress-bar" :style="{width: (((selectedNode.memory.used_gb || 0) / (selectedNode.memory.total_gb || 1)) * 100) + '%'}"></div>
  </div>
@@ -206,7 +206,7 @@
 
  <!-- System Info -->
  <div class="detail-card">
- <h4>🖥️ Sistema</h4>
+ <h4><Icon name="monitor" :size="20" /> Sistema</h4>
  <table class="simple-table">
  <tr><td>Proxmox:</td><td><strong>{{ selectedNode.host_info.proxmox_version || selectedNode.proxmox_version || '-' }}</strong></td></tr>
  <tr><td>Kernel:</td><td>{{ selectedNode.host_info.kernel_version || '-' }}</td></tr>
@@ -217,7 +217,7 @@
 
  <!-- Hardware -->
  <div class="detail-card">
- <h4>🔧 Hardware</h4>
+ <h4><Icon name="wrench" :size="20" /> Hardware</h4>
  <table class="simple-table">
  <tr><td>Produttore:</td><td>{{ selectedNode.host_info.hardware?.manufacturer || '-' }}</td></tr>
  <tr><td>Modello:</td><td>{{ selectedNode.host_info.hardware?.model || '-' }}</td></tr>
@@ -229,7 +229,7 @@
 
  <!-- Temperature -->
  <div class="detail-card" v-if="selectedNode.temperature_highest_c || selectedNode.host_info.temperature?.highest">
- <h4>🌡️ Temperatura</h4>
+ <h4><Icon name="thermometer" :size="20" /> Temperatura</h4>
  <div class="kpi-row">
  <div class="kpi">
  <span class="val" :class="{'text-danger': (selectedNode.temperature_highest_c || selectedNode.host_info.temperature?.highest || 0) > 80}">
@@ -242,7 +242,7 @@
 
  <!-- License -->
  <div class="detail-card" v-if="selectedNode.host_info.license">
- <h4>📜 Licenza</h4>
+ <h4><Icon name="file-text" :size="20" /> Licenza</h4>
  <table class="simple-table">
  <tr><td>Stato:</td><td>
  <span :class="selectedNode.host_info.license.status === 'active' ? 'text-success' : 'text-warning'">
@@ -255,7 +255,7 @@
 
  <!-- Storage (full width) -->
  <div class="detail-card full-width">
- <h4>💽 Storage / Datastores ({{ (selectedNode.host_info.storage || []).length }})</h4>
+ <h4><Icon name="hard-drive" :size="20" /> Storage / Datastores ({{ (selectedNode.host_info.storage || []).length }})</h4>
  <div class="storage-list" v-if="selectedNode.host_info.storage?.length">
  <div v-for="store in selectedNode.host_info.storage" :key="store.name" class="pool-item">
  <div class="pool-header">
@@ -278,7 +278,7 @@
 
  <!-- Network Topology -->
  <div class="detail-card full-width" v-if="selectedNode.host_info?.network?.length">
- <h4>🕸️ Network Topology</h4>
+ <h4><Icon name="network" :size="20" /> Network Topology</h4>
  
  <!-- Bridges -->
  <div class="topology-bridges-list">
@@ -322,7 +322,7 @@
  :key="guest.id" 
  class="topology-guest-item"
  :class="{ vm: guest.type === 'vm', ct: guest.type === 'ct' }">
- <span class="guest-icon">{{ guest.type === 'vm' ? '💻' : '📦' }}</span>
+ <span class="guest-icon"><Icon :name="guest.type === 'vm' ? 'monitor' : 'box'" :size="14" /></span>
  <div class="guest-info">
  <strong>{{ guest.name || guest.id }}</strong>
  <span class="guest-id">ID: {{ guest.id }} - {{ guest.status }}</span>
@@ -342,7 +342,7 @@
  
  <!-- Other Interfaces (non-bridge) -->
  <details v-if="getNonBridgeInterfaces(selectedNode.host_info.network).length > 0" class="mt-3">
- <summary class="cursor-pointer text-secondary text-sm">📋 Other Interfaces ({{ getNonBridgeInterfaces(selectedNode.host_info.network).length }})</summary>
+ <summary class="cursor-pointer text-secondary text-sm"><Icon name="clipboard" :size="14" /> Other Interfaces ({{ getNonBridgeInterfaces(selectedNode.host_info.network).length }})</summary>
  <div class="storage-list mt-2">
  <div v-for="iface in getNonBridgeInterfaces(selectedNode.host_info.network)" :key="iface.name" class="pool-item">
  <div class="pool-header">
@@ -362,7 +362,7 @@
  <!-- Raw Data Toggle -->
  <div class="detail-card full-width">
  <details>
- <summary class="cursor-pointer text-secondary">📋 Mostra dati raw JSON</summary>
+ <summary class="cursor-pointer text-secondary"><Icon name="clipboard" :size="14" /> Mostra dati raw JSON</summary>
  <pre class="text-xs mt-2" style="max-height: 300px; overflow: auto; background: var(--bg-secondary); padding: 8px; border-radius: 4px;">{{ JSON.stringify(selectedNode.host_info, null, 2) }}</pre>
  </details>
  </div>
@@ -461,7 +461,7 @@
  {{ diagnosticOutput }}
  </div>
  <div v-if="diagnosticExitCode !== 0" class="mt-4 text-danger font-bold">
- ⚠️ Script terminato con codice errore: {{ diagnosticExitCode }}
+ <Icon name="alert-triangle" :size="14" /> Script terminato con codice errore: {{ diagnosticExitCode }}
  </div>
  </div>
  <div class="modal-footer">

@@ -41,12 +41,12 @@
  <div class="card-header">
  <h3>Note di Rilascio</h3>
  <a v-if="updateInfo?.release_url" :href="updateInfo.release_url" target="_blank" class="btn btn-sm">
- 🔗 Vedi su GitHub
+ <Icon name="link" :size="14" /> Vedi su GitHub
  </a>
  </div>
  <div class="card-body">
  <div v-if="updateInfo.release_date" class="release-date">
- 📅 {{ formatDate(updateInfo.release_date) }}
+ <Icon name="calendar" :size="14" /> {{ formatDate(updateInfo.release_date) }}
  </div>
  <pre class="changelog-content">{{ updateInfo.changelog }}</pre>
  </div>
@@ -74,7 +74,7 @@
  </div>
  <div class="card-body">
  <div class="warning-box">
- <strong>⚠️ Attenzione:</strong>
+ <strong><Icon name="alert-triangle" :size="14" /> Attenzione:</strong>
  <ul>
  <li>Il servizio verrà riavviato durante l'aggiornamento</li>
  <li>Verrà creato un backup automatico del database</li>
@@ -106,7 +106,7 @@
  </div>
  </div>
  <div v-if="updateStatus.error" class="error-message">
- ❌ {{ updateStatus.error }}
+ <Icon name="x-circle" :size="14" class="text-danger" /> {{ updateStatus.error }}
  </div>
  </div>
  </div>

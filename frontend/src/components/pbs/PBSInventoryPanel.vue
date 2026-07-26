@@ -1,7 +1,7 @@
 <template>
   <div class="pbs-inv-panel">
     <div class="info-banner mb-6">
-      <div class="icon">📦</div>
+      <div class="icon"><Icon name="box" :size="20" /></div>
       <div class="content">
         <strong>Inventario backup su PBS</strong>
         <p>
@@ -161,6 +161,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import Icon from '../ui/Icon.vue'
 import ModalDialog from '../ModalDialog.vue'
 import nodesService, { type Node, type NodeStorage } from '../../services/nodes'
 import pbsInventoryService, { type PBSBackupEntry, type PBSVmSummary } from '../../services/pbsInventory'

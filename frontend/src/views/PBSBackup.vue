@@ -45,7 +45,7 @@
     <main class="pbs-main">
       <div v-if="activeTab === 'overview'" class="pbs-overview">
         <div class="info-banner mb-4">
-          <div class="icon">🛡️</div>
+          <div class="icon"><Icon name="shield" :size="20" /></div>
           <div class="content">
             <strong>Backup vs replica</strong>
             <p>
@@ -130,6 +130,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '../components/ui/PageHeader.vue'
+import Icon from '../components/ui/Icon.vue'
 import JobsList from '../components/jobs/JobsList.vue'
 import JobModal from '../components/jobs/JobModal.vue'
 import PBSInventoryPanel from '../components/pbs/PBSInventoryPanel.vue'

@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.20.6] - 2026-07-26
+
+### Modifiche
+- **Restyle UI business-oriented — Fase 2 (fan-out icone)**: sostituite ~100 emoji pittografiche con il componente `<Icon>` (lucide) su tutte le viste rimanenti — ConfigBackup, VMs, Nodes, HostBackupView, Settings, Certificates, Updates, VmSnapshots, PBS, Replication, form nas-sync/file-replication e i modali vm-snapshot. Selettore schedulazione (`ScheduleEditor.vue`) migrato da emoji a icone (manuale/orario/giornaliero/settimanale/…). Stati positivi/negativi con icone sobrie (check-circle/x-circle) al posto di ✅/❌. Lasciati intenzionalmente i simboli tipografici monocromatici (→ ↑ ↓ ✓ ✗ ✕) già adatti a un'UI business. Tema dark e token colore invariati; nessun cambio di comportamento a runtime.
+
 ## [3.20.5] - 2026-07-26
 
 ### Modifiche

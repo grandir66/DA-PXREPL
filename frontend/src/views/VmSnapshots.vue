@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import axios from 'axios'
 import { onMounted, onUnmounted, ref } from 'vue'
+import Icon from '../components/ui/Icon.vue'
 import VmSnapshotBrowserModal from '../components/vm-snapshot/VmSnapshotBrowserModal.vue'
 import VmSnapshotJobModal from '../components/vm-snapshot/VmSnapshotJobModal.vue'
 import VmSnapshotLogModal from '../components/vm-snapshot/VmSnapshotLogModal.vue'
@@ -183,7 +184,7 @@ onUnmounted(() => {
                   <strong>{{ job.name }}</strong>
                   <small v-if="job.label_conflicts.length" class="d-block text-warning"
                          :title="`Label condiviso con: ${job.label_conflicts.join(', ')}`">
-                    ⚠ label condiviso
+                    <Icon name="alert-triangle" :size="14" /> label condiviso
                   </small>
                 </td>
                 <td>
@@ -231,7 +232,7 @@ onUnmounted(() => {
                         <code>{{ r.vmid }}</code> {{ r.vm_name }} @ {{ r.node_name }}
                         <span v-if="r.error" class="text-danger">— {{ r.error }}</span>
                         <span v-else-if="r.pruned.length" class="muted">— potati {{ r.pruned.length }}</span>
-                        <span v-if="r.warning" class="text-warning" :title="r.warning">⚠</span>
+                        <span v-if="r.warning" class="text-warning" :title="r.warning"><Icon name="alert-triangle" :size="14" /></span>
                       </li>
                     </ul>
                   </template>

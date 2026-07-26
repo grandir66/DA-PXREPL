@@ -31,13 +31,13 @@
  <h3>Stato SSL/HTTPS</h3>
  <div class="status-indicators">
  <div class="indicator">
- HTTPS: <span :class="status?.ssl_enabled ? 'text-success' : 'text-danger'">{{ status?.ssl_enabled ? '✅ Attivo' : '❌ Disabilitato' }}</span>
+ HTTPS: <span :class="status?.ssl_enabled ? 'text-success' : 'text-danger'"><Icon :name="status?.ssl_enabled ? 'check-circle' : 'x-circle'" :size="14" /> {{ status?.ssl_enabled ? 'Attivo' : 'Disabilitato' }}</span>
  </div>
  <div class="indicator">
- Certificato: <span :class="status?.cert_exists ? 'text-success' : 'text-danger'">{{ status?.cert_exists ? '✅ Presente' : '❌ Assente' }}</span>
+ Certificato: <span :class="status?.cert_exists ? 'text-success' : 'text-danger'"><Icon :name="status?.cert_exists ? 'check-circle' : 'x-circle'" :size="14" /> {{ status?.cert_exists ? 'Presente' : 'Assente' }}</span>
  </div>
  <div class="indicator" v-if="status?.cert_info">
- Validità: <span :class="status.cert_info.valid ? 'text-success' : 'text-danger'">{{ status.cert_info.valid ? '✅ Valido' : '❌ Scaduto/Invalido' }}</span>
+ Validità: <span :class="status.cert_info.valid ? 'text-success' : 'text-danger'"><Icon :name="status.cert_info.valid ? 'check-circle' : 'x-circle'" :size="14" /> {{ status.cert_info.valid ? 'Valido' : 'Scaduto/Invalido' }}</span>
  </div>
  <div class="indicator" v-if="status?.cert_info">
  Scadenza: <span>{{ status.cert_info.days_remaining }} giorni</span>
@@ -49,7 +49,7 @@
  <div class="actions-container">
  <!-- Generate Tab -->
  <div class="action-card">
- <h4 class="text-primary">🛠️ Genera Certificato Auto-firmato</h4>
+ <h4 class="text-primary"><Icon name="wrench" :size="20" /> Genera Certificato Auto-firmato</h4>
  <p class="text-secondary text-sm mb-4">Genera automaticamente un certificato SSL auto-firmato. Utile per ambienti di sviluppo o reti interne.</p>
  
  <div class="grid-2">
@@ -75,7 +75,7 @@
 
  <!-- Upload Tab -->
  <div class="action-card mt-6">
- <h4 class="text-info">📤 Carica Certificato Personalizzato</h4>
+ <h4 class="text-info"><Icon name="upload" :size="20" /> Carica Certificato Personalizzato</h4>
  <p class="text-secondary text-sm mb-4">Carica un certificato SSL esistente (es. da Let's Encrypt o CA aziendale). Formato PEM richiesto.</p>
  
  <div class="form-group">
@@ -88,7 +88,7 @@
  </div>
  
  <button class="btn btn-info mt-2" @click="uploadCert" :disabled="working">
- {{ working ? 'Caricamento...' : '📤 Carica Certificato' }}
+ <Icon v-if="!working" name="upload" :size="14" /> {{ working ? 'Caricamento...' : 'Carica Certificato' }}
  </button>
  </div>
  </div>
@@ -100,6 +100,7 @@ import { useToast, errorMessage } from '../../stores/toast';
 import { ref, reactive, onMounted } from 'vue';
 import { confirmDangerous } from '../../stores/confirm';
 import settingsService from '../../services/settings';
+import Icon from '../../components/ui/Icon.vue';
 
 const toast = useToast()
 

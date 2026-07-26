@@ -9,7 +9,7 @@
         :class="{ active: model.kind === opt.value }"
         @click="setKind(opt.value)"
       >
-        <span class="se-kind-icon">{{ opt.icon }}</span>
+        <span class="se-kind-icon"><Icon :name="opt.icon" :size="16" /></span>
         <span class="se-kind-label">{{ opt.label }}</span>
         <span class="se-kind-hint">{{ opt.hint }}</span>
       </button>
@@ -142,6 +142,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import Icon from '../ui/Icon.vue'
 import scheduleService, {
   WEEKDAYS_ORDER,
   WEEKDAY_LABELS_IT,
@@ -165,14 +166,14 @@ const kindOptions: Array<{
   hint: string
   icon: string
 }> = [
-  { value: 'manual', label: 'Manuale', hint: 'Solo on-demand', icon: '✋' },
-  { value: 'hourly', label: 'Orario', hint: 'Ogni ora', icon: '⏰' },
-  { value: 'every_n_hours', label: 'Ogni N ore', hint: 'Es. ogni 4h', icon: '🕒' },
-  { value: 'daily', label: 'Giornaliero', hint: 'Una volta al giorno', icon: '📅' },
-  { value: 'weekly', label: 'Settimanale', hint: 'Giorni scelti', icon: '🗓️' },
-  { value: 'every_n_days', label: 'Ogni N giorni', hint: 'Es. ogni 2 giorni', icon: '⏭️' },
-  { value: 'monthly', label: 'Mensile', hint: 'Un giorno fisso', icon: '🗓' },
-  { value: 'advanced', label: 'Avanzato', hint: 'Cron raw', icon: '⚙️' },
+  { value: 'manual', label: 'Manuale', hint: 'Solo on-demand', icon: 'hand' },
+  { value: 'hourly', label: 'Orario', hint: 'Ogni ora', icon: 'alarm-clock' },
+  { value: 'every_n_hours', label: 'Ogni N ore', hint: 'Es. ogni 4h', icon: 'clock' },
+  { value: 'daily', label: 'Giornaliero', hint: 'Una volta al giorno', icon: 'calendar' },
+  { value: 'weekly', label: 'Settimanale', hint: 'Giorni scelti', icon: 'calendar-days' },
+  { value: 'every_n_days', label: 'Ogni N giorni', hint: 'Es. ogni 2 giorni', icon: 'skip-forward' },
+  { value: 'monthly', label: 'Mensile', hint: 'Un giorno fisso', icon: 'calendar-range' },
+  { value: 'advanced', label: 'Avanzato', hint: 'Cron raw', icon: 'settings' },
 ]
 
 const defaultsByKind: Record<ScheduleKind, ScheduleConfig> = {

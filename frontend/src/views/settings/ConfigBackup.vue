@@ -17,42 +17,42 @@
  <div class="card-body">
  <div v-if="systemInfo" class="system-info-grid">
  <div class="info-item">
- <span class="icon">🖥️</span>
+ <span class="icon"><Icon name="monitor" :size="14" /></span>
  <div class="details">
  <span class="label">Hostname</span>
  <span class="value">{{ systemInfo.hostname }}</span>
  </div>
  </div>
  <div class="info-item">
- <span class="icon">📦</span>
+ <span class="icon"><Icon name="box" :size="14" /></span>
  <div class="details">
  <span class="label">Versione</span>
  <span class="value">{{ systemInfo.version }}</span>
  </div>
  </div>
  <div class="info-item" :class="{ 'has-data': systemInfo.database.exists }">
- <span class="icon">🗄️</span>
+ <span class="icon"><Icon name="archive" :size="14" /></span>
  <div class="details">
  <span class="label">Database</span>
  <span class="value">{{ systemInfo.database.exists ? formatSize(systemInfo.database.size) : 'Non trovato' }}</span>
  </div>
  </div>
  <div class="info-item" :class="{ 'has-data': systemInfo.ssh_keys.exists }">
- <span class="icon">🔑</span>
+ <span class="icon"><Icon name="key" :size="14" /></span>
  <div class="details">
  <span class="label">Chiavi SSH</span>
  <span class="value">{{ systemInfo.ssh_keys.files.length }} chiave/i</span>
  </div>
  </div>
  <div class="info-item" :class="{ 'has-data': systemInfo.certificates.exists }">
- <span class="icon">📜</span>
+ <span class="icon"><Icon name="file-text" :size="14" /></span>
  <div class="details">
  <span class="label">Certificati</span>
  <span class="value">{{ systemInfo.certificates.files.length }} file</span>
  </div>
  </div>
  <div class="info-item" :class="{ 'has-data': systemInfo.config.exists }">
- <span class="icon">⚙️</span>
+ <span class="icon"><Icon name="settings" :size="14" /></span>
  <div class="details">
  <span class="label">Configurazione</span>
  <span class="value">{{ systemInfo.config.exists ? 'Presente' : 'Non trovata' }}</span>
@@ -76,19 +76,19 @@
  <div class="options-grid">
  <label class="option-item">
  <input type="checkbox" v-model="exportOptions.database" />
- <span class="option-label">🗄️ Database (nodi, job, utenti)</span>
+ <span class="option-label"><Icon name="archive" :size="14" /> Database (nodi, job, utenti)</span>
  </label>
  <label class="option-item">
  <input type="checkbox" v-model="exportOptions.ssh_keys" />
- <span class="option-label">🔑 Chiavi SSH</span>
+ <span class="option-label"><Icon name="key" :size="14" /> Chiavi SSH</span>
  </label>
  <label class="option-item">
  <input type="checkbox" v-model="exportOptions.certificates" />
- <span class="option-label">📜 Certificati SSL</span>
+ <span class="option-label"><Icon name="file-text" :size="14" /> Certificati SSL</span>
  </label>
  <label class="option-item">
  <input type="checkbox" v-model="exportOptions.config" />
- <span class="option-label">⚙️ File configurazione</span>
+ <span class="option-label"><Icon name="settings" :size="14" /> File configurazione</span>
  </label>
  </div>
 
@@ -115,14 +115,14 @@
  :class="{ 'dragging': isDragging }">
  <input type="file" ref="fileInput" @change="handleFileSelect" accept=".tar.gz,.dapx-backup.tar.gz" hidden />
  <div class="upload-content" @click="fileInput?.click()">
- <span class="upload-icon">📁</span>
+ <span class="upload-icon"><Icon name="folder" :size="14" /></span>
  <span class="upload-text">Trascina qui il file di backup o clicca per selezionare</span>
  <span class="upload-hint">.dapx-backup.tar.gz</span>
  </div>
  </div>
 
  <div v-if="selectedFile" class="selected-file mt-4">
- <span class="file-icon">📦</span>
+ <span class="file-icon"><Icon name="box" :size="14" /></span>
  <span class="file-name">{{ selectedFile.name }}</span>
  <span class="file-size">({{ formatSize(selectedFile.size) }})</span>
  <button class="btn-remove" @click="selectedFile = null">✕</button>
@@ -131,24 +131,24 @@
  <div v-if="selectedFile" class="options-grid mt-4">
  <label class="option-item">
  <input type="checkbox" v-model="importOptions.database" />
- <span class="option-label">🗄️ Ripristina Database</span>
+ <span class="option-label"><Icon name="archive" :size="14" /> Ripristina Database</span>
  </label>
  <label class="option-item">
  <input type="checkbox" v-model="importOptions.ssh_keys" />
- <span class="option-label">🔑 Ripristina Chiavi SSH</span>
+ <span class="option-label"><Icon name="key" :size="14" /> Ripristina Chiavi SSH</span>
  </label>
  <label class="option-item">
  <input type="checkbox" v-model="importOptions.certificates" />
- <span class="option-label">📜 Ripristina Certificati</span>
+ <span class="option-label"><Icon name="file-text" :size="14" /> Ripristina Certificati</span>
  </label>
  <label class="option-item">
  <input type="checkbox" v-model="importOptions.config" />
- <span class="option-label">⚙️ Ripristina Configurazione</span>
+ <span class="option-label"><Icon name="settings" :size="14" /> Ripristina Configurazione</span>
  </label>
  </div>
 
  <div v-if="selectedFile" class="warning-box mt-4">
- <strong>⚠️ Attenzione:</strong>
+ <strong><Icon name="alert-triangle" :size="14" /> Attenzione:</strong>
  <ul>
  <li>I dati esistenti verranno sovrascritti</li>
  <li>Verrà creato un backup automatico prima del ripristino</li>
@@ -167,7 +167,7 @@
  <!-- Restore Result -->
  <div v-if="restoreResult" class="card result-card" :class="restoreResult.success ? 'success' : 'error'">
  <div class="card-header">
- <h3>{{ restoreResult.success ? '✅ Ripristino Completato' : '❌ Errore Ripristino' }}</h3>
+ <h3><Icon :name="restoreResult.success ? 'check-circle' : 'x-circle'" :size="14" :class="restoreResult.success ? 'text-success' : 'text-danger'" /> {{ restoreResult.success ? 'Ripristino Completato' : 'Errore Ripristino' }}</h3>
  </div>
  <div class="card-body">
  <p>{{ restoreResult.message }}</p>
@@ -182,7 +182,7 @@
  <div v-if="restoreResult.warnings.length" class="warnings">
  <strong>Avvisi:</strong>
  <ul>
- <li v-for="warning in restoreResult.warnings" :key="warning">⚠️ {{ warning }}</li>
+ <li v-for="warning in restoreResult.warnings" :key="warning"><Icon name="alert-triangle" :size="14" /> {{ warning }}</li>
  </ul>
  </div>
  </div>
@@ -216,10 +216,10 @@
  <td>{{ formatSize(backup.size) }}</td>
  <td>{{ backup.source_hostname }} (v{{ backup.version }})</td>
  <td>
- <span v-if="backup.includes_database" class="badge" title="Database">🗄️</span>
- <span v-if="backup.includes_ssh_keys" class="badge" title="SSH">🔑</span>
- <span v-if="backup.includes_certificates" class="badge" title="Certificati">📜</span>
- <span v-if="backup.includes_config" class="badge" title="Config">⚙️</span>
+ <span v-if="backup.includes_database" class="badge" title="Database"><Icon name="archive" :size="14" /></span>
+ <span v-if="backup.includes_ssh_keys" class="badge" title="SSH"><Icon name="key" :size="14" /></span>
+ <span v-if="backup.includes_certificates" class="badge" title="Certificati"><Icon name="file-text" :size="14" /></span>
+ <span v-if="backup.includes_config" class="badge" title="Config"><Icon name="settings" :size="14" /></span>
  </td>
  <td>
  <button class="btn btn-sm btn-primary" @click="downloadBackup(backup.filename)">⬇️</button>
