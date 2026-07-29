@@ -95,6 +95,27 @@ def is_job_running(job_id: int) -> bool:
     return job_id in _running
 
 
+def reconcile_stale_running_jobs() -> int:
+    """All'avvio backend: job file_replication con current_status='running' nel DB ma
+    senza run in memoria (es. servizio riavviato durante un run) → li segna 'failed'.
+    Senza questo, un job interrotto resta 'running' per sempre e l'UI non mostra dati."""
+    db = SessionLocal()
+    reset = 0
+    try:
+        jobs = db.query(FileReplicationJob).filter(FileReplicationJob.current_status == "running").all()
+        for job in jobs:
+            if job.id not in _running:
+                job.current_status = "failed"
+                if not job.last_run_status:
+                    job.last_run_status = "failed"
+                reset += 1
+        if reset:
+            db.commit()
+    finally:
+        db.close()
+    return reset
+
+
 def get_job_progress(job_id: int) -> Optional[dict]:
     return _progress.get(job_id)
 

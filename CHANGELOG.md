@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.20.13] - 2026-07-29
+
+### Correzioni
+- **Job "Repliche file dati" (file-replication) bloccati su "running" dopo un riavvio**: se il servizio veniva riavviato mentre un job file-replication era in esecuzione (es. durante un update), il job restava con `current_status='running'` per sempre e l'UI non mostrava più alcuna informazione (né progresso né esito). Aggiunta la **riconciliazione allo startup** (`reconcile_stale_running_jobs`) che segna come `failed` i job "running" senza run in memoria — allineando file-replication a nas-sync e vm-snapshot che già la avevano (`services/file_replication/file_replication_execution.py`, `main.py`).
+
 ## [3.20.12] - 2026-07-29
 
 ### Aggiunte

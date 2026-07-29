@@ -74,6 +74,12 @@ async def lifespan(app: FastAPI):
     except Exception as _exc:  # noqa: BLE001 — il reconcile non deve bloccare l'avvio
         logger.warning(f"vm_snapshot reconcile all'avvio fallito: {_exc}")
 
+    try:
+        from services.file_replication.file_replication_execution import reconcile_stale_running_jobs as _frepl_reconcile
+        _frepl_reconcile()
+    except Exception as _exc:  # noqa: BLE001 — il reconcile non deve bloccare l'avvio
+        logger.warning(f"file_replication reconcile all'avvio fallito: {_exc}")
+
     # Inizializza configurazione di default
     db = SessionLocal()
     try:
@@ -101,7 +107,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="DAPX-backandrepl",
     description="Sistema centralizzato di backup e replica per Proxmox VE. Supporta ZFS (Sanoid/Syncoid), BTRFS (btrfs send/receive) e PBS (Proxmox Backup Server).",
-    version="3.20.12",
+    version="3.20.13",
     lifespan=lifespan
 )
 
@@ -187,7 +193,7 @@ async def health_check():
     from datetime import datetime as _dt
     payload: dict = {
         "status": "healthy",
-        "version": "3.20.12",
+        "version": "3.20.13",
         "auth_enabled": True,
         "mode": dapx_mode,
         "checks": {},
