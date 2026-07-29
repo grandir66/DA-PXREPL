@@ -5,6 +5,12 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.20.14] - 2026-07-29
+
+### Correzioni
+- **CRITICO — run di replica (nas-sync/file-replication) rotti da una regressione della 3.20.10**: il campo `JobLog.triggered_by` è un FK Integer a `users.id`, ma il fix "scheduled/manual" della 3.20.10 ci scriveva una stringa ("manual"/"scheduled") → l'INSERT del JobLog falliva con `FOREIGN KEY constraint failed`, l'handler d'errore andava in `PendingRollbackError` e lasciava il job con `current_status='running'` a vita (UI senza informazioni). Introdotta una colonna dedicata **`trigger_source`** (String) usata al posto del FK, con migrazione idempotente (`database.py`, `update_db_schema.py`, `services/nas_sync/execution.py`, `services/file_replication/file_replication_execution.py`).
+- **Handler d'errore robusto**: aggiunto `db.rollback()` prima del reset di stato negli handler di errore di nas-sync e file-replication, così un flush fallito non lascia più il job bloccato su 'running'.
+
 ## [3.20.13] - 2026-07-29
 
 ### Correzioni

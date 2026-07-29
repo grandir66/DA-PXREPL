@@ -240,7 +240,7 @@ async def execute_nas_sync_job(job_id: int, *, fresh: bool = False, _engine_runn
             dataset=job.dest_base_path,
             status="started",
             message=f"Avvio replica dati: {job.name} [{engine}]",
-            triggered_by=triggered_by,
+            trigger_source=triggered_by,
         )
         db.add(log_row)
         db.commit()
@@ -424,6 +424,10 @@ async def execute_nas_sync_job(job_id: int, *, fresh: bool = False, _engine_runn
         }
     except Exception as exc:  # noqa: BLE001 — qualunque errore chiude il run come failed
         logger.error("NasSyncJob %s fallito: %s", job_id, exc, exc_info=True)
+        try:
+            db.rollback()  # sessione inconsistente dopo un flush fallito → altrimenti resta 'running'
+        except Exception:  # noqa: BLE001
+            pass
         duration = int((datetime.utcnow() - started).total_seconds())
         err_text = str(exc)
         job = db.query(NasSyncJob).filter(NasSyncJob.id == job_id).first()

@@ -918,6 +918,7 @@ class JobLog(Base):
     completed_at = Column(DateTime, nullable=True)
     
     triggered_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    trigger_source = Column(String(20), nullable=True)  # 'scheduled' | 'manual' (NON è il FK triggered_by)
 
 
 class Settings(Base):

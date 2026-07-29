@@ -60,6 +60,9 @@ def update_schema():
             _ensure_column(conn, "nodes", "host_info", "JSON")
             _ensure_column(conn, "nodes", "host_info_updated_at", "DATETIME")
 
+            # trigger_source: distingue run schedulati da manuali (NON è il FK triggered_by).
+            _ensure_column(conn, "job_logs", "trigger_source", "VARCHAR(20)")
+
             # --- schedule_config: struttura JSON "human" accanto al cron raw.
             for table in (
                 "sync_jobs",

@@ -172,7 +172,7 @@ async def execute_file_replication_job(job_id: int, *, triggered_by: str = "manu
             dataset=job.dest_staging_path,
             status="started",
             message=f"Avvio replica file: {job.name}",
-            triggered_by=triggered_by,
+            trigger_source=triggered_by,
         )
         db.add(log_row)
         db.commit()
@@ -351,6 +351,13 @@ async def execute_file_replication_job(job_id: int, *, triggered_by: str = "manu
 
     except Exception as exc:
         logger.error("FileReplicationJob %s fallito: %s", job_id, exc, exc_info=True)
+        # La sessione può essere in stato inconsistente dopo un flush fallito
+        # (es. errore su INSERT): senza rollback la re-query sotto fallirebbe e
+        # current_status resterebbe 'running' per sempre.
+        try:
+            db.rollback()
+        except Exception:  # noqa: BLE001
+            pass
         duration = int((datetime.utcnow() - started).total_seconds())
         err_text = str(exc)
         job = db.query(FileReplicationJob).filter(FileReplicationJob.id == job_id).first()
