@@ -42,15 +42,23 @@ async function rollback(vm: VmSnapshotVmEntry, snapname: string) {
   const confirmed = window.confirm(
     `Rollback di ${vm.vm_name || vm.vmid} allo snapshot «${snapname}»?\n\n` +
     'ATTENZIONE: lo stato attuale della VM (dopo lo snapshot) verrà perso.' +
-    (vm.has_pvesr ? '\nQuesta VM ha replica pvesr: il rollback può invalidare la replica.' : ''),
+    (vm.has_pvesr ? '\nQuesta VM ha replica pvesr: dopo il rollback la replica verrà rilanciata automaticamente (resync).' : ''),
   )
   if (!confirmed) return
   const startVm = window.confirm('Avviare la VM dopo il rollback?')
   busyKey.value = `${vm.vmid}:${snapname}`
   actionMsg.value = ''
   try {
-    await vmsService.rollbackSnapshot(vm.node_id, vm.vmid, snapname, startVm, vm.vm_type)
-    actionMsg.value = `Rollback di ${vm.vm_name || vm.vmid} a «${snapname}» completato.`
+    const resp = await vmsService.rollbackSnapshot(vm.node_id, vm.vmid, snapname, startVm, vm.vm_type)
+    const resync = ((resp as any)?.data?.pvesr_resync || []) as Array<{ ok: boolean; id: string }>
+    let extra = ''
+    if (resync.length) {
+      const okc = resync.filter((r) => r.ok).length
+      extra = okc === resync.length
+        ? ' Replica pvesr rilanciata (resync in corso).'
+        : ` Attenzione: resync pvesr non avviato per ${resync.length - okc} job — verifica la replica.`
+    }
+    actionMsg.value = `Rollback di ${vm.vm_name || vm.vmid} a «${snapname}» completato.${extra}`
     await load()
   } catch (e: unknown) {
     actionMsg.value = axios.isAxiosError(e)

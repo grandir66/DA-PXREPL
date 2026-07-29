@@ -67,11 +67,9 @@ async def _snapshot_one_vm(
     if target.get("warning") == "not_found":
         result["error"] = "VM non trovata nell'indice cluster (rimossa o nodo offline)"
         return result
-    if target.get("has_pvesr"):
-        result["warning"] = (
-            "VM con replica pvesr attiva: pvesr può rimuovere snapshot non suoi "
-            "e un rollback può invalidare la replica"
-        )
+    # Nota: la creazione dello snapshot coesiste con pvesr (lo snapshot vive sulla
+    # sorgente e viene replicato; pvesr non lo cancella). L'unico attrito è il ROLLBACK,
+    # gestito a parte con resync automatico → qui nessun warning per-run (era solo rumore).
 
     vm_type = result["vm_type"]
     vmstate = bool(job.include_vmstate) and vm_type == "qemu"

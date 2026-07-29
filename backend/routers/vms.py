@@ -592,9 +592,21 @@ async def rollback_vm_snapshot(
     
     if not success:
         raise HTTPException(status_code=500, detail=msg)
-    
+
+    # Il rollback ZFS distrugge gli snapshot più recenti, incluso il "base" di pvesr:
+    # la replica va rifatta. Forziamo subito il resync dei job pvesr del guest così la
+    # DR torna valida senza aspettare lo slot successivo (non-bloccante: se fallisce,
+    # il rollback resta comunque eseguito e lo segnaliamo nella risposta).
+    pvesr_resync: list = []
+    try:
+        from services.pve_sr_discovery import trigger_pvesr_resync
+        pvesr_resync = await trigger_pvesr_resync(node, db, vmid)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("resync pvesr post-rollback non eseguito (vmid %s): %s", vmid, exc)
+        pvesr_resync = [{"id": None, "ok": False, "message": f"resync non eseguito: {exc}"}]
+
     log_audit(db, user.id, "vm_snapshot_rollback", "vm", resource_id=vmid, details=f"Rollback to snapshot {snapname}")
-    return {"message": msg}
+    return {"message": msg, "pvesr_resync": pvesr_resync}
 
 
 @router.get("/node/{node_id}/vm/{vmid}/sanoid-config")

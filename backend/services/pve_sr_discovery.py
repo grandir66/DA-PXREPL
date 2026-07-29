@@ -57,6 +57,53 @@ async def fetch_cluster_replication_config(node: Node) -> list[dict]:
     return []
 
 
+async def trigger_pvesr_resync(query_node: Node, db: Session, vmid: int) -> list[dict]:
+    """Dopo un rollback: forza il resync dei job pvesr del guest (`pvesr schedule-now`),
+    così la replica torna valida subito invece di aspettare lo slot successivo.
+
+    `query_node` è un nodo qualsiasi da cui leggere `/cluster/replication`.
+    Ritorna una lista di esiti [{id, source, ok, message}] (vuota se il guest non ha pvesr).
+    """
+    try:
+        jobs = await fetch_cluster_replication_config(query_node)
+    except Exception as exc:  # noqa: BLE001
+        return [{"id": None, "source": None, "ok": False, "message": f"lettura job pvesr fallita: {exc}"}]
+
+    out: list[dict] = []
+    for job in jobs:
+        try:
+            if int(job.get("guest")) != int(vmid):
+                continue
+        except (TypeError, ValueError):
+            continue
+        if job.get("disable"):
+            continue
+        jid = str(job.get("id"))
+        src = job.get("source")
+        src_node = _find_node_by_pve_name(db, src) if src else None
+        if src_node is None:
+            out.append({"id": jid, "source": src, "ok": False,
+                        "message": "nodo sorgente non registrato in dapx"})
+            continue
+        res = await ssh_service.execute(
+            hostname=src_node.hostname,
+            command=f"pvesr schedule-now {jid}",
+            port=src_node.ssh_port,
+            username=src_node.ssh_user,
+            key_path=src_node.ssh_key_path,
+            timeout=30,
+        )
+        ok = bool(getattr(res, "success", False))
+        err = (getattr(res, "stderr", "") or getattr(res, "error", "") or getattr(res, "stdout", "") or "").strip()
+        out.append({"id": jid, "source": src, "ok": ok,
+                    "message": "resync avviato" if ok else (err or "comando fallito")})
+        if ok:
+            logger.info("pvesr resync post-rollback avviato: job %s (guest %s)", jid, vmid)
+        else:
+            logger.warning("pvesr resync post-rollback fallito: job %s: %s", jid, err)
+    return out
+
+
 async def fetch_pvesr_status(node: Node) -> dict[str, dict]:
     data = await _ssh_json(node, "pvesr status --json")
     out: dict[str, dict] = {}

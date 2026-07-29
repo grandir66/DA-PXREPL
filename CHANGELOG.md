@@ -5,6 +5,17 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.20.12] - 2026-07-29
+
+### Aggiunte
+- **Rollback snapshot VM: resync pvesr automatico.** Dopo un rollback su una VM con replica pvesr attiva, dapx forza subito il resync dei job pvesr del guest (`pvesr schedule-now` sul nodo sorgente), riportando valida la replica DR senza attendere lo slot successivo (`services/pve_sr_discovery.py::trigger_pvesr_resync`, `routers/vms.py`). Non-bloccante: se il resync non parte (es. job orfano), il rollback resta comunque eseguito e l'esito è riportato in UI (`components/vm-snapshot/VmSnapshotBrowserModal.vue`).
+
+### Modifiche
+- **Avviso pvesr più accurato e meno rumoroso** nel modulo Snapshot VM: rimosso il testo impreciso ("pvesr può rimuovere snapshot non suoi"); ora chiarisce che gli snapshot **convivono** con pvesr e che solo un eventuale **rollback** rifà la replica (resync automatico). Tolto l'avviso per-run alla creazione snapshot, che era solo rumore (`components/vm-snapshot/VmSnapshotJobModal.vue`, `services/vm_snapshot/execution.py`).
+
+### Documentazione
+- Spec della strategia coerente a 3 livelli (snapshot ZFS = recovery veloce · pvesr = DR · PBS = archivio) (`docs/superpowers/specs/2026-07-29-snapshot-pvesr-coerenza-design.md`).
+
 ## [3.20.11] - 2026-07-29
 
 ### Modifiche

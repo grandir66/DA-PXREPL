@@ -320,7 +320,7 @@ onMounted(loadIndex)
               <span
                 v-if="vm.has_pvesr"
                 class="badge badge-warn"
-                title="Questa VM ha una replica pvesr attiva: pvesr può rimuovere snapshot non suoi e un rollback può invalidare la replica"
+                title="Questa VM ha replica pvesr attiva: un eventuale rollback rifà la replica (resync pvesr automatico dopo il rollback)"
               ><Icon name="alert-triangle" :size="14" /> pvesr</span>
             </label>
           </div>
@@ -437,7 +437,7 @@ onMounted(loadIndex)
           <li>Schedule: <code>{{ form.schedule || 'solo manuale' }}</code></li>
           <li v-if="preview.some((vm) => vm.has_pvesr)" class="text-warning">
             <Icon name="alert-triangle" :size="14" /> {{ preview.filter((vm) => vm.has_pvesr).length }} VM hanno replica pvesr attiva:
-            verrà segnalato un avviso a ogni run.
+            gli snapshot convivono senza problemi; solo un eventuale <strong>rollback</strong> rifà la replica (resync pvesr automatico).
           </li>
         </ul>
         <p class="text-muted">
