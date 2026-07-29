@@ -96,9 +96,15 @@ async def translate(
     next_runs: List[str] = []
     if cron_out:
         try:
-            it = croniter(cron_out, datetime.utcnow())
+            # Prossime esecuzioni valutate nello STESSO fuso locale dello scheduler
+            # (_next_run_after), così la preview coincide con i fire reali. I valori
+            # sono naive-UTC + "Z" → il frontend li converte in ora locale.
+            from services.scheduler import _next_run_after
+            after = datetime.utcnow()
             for _ in range(5):
-                next_runs.append(it.get_next(datetime).isoformat() + "Z")
+                nxt = _next_run_after(cron_out, after)
+                next_runs.append(nxt.isoformat() + "Z")
+                after = nxt
         except Exception as e:  # pragma: no cover - cron invalido già filtrato
             err = f"errore preview: {e}"
 

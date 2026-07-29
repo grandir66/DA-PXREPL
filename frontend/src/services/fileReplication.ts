@@ -17,6 +17,7 @@ export interface FileReplicationJob {
   immutability_strategy: string
   snapshot_policy_hint?: Record<string, unknown> | null
   schedule?: string | null
+  next_run_at?: string | null
   is_active: boolean
   current_status?: string | null
   last_run_at?: string | null

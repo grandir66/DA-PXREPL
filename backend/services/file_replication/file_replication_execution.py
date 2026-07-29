@@ -99,7 +99,7 @@ def get_job_progress(job_id: int) -> Optional[dict]:
     return _progress.get(job_id)
 
 
-async def execute_file_replication_job(job_id: int) -> None:
+async def execute_file_replication_job(job_id: int, *, triggered_by: str = "manual") -> None:
     if job_id in _running:
         logger.warning("FileReplicationJob %s già in esecuzione", job_id)
         return
@@ -151,6 +151,7 @@ async def execute_file_replication_job(job_id: int) -> None:
             dataset=job.dest_staging_path,
             status="started",
             message=f"Avvio replica file: {job.name}",
+            triggered_by=triggered_by,
         )
         db.add(log_row)
         db.commit()

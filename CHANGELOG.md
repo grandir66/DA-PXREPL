@@ -5,6 +5,19 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.20.10] - 2026-07-29
+
+### Correzioni
+- **Schedulazione job di replica (rsync/file) — affidabilità e visibilità**:
+  - I cron sono ora valutati in **ORA LOCALE** (default `Europe/Rome`, override con `DAPX_SCHEDULER_TZ`) invece che in UTC: un job impostato alle "02:00" parte alle 02:00 locali (prima partiva alle 02:00 UTC = 04:00 locali). Storage e confronti interni restano in UTC (`services/scheduler.py`).
+  - `next_run_at` viene ora **persistito nel DB** per i job nas-sync e file-replication, così l'UI mostra il prossimo run (prima era sempre vuoto → sembrava "non schedulato") (`services/scheduler.py`).
+  - `triggered_by` (scheduled/manual) valorizzato nei `JobLog` così l'UI distingue i run schedulati da quelli manuali (`services/nas_sync/execution.py`, `services/file_replication/file_replication_execution.py`).
+  - **du iniziale automatico** alla creazione di un job nas-sync con sorgente SSH: dimensioni cartelle e progresso reale al primo sync senza cliccare "Catalogo du" (`routers/nas_sync_jobs.py`).
+  - Un cron **non valido** non manda più in errore lo scheduler a ogni tick (validazione difensiva, il job viene "parcheggiato" con un solo warning) — risolve lo spam di log su HostBackupJob (`services/scheduler.py`).
+
+### Modifiche
+- **UI scheduling più leggibile (formato umano)**: lo schedule è mostrato in linguaggio naturale ("Ogni giorno alle 02:00", "Ogni lunedì alle 19:00") oltre al cron; colonna **"Prossimo run"**; stato **disattivato** evidenziato; timestamp mostrati nell'ora locale corretta (`utils/cronHuman.ts`, `views/FileDataReplication.vue`). Anteprima "prossime esecuzioni" coerente con l'ora locale dei fire reali (`routers/schedule.py`, `components/jobs/ScheduleEditor.vue`).
+
 ## [3.20.9] - 2026-07-26
 
 ### Modifiche

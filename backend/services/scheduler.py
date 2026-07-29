@@ -4,7 +4,9 @@ Con supporto notifiche e riepilogo giornaliero
 """
 
 import asyncio
-from datetime import datetime, time
+import os
+from datetime import datetime, time, timezone, timedelta
+from zoneinfo import ZoneInfo
 from typing import Dict, Optional, Callable
 import logging
 from croniter import croniter
@@ -22,6 +24,31 @@ logger = logging.getLogger(__name__)
 # ancora innescare la run di quello slot (evita backlog di settimane).
 _CRON_SLOT_GRACE_SEC = 120
 
+# Timezone in cui interpretare le espressioni cron dei job schedulati.
+# Default Europe/Rome (ORA LOCALE, come si aspetta l'utente). Storage e
+# confronti interni restano in UTC naive; solo la valutazione del cron è locale.
+_SCHEDULER_TZ_NAME = os.environ.get("DAPX_SCHEDULER_TZ", "Europe/Rome")
+try:
+    _SCHEDULER_TZ = ZoneInfo(_SCHEDULER_TZ_NAME)
+except Exception:  # zoneinfo mancante o nome errato → fallback UTC (comportamento legacy)
+    _SCHEDULER_TZ = ZoneInfo("UTC")
+
+
+def _next_run_after(schedule: str, after_utc: datetime) -> datetime:
+    """Prossimo fire del cron DOPO `after_utc` (naive UTC), interpretando la
+    stringa cron in ora locale (_SCHEDULER_TZ). Ritorna un naive UTC."""
+    base_local = after_utc.replace(tzinfo=timezone.utc).astimezone(_SCHEDULER_TZ)
+    nxt = croniter(schedule, base_local).get_next(datetime)  # aware, ora locale
+    return nxt.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def _prev_run_before(schedule: str, before_utc: datetime) -> datetime:
+    """Slot cron PRECEDENTE (o corrente) rispetto a `before_utc`, in ora locale.
+    Ritorna un naive UTC."""
+    base_local = before_utc.replace(tzinfo=timezone.utc).astimezone(_SCHEDULER_TZ)
+    prev = croniter(schedule, base_local).get_prev(datetime)
+    return prev.astimezone(timezone.utc).replace(tzinfo=None)
+
 
 def compute_initial_next_run(
     schedule: str,
@@ -29,14 +56,20 @@ def compute_initial_next_run(
     now: datetime,
 ) -> datetime:
     """Calcola la prossima esecuzione senza sparare tutti i cron arretrati al restart.
+    Il cron è valutato in ora locale (_SCHEDULER_TZ); i confronti restano in UTC naive.
 
     - Se siamo entro _CRON_SLOT_GRACE_SEC dall'inizio dello slot corrente e
-      last_run è anterior allo slot → due now (run nello slot appena iniziato).
-    - Altrimenti → prossimo slot futuro da now (niente catch-up multi-giorno/settimana).
+      last_run è anteriore allo slot → slot corrente (run appena iniziata).
+    - Altrimenti → prossimo slot futuro (niente catch-up multi-giorno/settimana).
     """
-    itr = croniter(schedule, now)
-    next_future = itr.get_next(datetime)
-    prev_slot = itr.get_prev(datetime)
+    try:
+        next_future = _next_run_after(schedule, now)
+        prev_slot = _prev_run_before(schedule, now)
+    except Exception as exc:
+        # Cron non valido (es. numero di campi errato): NON rilanciare a ogni
+        # tick (spam log). "Parcheggia" il job lontano e logga una volta sola.
+        logger.warning("Cron non valido %r: job non schedulato finché non corretto (%s)", schedule, exc)
+        return now + timedelta(days=3650)
     if (last_run is None or last_run < prev_slot) and (now - prev_slot).total_seconds() <= _CRON_SLOT_GRACE_SEC:
         return prev_slot
     return next_future
@@ -468,8 +501,7 @@ class SchedulerService:
                                         job.vm_group_id,
                                     )
                                 )
-                                cron = croniter(job.schedule, now)
-                                self._jobs[group_key] = cron.get_next(datetime)
+                                self._jobs[group_key] = _next_run_after(job.schedule, now)
                                 for sj in group_members:
                                     self._jobs[f"sync_{sj.id}"] = self._jobs[group_key]
                             else:
@@ -502,8 +534,7 @@ class SchedulerService:
                             asyncio.create_task(
                                 self._guarded_execute_sync_job(job_key, job.id)
                             )
-                            cron = croniter(job.schedule, now)
-                            self._jobs[job_key] = cron.get_next(datetime)
+                            self._jobs[job_key] = _next_run_after(job.schedule, now)
                         else:
                             logger.info(
                                 f"SyncJob {job.id} ancora in esecuzione: skip fire schedulato"
@@ -533,8 +564,7 @@ class SchedulerService:
                         if self._try_lock(job_key):
                             logger.info(f"Esecuzione HostBackupJob schedulato: {job.name} (ID: {job.id})")
                             asyncio.create_task(self._guarded_execute(job_key, self._execute_host_backup_job, job.id))
-                            cron = croniter(job.schedule, now)
-                            self._jobs[job_key] = cron.get_next(datetime)
+                            self._jobs[job_key] = _next_run_after(job.schedule, now)
                         else:
                             logger.info(f"HostBackupJob {job.id} ancora in esecuzione: skip fire schedulato")
                         
@@ -570,13 +600,16 @@ class SchedulerService:
                                     job.id,
                                 )
                             )
-                            cron = croniter(job.schedule, now)
-                            self._jobs[job_key] = cron.get_next(datetime)
+                            self._jobs[job_key] = _next_run_after(job.schedule, now)
                         else:
                             logger.info(
                                 f"FileReplicationJob {job.id} ancora in esecuzione: skip fire schedulato"
                             )
 
+                    # Persisti il prossimo run nel DB così l'UI può mostrarlo
+                    if job.next_run_at != self._jobs[job_key]:
+                        job.next_run_at = self._jobs[job_key]
+                        db.commit()
                 except Exception as e:
                     logger.error(f"Errore scheduling FileReplicationJob {job.id}: {e}")
 
@@ -609,12 +642,15 @@ class SchedulerService:
                                     job.id,
                                 )
                             )
-                            cron = croniter(job.schedule, now)
-                            self._jobs[job_key] = cron.get_next(datetime)
+                            self._jobs[job_key] = _next_run_after(job.schedule, now)
                         else:
                             logger.info(
                                 f"NasSyncJob {job.id} ancora in esecuzione: skip fire schedulato"
                             )
+                    # Persisti il prossimo run nel DB così l'UI può mostrarlo
+                    if job.next_run_at != self._jobs[job_key]:
+                        job.next_run_at = self._jobs[job_key]
+                        db.commit()
                 except Exception as e:
                     logger.error(f"Errore scheduling NasSyncJob {job.id}: {e}")
 
@@ -647,8 +683,7 @@ class SchedulerService:
                                     job.id,
                                 )
                             )
-                            cron = croniter(job.schedule, now)
-                            self._jobs[job_key] = cron.get_next(datetime)
+                            self._jobs[job_key] = _next_run_after(job.schedule, now)
                         else:
                             logger.info(
                                 f"VmSnapshotJob {job.id} ancora in esecuzione: skip fire schedulato"
@@ -690,8 +725,7 @@ class SchedulerService:
                                     job.id,
                                 )
                             )
-                            cron = croniter(job.schedule, now)
-                            self._jobs[job_key] = cron.get_next(datetime)
+                            self._jobs[job_key] = _next_run_after(job.schedule, now)
                         else:
                             logger.info(
                                 f"BackupJob {job.id} ancora in esecuzione: skip fire schedulato"
@@ -738,8 +772,7 @@ class SchedulerService:
                                     job.id,
                                 )
                             )
-                            cron = croniter(job.schedule, now)
-                            self._jobs[job_key] = cron.get_next(datetime)
+                            self._jobs[job_key] = _next_run_after(job.schedule, now)
                         else:
                             logger.info(
                                 f"RecoveryJob {job.id} ancora in esecuzione: skip fire schedulato"
@@ -768,8 +801,7 @@ class SchedulerService:
                         if self._try_lock(job_key):
                             logger.info(f"Esecuzione MigrationJob schedulato: {job.name} (ID: {job.id})")
                             asyncio.create_task(self._guarded_execute(job_key, self._execute_migration_job, job.id))
-                            cron = croniter(job.schedule, now)
-                            self._jobs[job_key] = cron.get_next(datetime)
+                            self._jobs[job_key] = _next_run_after(job.schedule, now)
                         else:
                             logger.info(f"MigrationJob {job.id} ancora in esecuzione: skip fire schedulato")
                         
@@ -948,13 +980,13 @@ class SchedulerService:
         """Esegue un job replica file schedulato."""
         from services.file_replication.file_replication_execution import execute_file_replication_job
 
-        await execute_file_replication_job(job_id)
+        await execute_file_replication_job(job_id, triggered_by="scheduled")
 
     async def _execute_nas_sync_job(self, job_id: int):
         """Esegue un job Repliche dati v2 schedulato."""
         from services.nas_sync.execution import execute_nas_sync_job
 
-        await execute_nas_sync_job(job_id)
+        await execute_nas_sync_job(job_id, triggered_by="scheduled")
 
     async def _execute_vm_snapshot_job(self, job_id: int):
         """Esegue un job Snapshot VM schedulato."""

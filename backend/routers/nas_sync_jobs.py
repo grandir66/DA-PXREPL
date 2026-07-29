@@ -185,7 +185,7 @@ def list_jobs(db: Session = Depends(get_db), _user: User = Depends(get_current_u
 
 
 @router.post("", response_model=NasSyncJobOut)
-def create_job(
+async def create_job(
     body: NasSyncJobCreate,
     db: Session = Depends(get_db),
     _user: User = Depends(require_operator),
@@ -221,6 +221,11 @@ def create_job(
     db.refresh(job)
     if job.schedule and job.is_active:
         scheduler_service.update_nas_sync_schedule(job.id, job.schedule)
+    # du iniziale automatico in background: popola le dimensioni delle cartelle
+    # e abilita il progresso reale al primo sync, senza click manuale su "Catalogo du".
+    # Ha senso solo con sorgente SSH (engine diretto rsync); rclone/SMB non fa du.
+    if engine == "direct_rsync":
+        asyncio.create_task(refresh_job_du_catalog(job.id))
     return _job_out(db, job)
 
 

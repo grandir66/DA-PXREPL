@@ -11,6 +11,7 @@ import { fileEndpointsApi, type FileEndpoint } from '../services/fileEndpoints'
 import { nasSyncApi, type NasSyncJob, type EndpointCapabilities } from '../services/nasSync'
 import { fileReplicationApi, type FileReplicationJob } from '../services/fileReplication'
 import { formatFileReplProgress, type FileReplProgress } from '../utils/fileReplProgress'
+import { cronToHuman } from '../utils/cronHuman'
 
 type TabId = 'all' | 'nas' | 'worm'
 
@@ -312,7 +313,16 @@ async function deleteEndpoint(ep: FileEndpoint) {
   } catch (e) { endpointError.value = errMsg(e, 'Eliminazione fallita') }
 }
 
-function formatDate(v?: string | null) { return v ? new Date(v).toLocaleString() : '—' }
+function toLocalDate(v?: string | null): Date | null {
+  if (!v) return null
+  // Il backend invia timestamp naive in UTC (senza timezone). Trattali come UTC
+  // così toLocaleString() li converte nell'ora locale corretta.
+  const hasTz = /[zZ]|[+-]\d\d:?\d\d$/.test(v)
+  const iso = hasTz ? v : v.replace(' ', 'T') + 'Z'
+  const d = new Date(iso)
+  return isNaN(d.getTime()) ? null : d
+}
+function formatDate(v?: string | null) { const d = toLocalDate(v); return d ? d.toLocaleString() : '—' }
 function formatBytes(n?: number | null) {
   if (!n) return ''
   const units = ['B', 'KB', 'MB', 'GB', 'TB']
@@ -489,7 +499,11 @@ const vClickOutside = {
                     :dest-label="job.dest_endpoint_name"
                   />
                 </td>
-                <td><code>{{ job.schedule || 'manuale' }}</code></td>
+                <td class="sched-cell">
+                  <div class="sched-human">{{ cronToHuman(job.schedule) }}</div>
+                  <small v-if="!job.is_active" class="sched-off">disattivato</small>
+                  <small v-else-if="job.next_run_at" class="muted d-block">Prossimo: {{ formatDate(job.next_run_at) }}</small>
+                </td>
                 <td>
                   {{ formatDate(job.last_run_at) }}
                   <small v-if="job.last_run_duration_sec" class="muted d-block">
@@ -537,7 +551,11 @@ const vClickOutside = {
                     :dest-label="job.dest_endpoint_name"
                   />
                 </td>
-                <td><code>{{ job.schedule || 'manuale' }}</code></td>
+                <td class="sched-cell">
+                  <div class="sched-human">{{ cronToHuman(job.schedule) }}</div>
+                  <small v-if="!job.is_active" class="sched-off">disattivato</small>
+                  <small v-else-if="job.next_run_at" class="muted d-block">Prossimo: {{ formatDate(job.next_run_at) }}</small>
+                </td>
                 <td>
                   {{ formatDate(job.last_run_at) }}
                   <small v-if="job.last_run_duration_sec" class="muted d-block">
@@ -614,6 +632,9 @@ const vClickOutside = {
 .type-badge { font-size: 0.7rem; padding: 2px 8px; border-radius: var(--radius-sm); white-space: nowrap; }
 .type-nas { background: rgba(46, 204, 113, .15); color: #2ecc71; }
 .type-worm { background: rgba(88, 166, 255, .15); color: #58a6ff; }
+.sched-cell { min-width: 180px; }
+.sched-human { font-size: 0.85rem; }
+.sched-off { display: block; margin-top: 2px; font-size: 0.72rem; color: var(--color-warning-fg, #d29922); }
 .actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .fr-job-structure { min-width: 240px; max-width: 380px; vertical-align: top; }
 .fr-job-status { min-width: 160px; max-width: 240px; vertical-align: top; font-size: 0.78rem; line-height: 1.35; }

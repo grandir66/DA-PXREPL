@@ -199,7 +199,7 @@ async def _run_engine_step(
     )
 
 
-async def execute_nas_sync_job(job_id: int, *, fresh: bool = False, _engine_runner=None) -> None:
+async def execute_nas_sync_job(job_id: int, *, fresh: bool = False, _engine_runner=None, triggered_by: str = "manual") -> None:
     if job_id in _running:
         logger.warning("NasSyncJob %s già in esecuzione", job_id)
         return
@@ -240,6 +240,7 @@ async def execute_nas_sync_job(job_id: int, *, fresh: bool = False, _engine_runn
             dataset=job.dest_base_path,
             status="started",
             message=f"Avvio replica dati: {job.name} [{engine}]",
+            triggered_by=triggered_by,
         )
         db.add(log_row)
         db.commit()

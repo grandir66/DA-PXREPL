@@ -54,7 +54,7 @@
           :value="model.time || '02:00'"
           @input="patch({ time: ($event.target as any).value })"
         />
-        <span class="se-hint">Il backend valuta il cron in UTC</span>
+        <span class="se-hint">Orari in ora locale del server</span>
       </div>
 
       <!-- every_n_days: N -->
