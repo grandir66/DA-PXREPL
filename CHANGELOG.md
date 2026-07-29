@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.20.11] - 2026-07-29
+
+### Modifiche
+- **Creazione job replica: pianificazione in formato umano.** I modali "Nuovo job" di *Repliche file dati* (NAS→NAS e QNAP WORM) ora usano l'editor di schedulazione amichevole — preset **Manuale / Orario / Ogni N ore / Giornaliero / Settimanale / Ogni N giorni / Mensile / Avanzato** con anteprima delle prossime esecuzioni in ora locale — al posto del campo **cron grezzo** (`components/nas-sync/NasSyncJobModal.vue`, `components/file-replication/FileReplJobModal.vue`). Il cron viene generato automaticamente; i job esistenti salvati solo come cron si aprono in modalità "Avanzato" preservando l'orario impostato.
+
 ## [3.20.10] - 2026-07-29
 
 ### Correzioni

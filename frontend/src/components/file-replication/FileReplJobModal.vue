@@ -4,6 +4,8 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import FolderBrowser from './FolderBrowser.vue'
 import FileReplPathMapping from './FileReplPathMapping.vue'
 import QnapImmutabilityHint from './QnapImmutabilityHint.vue'
+import ScheduleEditor from '../jobs/ScheduleEditor.vue'
+import type { ScheduleConfig } from '../../services/schedule'
 import { fileEndpointsApi, type FileEndpoint } from '../../services/fileEndpoints'
 import { fileReplicationApi, type FileReplicationJob } from '../../services/fileReplication'
 import { normalizeQnapDestShare } from '../../utils/qnapPath'
@@ -31,7 +33,8 @@ const form = reactive({
   delete_on_dest: true,
   exclude_presets: ['nas_snapshots', 'system_files'] as string[],
   exclude_patterns: '',
-  schedule: '0 2 * * *',
+  schedule: '0 2 * * *' as string | null,
+  schedule_config: { kind: 'daily', time: '02:00' } as ScheduleConfig,
   snapshot_schedule: '0 3 * * *',
   expiration_days: 30,
   max_snapshots: 10,
@@ -74,6 +77,7 @@ function resetForm() {
   form.exclude_presets = ['nas_snapshots', 'system_files']
   form.exclude_patterns = ''
   form.schedule = '0 2 * * *'
+  form.schedule_config = { kind: 'daily', time: '02:00' }
   form.snapshot_schedule = '0 3 * * *'
   form.expiration_days = 30
   form.max_snapshots = 10
@@ -94,6 +98,13 @@ function loadFromJob(job: FileReplicationJob) {
   form.exclude_presets = [...(job.exclude_presets || ['nas_snapshots', 'system_files'])]
   form.exclude_patterns = (job.exclude_patterns || []).join('\n')
   form.schedule = job.schedule || ''
+  const jcfg = (job as any).schedule_config
+  form.schedule_config =
+    jcfg && jcfg.kind
+      ? (jcfg as ScheduleConfig)
+      : job.schedule
+        ? { kind: 'advanced', cron: job.schedule }
+        : { kind: 'manual' }
   form.snapshot_schedule = String(hint.schedule || '0 3 * * *')
   form.expiration_days = Number(hint.expiration_days || 30)
   form.max_snapshots = Number(hint.max_snapshots || 10)
@@ -115,6 +126,7 @@ function buildPayload(): Record<string, unknown> {
       .map((s) => s.trim())
       .filter(Boolean),
     schedule: form.schedule || null,
+    schedule_config: form.schedule_config,
     notify_mode: form.notify_mode,
     notify_subject: form.notify_subject.trim() || null,
     snapshot_policy_hint: {
@@ -277,8 +289,8 @@ onMounted(loadEndpoints)
           Lo storico/versioning va configurato solo con gli <strong>snapshot QNAP</strong>.
         </p>
         <div class="form-group mt-3">
-          <label>Cron sync dapx</label>
-          <input v-model="form.schedule" class="form-input" placeholder="0 2 * * *" />
+          <label>Quando eseguire la replica</label>
+          <ScheduleEditor v-model="form.schedule_config" @cron="form.schedule = $event" />
         </div>
         <div class="form-group">
           <label>Notifiche email</label>

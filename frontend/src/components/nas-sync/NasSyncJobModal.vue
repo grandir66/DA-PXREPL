@@ -4,6 +4,8 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import FolderBrowser from '../file-replication/FolderBrowser.vue'
 import FileReplPathMapping from '../file-replication/FileReplPathMapping.vue'
 import QnapImmutabilityHint from '../file-replication/QnapImmutabilityHint.vue'
+import ScheduleEditor from '../jobs/ScheduleEditor.vue'
+import type { ScheduleConfig } from '../../services/schedule'
 import { fileEndpointsApi, type FileEndpoint } from '../../services/fileEndpoints'
 import {
   nasSyncApi,
@@ -43,7 +45,8 @@ const form = reactive({
   exclude_presets: ['nas_snapshots', 'system_files'] as string[],
   exclude_patterns: '',
   bandwidth_limit_kb: null as number | null,
-  schedule: '0 2 * * *',
+  schedule: '0 2 * * *' as string | null,
+  schedule_config: { kind: 'daily', time: '02:00' } as ScheduleConfig,
   snapshot_schedule: '0 3 * * *',
   expiration_days: 30,
   max_snapshots: 10,
@@ -109,6 +112,7 @@ function resetForm() {
   form.exclude_patterns = ''
   form.bandwidth_limit_kb = null
   form.schedule = '0 2 * * *'
+  form.schedule_config = { kind: 'daily', time: '02:00' }
   form.snapshot_schedule = '0 3 * * *'
   form.expiration_days = 30
   form.max_snapshots = 10
@@ -133,6 +137,13 @@ function loadFromJob(job: NasSyncJob) {
   form.exclude_patterns = (job.exclude_patterns || []).join('\n')
   form.bandwidth_limit_kb = job.bandwidth_limit_kb ?? null
   form.schedule = job.schedule || ''
+  const jcfg = (job as any).schedule_config
+  form.schedule_config =
+    jcfg && jcfg.kind
+      ? (jcfg as ScheduleConfig)
+      : job.schedule
+        ? { kind: 'advanced', cron: job.schedule }
+        : { kind: 'manual' }
   form.snapshot_schedule = String(hint.schedule || '0 3 * * *')
   form.expiration_days = Number(hint.expiration_days || 30)
   form.max_snapshots = Number(hint.max_snapshots || 10)
@@ -158,6 +169,7 @@ function buildPayload(): Record<string, unknown> {
       .filter(Boolean),
     bandwidth_limit_kb: form.bandwidth_limit_kb,
     schedule: form.schedule || null,
+    schedule_config: form.schedule_config,
     notify_mode: form.notify_mode,
     notify_subject: form.notify_subject.trim() || null,
     snapshot_policy_hint: {
@@ -386,8 +398,8 @@ onMounted(loadEndpoints)
           <input v-model.number="form.bandwidth_limit_kb" type="number" class="form-input" />
         </div>
         <div class="form-group mt-3">
-          <label>Cron sync dapx</label>
-          <input v-model="form.schedule" class="form-input" placeholder="0 2 * * *" />
+          <label>Quando eseguire la replica</label>
+          <ScheduleEditor v-model="form.schedule_config" @cron="form.schedule = $event" />
         </div>
         <div class="form-group">
           <label>Notifiche email</label>
