@@ -315,22 +315,9 @@ async def run_direct_rsync(
 
     result = StepResult()
     cancelled = False
-    while True:
-        if cancel_check and cancel_check() and not cancelled:
-            cancelled = True
-            if result.remote_pid:
-                await kill_remote_rsync(source, result.remote_pid)
-            await _terminate_local(proc)
-            raise EngineCancelled("Step interrotto dall'utente")
-        try:
-            line_b = await asyncio.wait_for(proc.stdout.readline(), timeout=1.0)
-        except asyncio.TimeoutError:
-            if proc.returncode is not None:
-                break
-            continue
-        if not line_b:
-            break
-        line = line_b.decode(errors="replace")
+    buf = ""
+
+    def _consume(line: str) -> None:
         result.output_lines.append(line)
         if len(result.output_lines) > 6000:  # P-12: memoria limitata (si tiene la coda)
             del result.output_lines[:2000]
@@ -340,10 +327,40 @@ async def run_direct_rsync(
                 result.remote_pid = int(stripped[len(_PID_MARKER):])
             except ValueError:
                 pass
-            continue
+            return
         event = parse_rsync_line(line)
         if event and on_event:
             on_event(event)
+
+    while True:
+        if cancel_check and cancel_check() and not cancelled:
+            cancelled = True
+            if result.remote_pid:
+                await kill_remote_rsync(source, result.remote_pid)
+            await _terminate_local(proc)
+            raise EngineCancelled("Step interrotto dall'utente")
+        try:
+            # Lettura a CHUNK (non readline): `rsync --info=progress2` aggiorna il
+            # progresso con `\r` senza `\n`, accumulando byte tra due `\n`; su file
+            # grandi readline() supererebbe il limite 64KB dello StreamReader
+            # ("Separator is not found, and chunk exceed the limit"). read(n) no.
+            chunk_b = await asyncio.wait_for(proc.stdout.read(65536), timeout=1.0)
+        except asyncio.TimeoutError:
+            if proc.returncode is not None:
+                break
+            continue
+        if not chunk_b:
+            break
+        buf += chunk_b.decode(errors="replace")
+        # `\r` (avanzamento progress2) e `\n` trattati entrambi come fine-riga.
+        buf = buf.replace("\r", "\n")
+        pieces = buf.split("\n")
+        buf = pieces.pop()  # ultimo frammento incompleto: resta nel buffer
+        for piece in pieces:
+            if piece:
+                _consume(piece)
+    if buf.strip():
+        _consume(buf)
 
     await proc.wait()
     result.exit_code = proc.returncode or 0

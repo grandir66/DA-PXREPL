@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.20.16] - 2026-07-30
+
+### Correzioni
+- **Replica diretta rsync in errore su trasferimenti grandi** ("Separator is not found, and chunk exceed the limit"): il motore `direct_rsync` leggeva l'output di rsync con `readline()` (limite 64KB dello StreamReader asyncio), ma `--info=progress2` aggiorna l'avanzamento con `\r` senza `\n`, accumulando byte tra due `\n` su file/cartelle grandi fino a superare il limite e far fallire il job (dopo ore di copia). Ora l'output è letto a **chunk** trattando `\r` e `\n` come fine-riga: nessun accumulo oltre il limite (`services/nas_sync/engine_direct_rsync.py`).
+
 ## [3.20.15] - 2026-07-30
 
 ### Correzioni
