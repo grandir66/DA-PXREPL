@@ -5,6 +5,11 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.20.15] - 2026-07-30
+
+### Correzioni
+- **Falsi alert "Replica in ritardo"**: il check di salute replica valutava i cron in **UTC** mentre lo scheduler li valuta in **ora locale** (Europe/Rome, fix "ora locale") → lo slot atteso risultava sfasato di N ore e job regolarmente eseguiti venivano segnalati "in ritardo" (es. job `0 2` eseguito alle 02:00 locali = 00:00 UTC, ma il check si aspettava lo slot 02:00 UTC). Introdotto il modulo condiviso `cron_tz` per la valutazione cron in ora locale, usato dal health-check (`services/cron_tz.py`, `services/replication_health_service.py`); aggiornato il test relativo.
+
 ## [3.20.14] - 2026-07-29
 
 ### Correzioni

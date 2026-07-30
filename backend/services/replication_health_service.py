@@ -5,7 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from croniter import croniter
+from croniter import croniter  # noqa: F401 (retro-compat; la valutazione cron locale usa cron_tz)
+from services.cron_tz import next_run_after, prev_run_before, cron_iter_local, to_naive_utc
 
 # Ri-allerta notifiche se l'ultimo invio è più vecchio di N ore.
 OVERDUE_ALERT_COOLDOWN_HOURS = 6
@@ -36,7 +37,7 @@ def check_job_overdue(
         return result
 
     try:
-        prev_slot = croniter(str(schedule).strip(), now).get_prev(datetime)
+        prev_slot = prev_run_before(str(schedule).strip(), now)
     except (ValueError, KeyError):
         return result
 
@@ -61,7 +62,7 @@ def compute_next_run(schedule: Optional[str], now: Optional[datetime] = None) ->
         return None
     now = now or datetime.utcnow()
     try:
-        return croniter(str(schedule).strip(), now).get_next(datetime)
+        return next_run_after(str(schedule).strip(), now)
     except (ValueError, KeyError):
         return None
 
@@ -83,15 +84,15 @@ def count_missed_cron_slots(
         return 1
 
     try:
-        itr = croniter(schedule, last_run)
+        itr = cron_iter_local(schedule, last_run)
     except (ValueError, KeyError):
         return 0
 
     missed = 0
-    slot = itr.get_next(datetime)
+    slot = to_naive_utc(itr.get_next(datetime))
     while slot <= now and missed < max_slots:
         missed += 1
-        slot = itr.get_next(datetime)
+        slot = to_naive_utc(itr.get_next(datetime))
     return missed
 
 

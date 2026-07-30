@@ -30,9 +30,11 @@ def test_count_missed_cron_slots_daily():
 
 
 def test_compute_next_run_daily():
+    # Cron valutato in ora LOCALE (Europe/Rome, come lo scheduler): "0 0" = mezzanotte
+    # locale = 22:00 UTC (CEST, luglio). now 17/07 12:00 UTC → prossima 18/07 00:00 CEST = 17/07 22:00 UTC.
     now = datetime(2026, 7, 17, 12, 0, 0)
     nxt = compute_next_run("0 0 * * *", now)
-    assert nxt == datetime(2026, 7, 18, 0, 0, 0)
+    assert nxt == datetime(2026, 7, 17, 22, 0, 0)
 
 
 def test_enrich_job_schedule_info_includes_next_and_missed():
