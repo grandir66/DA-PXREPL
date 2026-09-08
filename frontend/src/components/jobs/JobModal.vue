@@ -414,10 +414,10 @@
             <div class="field">
               <label>Quando notificare</label>
               <select v-model="form.notify_mode" class="form-input">
-                <option value="daily">Riepilogo giornaliero</option>
-                <option value="always">Ogni esecuzione</option>
-                <option value="failure">Solo fallimenti</option>
-                <option value="never">Mai</option>
+                <option value="daily">Solo nel riepilogo giornaliero (predefinito)</option>
+                <option value="failure">Riepilogo + mail subito se fallisce</option>
+                <option value="always">Mail a ogni esecuzione</option>
+                <option value="never">Nessuna notifica, escluso dal riepilogo</option>
               </select>
             </div>
             <div class="field">

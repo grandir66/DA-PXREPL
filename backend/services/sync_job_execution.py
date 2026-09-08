@@ -501,10 +501,17 @@ async def _monitor_sync_job_completion(
         logger.warning(f"Monitor job {job_id} interrotto: {e}")
     finally:
         scheduler_service.mark_done(job_key)
-async def execute_sync_job_task(job_id: int, triggered_by_user_id: int = None) -> bool:
+async def execute_sync_job_task(
+    job_id: int, triggered_by_user_id: int = None, tentativo: int = 1
+) -> bool:
     """
     Esegue un job di sync. Ritorna True se il lock scheduler va tenuto
     (replica ancora attiva sui nodi, monitor in background).
+
+    `tentativo` finisce in `JobLog.attempt_number` (la colonna c'era da
+    sempre e nessuno la valorizzava): è così che il riepilogo distingue una
+    replica riuscita al primo colpo da una rimessa a posto dalla riprova
+    automatica, senza inventarsi un secondo posto dove tenere quello stato.
     """
     from database import SessionLocal, SyncJob, Node, JobLog, SyncMethod
     from services.syncoid_service import syncoid_service
@@ -556,6 +563,7 @@ async def execute_sync_job_task(job_id: int, triggered_by_user_id: int = None) -
             dataset=f"{job.source_dataset} -> {job.dest_dataset}",
             status="started",
             output=_initial_output,
+            attempt_number=tentativo,
             triggered_by=triggered_by_user_id
         )
         db_session.add(log_entry)

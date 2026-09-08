@@ -82,9 +82,18 @@ def test_success_run(env):
     assert results[0]["snapname"].startswith("autodaily_")
     # vmstate mai per lxc; qui include_vmstate=False → sempre False
     assert all(call["vmstate"] is False for call in created_calls)
-    # pvesr → warning presente su db01
+    # Su una VM con pvesr NON deve comparire nessun avviso per esecuzione.
+    # Fino alla 3.20.11 ce n'era uno, e la 3.20.12 l'ha tolto di proposito
+    # («warning pvesr accurato»): lo snapshot convive con la replica nativa —
+    # vive sulla sorgente e viene replicato, pvesr non lo cancella. L'unico
+    # vero attrito è il ROLLBACK, e lì è gestito a parte con il resync
+    # automatico (`pve_sr_discovery.trigger_pvesr_resync`). Questo test è
+    # rimasto a pretendere l'avviso vecchio ed è stato rosso da allora; ora
+    # tiene ferma la decisione, così l'avviso-rumore non rientra per sbaglio.
     by_vmid = {r["vmid"]: r for r in results}
-    assert by_vmid[101]["warning"] and "pvesr" in by_vmid[101]["warning"]
+    assert targets[1]["has_pvesr"] is True, "il caso di prova ha perso il suo pvesr"
+    assert by_vmid[101]["warning"] is None
+    assert all(r["warning"] is None for r in results)
     log = db.query(JobLog).filter_by(job_type="vm_snapshot").order_by(JobLog.id.desc()).first()
     assert log.status == "success"
     assert "autodaily_" in log.message

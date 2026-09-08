@@ -524,9 +524,15 @@ class SyncJob(Base):
     keep_snapshots = Column(Integer, default=0)  # 0 = solo ultima, N = mantieni ultime N
     
     # Retry policy
+    # Riprova: UNA, dopo un'ora (deciso dall'utente il 2026-09-08). Una
+    # replica non si dichiara fallita al primo colpo — syncoid cade anche per
+    # un «dataset is busy» o uno snapshot ancora in corso, cose che un'ora
+    # dopo non ci sono più. Fallita è quella che non passa nemmeno alla
+    # riprova. Fino a quel giorno queste tre colonne c'erano ed erano lettera
+    # morta: le API le accettavano, nessun servizio le leggeva.
     retry_on_failure = Column(Boolean, default=True)
-    max_retries = Column(Integer, default=3)
-    retry_delay_minutes = Column(Integer, default=15)
+    max_retries = Column(Integer, default=1)
+    retry_delay_minutes = Column(Integer, default=60)
     
     # Stats
     last_run = Column(DateTime, nullable=True)
@@ -606,9 +612,15 @@ class RecoveryJob(Base):
     consecutive_failures = Column(Integer, default=0)
     
     # Retry policy
+    # Riprova: UNA, dopo un'ora (deciso dall'utente il 2026-09-08). Una
+    # replica non si dichiara fallita al primo colpo — syncoid cade anche per
+    # un «dataset is busy» o uno snapshot ancora in corso, cose che un'ora
+    # dopo non ci sono più. Fallita è quella che non passa nemmeno alla
+    # riprova. Fino a quel giorno queste tre colonne c'erano ed erano lettera
+    # morta: le API le accettavano, nessun servizio le leggeva.
     retry_on_failure = Column(Boolean, default=True)
-    max_retries = Column(Integer, default=3)
-    retry_delay_minutes = Column(Integer, default=15)
+    max_retries = Column(Integer, default=1)
+    retry_delay_minutes = Column(Integer, default=60)
     
     # Notifiche
     notify_on_each_run = Column(Boolean, default=False)  # True = notifica ogni esecuzione, False = solo report giornaliero

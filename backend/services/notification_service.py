@@ -24,6 +24,38 @@ from database import (
 logger = logging.getLogger(__name__)
 
 
+def _in_ritardo(job) -> bool:
+    """Il cron si aspettava una corsa che non c'è stata?
+
+    NON è «zero esecuzioni nelle ultime 24 ore»: un job settimanale è fermo
+    per sei giorni su sette, e chiamarlo guasto è un allarme falso — successo
+    davvero il 2026-09-08, quando il riepilogo ha gridato «6 job non partiti»
+    su un impianto in perfetta salute (erano le repliche del lunedì, del
+    mercoledì e del venerdì, tutte puntuali).
+
+    La regola giusta è quella di `check_job_overdue`, che il progetto ha già
+    e che usa il cron in ora locale: in ritardo **se l'ultima corsa è
+    precedente all'ultimo slot atteso**. Riusarla evita di avere due
+    definizioni di «in ritardo» che prima o poi si contraddicono.
+    """
+    from services.replication_health_service import check_job_overdue
+
+    ultima = getattr(job, "last_run", None) or getattr(job, "last_run_at", None)
+    stato = getattr(job, "last_status", None) or getattr(job, "last_run_status", None)
+    try:
+        return bool(
+            check_job_overdue(
+                getattr(job, "schedule", None),
+                ultima,
+                is_active=bool(getattr(job, "is_active", True)),
+                last_status=stato,
+            )["overdue"]
+        )
+    except Exception as exc:  # noqa: BLE001 — un cron storto non ferma il riepilogo
+        logger.debug("Stato «in ritardo» non calcolabile per %s: %s", getattr(job, "name", "?"), exc)
+        return False
+
+
 class NotificationService:
     """Servizio centralizzato per tutte le notifiche"""
     
@@ -31,8 +63,6 @@ class NotificationService:
         self._config: Optional[NotificationConfig] = None
         self._last_config_load: Optional[datetime] = None
         self._config_cache_seconds = 60  # Ricarica config ogni 60 secondi
-        # Tracking notifiche giornaliere per job: {job_id: last_notification_date}
-        self._daily_job_notifications: Dict[int, datetime] = {}
     
     def _load_config(self) -> Optional[NotificationConfig]:
         """Carica la configurazione notifiche dal database"""
@@ -65,16 +95,6 @@ class NotificationService:
                 subject_prefix=config.smtp_subject_prefix or "[DAPX]",
                 use_tls=config.smtp_tls if config.smtp_tls is not None else True
             )
-    
-    def _cleanup_old_notifications(self):
-        """Rimuove tracking notifiche più vecchie di 2 giorni"""
-        cutoff = datetime.utcnow() - timedelta(days=2)
-        to_remove = [
-            job_id for job_id, last_date in self._daily_job_notifications.items()
-            if last_date < cutoff
-        ]
-        for job_id in to_remove:
-            del self._daily_job_notifications[job_id]
     
     async def send_job_notification(
         self,
@@ -117,11 +137,24 @@ class NotificationService:
         Returns:
             Dict con risultati per ogni canale
         """
-        # Verifica notify_mode del job
-        if notify_mode == "never":
-            logger.debug(f"Notifiche disabilitate per job {job_name}")
-            return {"sent": False, "reason": "notify_mode_never"}
-        
+        # Verifica notify_mode del job.
+        #
+        # `daily` vuol dire quel che l'interfaccia ha sempre promesso: «solo nel
+        # riepilogo giornaliero». Fino al 2026-09-08 faceva un'altra cosa —
+        # mandava una mail SUBITO per ogni job, al massimo una al giorno per i
+        # successi — e siccome il riepilogo partiva comunque, chi aveva
+        # l'impostazione predefinita riceveva le due cose insieme. L'etichetta
+        # mentiva, e il commento su `RecoveryJob.notify_on_each_run` («False =
+        # solo report giornaliero») dice che l'intenzione era questa fin
+        # dall'inizio. Chi vuole la mail al volo ha `always` o `failure`.
+        if notify_mode in ("never", "daily"):
+            logger.debug(
+                "Nessuna notifica immediata per %s (notify_mode=%s): "
+                "l'attività finisce nel riepilogo giornaliero",
+                job_name, notify_mode,
+            )
+            return {"sent": False, "reason": f"notify_mode_{notify_mode}"}
+
         if notify_mode == "failure" and status != "failed":
             logger.debug(f"Notifica solo per errori, job {job_name} ha status {status}")
             return {"sent": False, "reason": "notify_mode_failure_only"}
@@ -141,27 +174,6 @@ class NotificationService:
         if not should_notify:
             logger.debug(f"Notifica non richiesta per status: {status}")
             return {"sent": False, "reason": f"notify_on_{status}_disabled"}
-        
-        # Per notify_mode "daily": limita notifiche successo a 1 al giorno
-        # Per notify_mode "always": notifica sempre
-        # I fallimenti vengono sempre notificati (anche con notify_mode="daily")
-        # La limitazione si applica sia per job schedulati che manuali
-        if notify_mode == "daily" and job_id and status == "success":
-            today = datetime.utcnow().date()
-            # Chiave composita (job_type, job_id): job di tipo diverso con lo
-            # stesso id numerico non si sopprimono più a vicenda (C-11/B6).
-            dedupe_key = f"{job_type or 'job'}:{job_id}"
-            last_notification = self._daily_job_notifications.get(dedupe_key)
-
-            if last_notification and last_notification.date() == today:
-                logger.debug(f"Notifica già inviata oggi per {dedupe_key}, skip (notify_mode=daily)")
-                return {"sent": False, "reason": "daily_limit_reached"}
-
-            # Aggiorna tracking
-            self._daily_job_notifications[dedupe_key] = datetime.utcnow()
-            
-            # Pulizia entries vecchie (più di 2 giorni)
-            self._cleanup_old_notifications()
         
         # Se non forniti, prova a recuperare informazioni dal database usando job_id
         if job_id and (not source_node_name or not dest_node_name or not vm_name):
@@ -453,6 +465,13 @@ class NotificationService:
                     "id": job.id,
                     "name": job.name,
                     "type": "sync",
+                    "notifica": getattr(job, "notify_mode", None) or "daily",
+                    "in_ritardo": _in_ritardo(job),
+                    "esito_finale": (job_logs[0].status if job_logs else None),
+                    "tentativi_max": (
+                        max((getattr(l, "attempt_number", 1) or 1) for l in job_logs)
+                        if job_logs else 1
+                    ),
                     "vm_name": job.vm_name,
                     "vm_id": job.vm_id,
                     "source_node": source_node.name if source_node else "N/A",
@@ -519,6 +538,13 @@ class NotificationService:
                     "id": job.id,
                     "name": job.name,
                     "type": "recovery",
+                    "notifica": getattr(job, "notify_mode", None) or "daily",
+                    "in_ritardo": _in_ritardo(job),
+                    "esito_finale": (recovery_logs[0].status if recovery_logs else None),
+                    "tentativi_max": (
+                        max((getattr(l, "attempt_number", 1) or 1) for l in recovery_logs)
+                        if recovery_logs else 1
+                    ),
                     "source_node": source_node.name if source_node else "N/A",
                     "dest_node": dest_node.name if dest_node else "N/A",
                     "pbs_node": pbs_node.name if pbs_node else "N/A",
@@ -582,6 +608,13 @@ class NotificationService:
                     "id": job.id,
                     "name": job.name,
                     "type": "file_replication",
+                    "notifica": getattr(job, "notify_mode", None) or "daily",
+                    "in_ritardo": _in_ritardo(job),
+                    "esito_finale": (job_logs[0].status if job_logs else None),
+                    "tentativi_max": (
+                        max((getattr(l, "attempt_number", 1) or 1) for l in job_logs)
+                        if job_logs else 1
+                    ),
                     "source_node": source.name if source else "N/A",
                     "dest_node": dest.name if dest else "N/A",
                     "source_dataset": source_paths_label or "—",
@@ -623,18 +656,34 @@ class NotificationService:
                 transferred = next(
                     (l.transferred for l in logs if getattr(l, "transferred", None)), None
                 )
-                return runs, ok, ko, dur, l_err, l_err_t, transferred
+                # L'esito FINALE (i log arrivano dal più recente) e quanti
+                # tentativi sono serviti: senza questi due, un fallimento
+                # rimesso a posto dalla riprova automatica resterebbe un
+                # fallimento nel riepilogo, e la riprova non servirebbe a
+                # niente se non a far girare due volte lo stesso lavoro.
+                esito = (logs[0].status if logs else None)
+                tentativi = max((getattr(l, "attempt_number", 1) or 1) for l in logs) if logs else 1
+                return runs, ok, ko, dur, l_err, l_err_t, transferred, esito, tentativi
 
             def _fmt_last_run(dt) -> str:
                 return dt.strftime("%d/%m %H:%M") if dt else "Mai"
 
             def _append(job, jtype, jtypes, **fields):
                 nonlocal total_runs, successful, failed, total_duration
-                runs, ok, ko, dur, l_err, l_err_t, transferred = _logs_24h(job.id, jtypes)
+                runs, ok, ko, dur, l_err, l_err_t, transferred, esito, tentativi = _logs_24h(
+                    job.id, jtypes
+                )
                 info = {
                     "id": job.id,
                     "name": job.name,
                     "type": jtype,
+                    "notifica": getattr(job, "notify_mode", None) or "daily",
+                    "in_ritardo": _in_ritardo(job),
+                    "esito_finale": (job_logs[0].status if job_logs else None),
+                    "tentativi_max": (
+                        max((getattr(l, "attempt_number", 1) or 1) for l in job_logs)
+                        if job_logs else 1
+                    ),
                     "schedule": getattr(job, "schedule", None) or "Manuale",
                     "runs_24h": runs,
                     "success_24h": ok,
@@ -643,6 +692,8 @@ class NotificationService:
                     "last_transferred": transferred,
                     "last_error": l_err,
                     "last_error_time": l_err_t,
+                    "esito_finale": esito,
+                    "tentativi_max": tentativi,
                 }
                 info.update(fields)
                 jobs_summary.append(info)
@@ -732,7 +783,21 @@ class NotificationService:
                     last_run=_fmt_last_run(job.last_run_at),
                 )
 
+            # Il nome dell'impianto: la mail è una per installazione, e
+            # nell'elenco della posta dev'essere chiaro quale.
+            impianto = "DAPX"
+            try:
+                from database import SystemConfig
+                riga = db.query(SystemConfig).filter(
+                    SystemConfig.key == "cluster_name"
+                ).first()
+                if riga and (riga.value or "").strip():
+                    impianto = riga.value.strip()
+            except Exception as e:
+                logger.debug(f"cluster_name non leggibile, uso il nome predefinito: {e}")
+
             summary_data = {
+                "impianto": impianto,
                 "total_jobs": sum(len(lst) for lst in all_job_lists),
                 "total_runs": total_runs,
                 "successful": successful,
@@ -783,232 +848,21 @@ class NotificationService:
         return results
     
     def _send_daily_summary_email(self, summary: Dict[str, Any]) -> Tuple[bool, str]:
-        """Genera e invia email riepilogo giornaliero con dettaglio per job"""
-        
-        # Determina stato generale
-        if summary["failed"] > 0:
-            status_emoji = "❌"
-            status_color = "#dc3545"
-            status_text = "Attenzione Richiesta"
-        else:
-            status_emoji = "✅"
-            status_color = "#28a745"
-            status_text = "Tutto OK"
-        
-        # Formatta durata totale
-        hours = summary["total_duration"] // 3600
-        minutes = (summary["total_duration"] % 3600) // 60
-        duration_str = f"{hours}h {minutes}m" if hours > 0 else f"{minutes}m"
-        
-        # Genera righe tabella per ogni job
-        job_rows = ""
-        for job in summary.get("jobs", []):
-            # Determina colore stato
-            if job["failed_24h"] > 0:
-                status_icon = "❌"
-                row_style = "background: #fff5f5;"
-            elif job["last_status"] == "success":
-                status_icon = "✅"
-                row_style = ""
-            elif job["last_status"] == "running":
-                status_icon = "🔄"
-                row_style = "background: #fff9e6;"
-            elif job["last_status"] == "never_run":
-                status_icon = "⏸️"
-                row_style = "background: #f5f5f5;"
-            else:
-                status_icon = "⚠️"
-                row_style = "background: #fff9e6;"
-            
-            # Formatta durata job
-            job_hours = job["duration_24h"] // 3600
-            job_mins = (job["duration_24h"] % 3600) // 60
-            job_duration = f"{job_hours}h {job_mins}m" if job_hours > 0 else f"{job_mins}m"
-            
-            # Determina tipo job e formatta di conseguenza
-            if job.get('type') == 'recovery':
-                # Recovery Job: mostra VM, PBS, e durate fasi
-                job_type_label = "🔄 Recovery (PBS)"
-                vm_name = job.get('vm_name') or f"VM {job.get('vm_id', 'N/A')}"
-                source_info = f"{job['source_node']}<br><span style='color: #6c757d; font-size: 10px;'><strong>{vm_name}</strong> (ID: {job.get('vm_id', 'N/A')})</span>"
-                dest_info = f"{job['dest_node']}<br><span style='color: #6c757d; font-size: 10px;'>via {job.get('pbs_node', 'PBS')}</span>"
-                
-                # Durate fasi
-                backup_mins = job.get('backup_duration_24h', 0) // 60
-                backup_secs = job.get('backup_duration_24h', 0) % 60
-                restore_mins = job.get('restore_duration_24h', 0) // 60
-                restore_secs = job.get('restore_duration_24h', 0) % 60
-                
-                duration_info = f"""
-                    <div style="font-size: 11px;">
-                        <div>📦 Backup: <strong>{backup_mins}m {backup_secs}s</strong></div>
-                        <div>🔄 Restore: <strong>{restore_mins}m {restore_secs}s</strong></div>
-                    </div>
-                """
-            elif job.get("type") == "file_replication":
-                job_type_label = "📁 Replica file (NAS)"
-                source_info = (
-                    f"{job['source_node']}<br>"
-                    f"<code style='background: #f1f1f1; padding: 2px 4px; border-radius: 3px; font-size: 10px;'>"
-                    f"{job.get('source_dataset', 'N/A')}</code>"
-                )
-                dest_info = (
-                    f"{job['dest_node']}<br>"
-                    f"<code style='background: #f1f1f1; padding: 2px 4px; border-radius: 3px; font-size: 10px;'>"
-                    f"{job.get('dest_dataset', 'N/A')}</code>"
-                )
-                duration_info = f"""
-                    {job_duration}<br>
-                    <span style="color: #6c757d;">{job.get('last_transferred', '-')}</span>
-                """
-            else:
-                _type_labels = {
-                    "sync": "📦 Sync (ZFS/BTRFS)",
-                    "backup": "💾 Backup (PBS)",
-                    "migration": "🚀 Migration (Live)",
-                    "nas_sync": "📁 Repliche dati (NAS)",
-                    "vm_snapshot": "📸 Snapshot VM",
-                    "host_backup": "🛡️ Host Backup",
-                }
-                job_type_label = _type_labels.get(job.get("type"), "📋 Job")
-                vm_line = ""
-                if job.get("vm_name") or job.get("vm_id"):
-                    vm_label = job.get("vm_name") or f"VM {job.get('vm_id')}"
-                    vm_id_part = f" (ID: {job['vm_id']})" if job.get("vm_id") else ""
-                    vm_line = (
-                        f"<span style='font-size: 11px;'><strong>{vm_label}</strong>{vm_id_part}</span><br>"
-                    )
-                source_info = f"{job['source_node']}<br>{vm_line}<code style='background: #f1f1f1; padding: 2px 4px; border-radius: 3px; font-size: 10px;'>{job.get('source_dataset', 'N/A')}</code>"
-                dest_info = f"{job['dest_node']}<br><code style='background: #f1f1f1; padding: 2px 4px; border-radius: 3px; font-size: 10px;'>{job.get('dest_dataset', 'N/A')}</code>"
-                duration_info = f"""
-                    {job_duration}<br>
-                    <span style="color: #6c757d;">{job.get('last_transferred', '-')}</span>
-                """
-            
-            job_rows += f"""
-            <tr style="{row_style}">
-                <td style="padding: 12px; border-bottom: 1px solid #dee2e6;">
-                    <strong>{job['name']}</strong><br>
-                    <span style="font-size: 10px; color: #6c757d;">{job_type_label}</span><br>
-                    <span style="font-size: 11px; color: #6c757d;">{job['schedule']}</span>
-                </td>
-                <td style="padding: 12px; border-bottom: 1px solid #dee2e6; font-size: 12px;">
-                    {source_info}
-                </td>
-                <td style="padding: 12px; border-bottom: 1px solid #dee2e6; font-size: 12px;">
-                    {dest_info}
-                </td>
-                <td style="padding: 12px; border-bottom: 1px solid #dee2e6; text-align: center;">
-                    <span style="font-size: 18px;">{status_icon}</span><br>
-                    <span style="font-size: 11px; color: #6c757d;">{job['last_run']}</span>
-                </td>
-                <td style="padding: 12px; border-bottom: 1px solid #dee2e6; text-align: center;">
-                    <span style="color: #28a745; font-weight: bold;">{job['success_24h']}</span> / 
-                    <span style="color: #dc3545; font-weight: bold;">{job['failed_24h']}</span>
-                </td>
-                <td style="padding: 12px; border-bottom: 1px solid #dee2e6; text-align: center; font-size: 12px;">
-                    {duration_info}
-                </td>
-            </tr>
-            """
-            
-            # Aggiungi riga errore se presente
-            if job["last_error"]:
-                job_rows += f"""
-                <tr style="background: #fff5f5;">
-                    <td colspan="6" style="padding: 8px 12px; border-bottom: 2px solid #dee2e6; font-size: 11px;">
-                        <span style="color: #dc3545;">⚠️ Ultimo errore ({job['last_error_time'] or 'N/A'}):</span>
-                        <code style="display: block; margin-top: 4px; padding: 6px; background: #f8d7da; border-radius: 4px; white-space: pre-wrap; word-break: break-all;">{job['last_error']}</code>
-                    </td>
-                </tr>
-                """
-        
-        subject = f"{status_emoji} Riepilogo Giornaliero - {summary['successful']}/{summary['total_runs']} esecuzioni OK"
-        
-        body = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body {{ font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }}
-        .container {{ max-width: 900px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
-        .header {{ background: {status_color}; color: white; padding: 25px; text-align: center; }}
-        .header h1 {{ margin: 0 0 10px 0; font-size: 24px; }}
-        .content {{ padding: 25px; }}
-        .stats {{ display: flex; justify-content: space-around; margin: 20px 0; padding: 20px; background: #f8f9fa; border-radius: 8px; flex-wrap: wrap; }}
-        .stat {{ text-align: center; min-width: 80px; margin: 5px; }}
-        .stat-value {{ font-size: 28px; font-weight: bold; }}
-        .stat-label {{ font-size: 11px; color: #6c757d; text-transform: uppercase; }}
-        .stat-success {{ color: #28a745; }}
-        .stat-failed {{ color: #dc3545; }}
-        table {{ width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; }}
-        th {{ background: #343a40; color: white; padding: 12px 8px; text-align: left; font-size: 11px; text-transform: uppercase; }}
-        .footer {{ padding: 20px; text-align: center; color: #6c757d; font-size: 12px; border-top: 1px solid #dee2e6; }}
-        code {{ font-family: 'Consolas', 'Monaco', monospace; }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>{status_emoji} Riepilogo Giornaliero DAPX-backandrepl</h1>
-            <p>{status_text}</p>
-        </div>
-        
-        <div class="content">
-            <p><strong>Periodo:</strong> Ultime 24 ore | <strong>Data:</strong> {datetime.utcnow().strftime('%d/%m/%Y %H:%M')} UTC</p>
-            
-            <div class="stats">
-                <div class="stat">
-                    <div class="stat-value">{summary['total_jobs']}</div>
-                    <div class="stat-label">Job Configurati</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-value">{summary['total_runs']}</div>
-                    <div class="stat-label">Esecuzioni</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-value stat-success">{summary['successful']}</div>
-                    <div class="stat-label">Successi</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-value stat-failed">{summary['failed']}</div>
-                    <div class="stat-label">Falliti</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-value">{duration_str}</div>
-                    <div class="stat-label">Tempo Totale</div>
-                </div>
-            </div>
-            
-            <h3 style="margin-top: 30px; color: #343a40;">📋 Dettaglio Job</h3>
-            
-            <table>
-                <thead>
-                    <tr>
-                        <th>Job</th>
-                        <th>Sorgente</th>
-                        <th>Destinazione</th>
-                        <th>Stato</th>
-                        <th>24h (OK/Fail)</th>
-                        <th>Durata/Transfer</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {job_rows if job_rows else '<tr><td colspan="6" style="padding: 20px; text-align: center; color: #6c757d;">Nessun job configurato</td></tr>'}
-                </tbody>
-            </table>
-        </div>
-        
-        <div class="footer">
-            <p>Questo riepilogo è stato generato automaticamente da DAPX-backandrepl.</p>
-        </div>
-    </div>
-</body>
-</html>
-"""
-        
-        return email_service.send_email(subject, body, html=True)
-    
+        """Genera e invia il riepilogo giornaliero, raggruppato per tipologia.
+
+        L'impaginazione sta in `notification_summary`: qui resta solo la
+        spedizione. Prima erano 180 righe di HTML in mezzo alla logica, ed è
+        il motivo per cui la tabella a sei colonne era sopravvissuta tanto —
+        nessuno andava a toccarla per paura di rompere l'invio.
+        """
+        from services import notification_summary as riepilogo
+
+        impianto = str(summary.get("impianto") or "DAPX")
+        oggetto = riepilogo.oggetto_mail(summary, impianto=impianto)
+        html = riepilogo.render_html(summary, impianto=impianto)
+        testo = riepilogo.render_testo(summary, impianto=impianto)
+        return email_service.send_email(oggetto, html, html=True, text_body=testo)
+
     async def _send_webhook(
         self,
         config: NotificationConfig,
@@ -1116,55 +970,16 @@ class NotificationService:
         return msg
     
     def _format_telegram_summary(self, summary: Dict[str, Any]) -> str:
-        """Formatta messaggio Telegram per riepilogo giornaliero con dettaglio per job"""
-        
-        if summary["failed"] > 0:
-            emoji = "❌"
-            status = "Attenzione Richiesta"
-        else:
-            emoji = "✅"
-            status = "Tutto OK"
-        
-        hours = summary["total_duration"] // 3600
-        minutes = (summary["total_duration"] % 3600) // 60
-        
-        msg = f"""{emoji} *Riepilogo Giornaliero DAPX-backandrepl*
+        """Riepilogo su Telegram: stessi gruppi della mail, solo ciò che non va.
 
-*Stato:* {status}
-*Periodo:* Ultime 24 ore
+        L'elenco completo di trenta job su Telegram non lo legge nessuno: si
+        scorre e si perde il rosso in mezzo al verde.
+        """
+        from services import notification_summary as riepilogo
 
-📊 *Statistiche Generali:*
-• Job Configurati: {summary['total_jobs']}
-• Esecuzioni: {summary['total_runs']}
-• ✅ Successi: {summary['successful']}
-• ❌ Falliti: {summary['failed']}
-• ⏱ Tempo Totale: {hours}h {minutes}m"""
-        
-        # Dettaglio per job
-        jobs = summary.get("jobs", [])
-        if jobs:
-            msg += "\n\n📋 *Dettaglio Job:*"
-            for job in jobs[:10]:  # Max 10 job nel messaggio Telegram
-                if job["failed_24h"] > 0:
-                    job_emoji = "❌"
-                elif job["last_status"] == "success":
-                    job_emoji = "✅"
-                elif job["last_status"] == "never_run":
-                    job_emoji = "⏸️"
-                else:
-                    job_emoji = "⚠️"
-                
-                msg += f"\n\n{job_emoji} *{job['name']}*"
-                if job.get("vm_name") or job.get("vm_id"):
-                    vm_label = job.get("vm_name") or "VM"
-                    msg += f"\n   {vm_label} (ID: {job.get('vm_id', '?')})"
-                msg += f"\n   `{job['source_node']}` → `{job['dest_node']}`"
-                msg += f"\n   24h: {job['success_24h']}✓ {job['failed_24h']}✗ | Ultimo: {job['last_run']}"
-                
-                if job["last_error"]:
-                    msg += f"\n   ⚠️ Errore: `{job['last_error'][:100]}...`"
-        
-        return msg
+        return riepilogo.render_telegram(
+            summary, impianto=str(summary.get("impianto") or "DAPX")
+        )
 
 
 # Singleton

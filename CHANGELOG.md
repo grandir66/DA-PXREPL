@@ -5,6 +5,140 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.21.0] - 2026-09-08
+
+> Nota per chi rilascia: la versione vive in **due** file, `version.json`
+> nella radice (quello che vince) e `backend/version.json`. Vanno aggiornati
+> insieme, altrimenti l'API `/updates` può riportare una versione vecchia se
+> il primo non è raggiungibile. Da unificare.
+
+### Correzioni
+
+- **Allarme falso: sei repliche puntuali dichiarate «non partite».** La regola
+  introdotta lo stesso giorno diceva «pianificato + zero esecuzioni in 24 ore =
+  fermo», e per un job **settimanale** è vera sei giorni su sette. Il primo
+  riepilogo generato sui dati veri ha gridato al guasto su DA-RDH, chr-7.9.2,
+  DA-ESVA e DA-VulcAn — repliche del lunedì, del mercoledì e del venerdì, tutte
+  arrivate sul loro slot. Adesso «fermo» lo decide `check_job_overdue`, che il
+  progetto aveva già, usa il cron in **ora locale** e dice la cosa giusta:
+  *in ritardo se l'ultima corsa è precedente all'ultimo slot atteso*. Due
+  definizioni di «in ritardo» nello stesso applicativo prima o poi si
+  contraddicono, e un test lo impedisce.
+
+### Aggiunte
+
+- **Una replica non è fallita al primo colpo: si riprova dopo un'ora.**
+  `syncoid` cade anche per un «dataset is busy» o uno snapshot ancora in
+  corso, cose che un'ora dopo non ci sono più. Ora un fallimento programma una
+  **riprova automatica**, e il job si dichiara fallito — con mail e riga rossa
+  nel riepilogo — solo se **non passa nemmeno alla riprova**. Se rientra, il
+  riepilogo lo segna «Riuscita alla riprova»: non è un guasto, ma resta
+  scritto, perché un job che ogni notte fallisce e rientra alla seconda è un
+  problema che sta maturando.
+  I tre campi che governano tutto questo — `retry_on_failure`, `max_retries`,
+  `retry_delay_minutes` — erano nel database di ogni job e nelle API **dal
+  primo giorno, e nessun servizio di esecuzione li leggeva**: configurazione
+  promessa e mai applicata. Adesso li legge lo scheduler. I valori predefiniti
+  passano da «15 minuti, 3 tentativi» a **«60 minuti, 1 tentativo»**; la
+  migrazione aggiorna solo i job rimasti ai vecchi predefiniti, così chi ha
+  scelto a mano un'attesa diversa se la tiene.
+  Il numero di tentativo finisce in `JobLog.attempt_number` (colonna che
+  c'era da sempre e nessuno valorizzava): è così che il riepilogo distingue
+  una replica riuscita al primo colpo da una rimessa a posto dalla riprova,
+  senza inventare un secondo posto dove tenere quello stato.
+- **Backup della configurazione host: pianificato su tutti e quattro i nodi.**
+  Non era rotto — non era **mai stato pianificato**: il job «Backup Config»
+  esisteva dal 29 aprile con `schedule = None` ed era partito una volta sola,
+  a mano, il 3 maggio. Copriva inoltre il solo DA-PX-01, cioè un nodo su
+  quattro. Creati i job per DA-PX-02/03/04 e messo un orario notturno
+  scaglionato di dieci minuti (01:00, 01:10, 01:20, 01:30), retention 7 come
+  quello esistente. Verificato eseguendone uno davvero su DA-PX-04: riuscito,
+  239 KB, con la sua riga in `job_logs`.
+
+
+- **Un SMTP giù alle 8:00 costava il riepilogo dell'intera giornata.** Lo
+  scheduler segnava la giornata come «fatta» appena aveva *provato* a mandare
+  il riepilogo: `send_daily_summary` restituisce `sent: True` non appena decide
+  di provarci, e l'esito vero sta dentro `channels`. Finché i job mandavano
+  posta per conto loro si sopravviveva; ora che il riepilogo è l'unico
+  messaggio che arriva, perderlo vuol dire non sapere niente per 24 ore. Adesso
+  la giornata si chiude solo se **almeno un canale** ha accettato il messaggio;
+  altrimenti si riprova al giro dopo, fino a cinque volte, e poi si lascia un
+  ERROR nel registro invece di tacere.
+- **Il cancello dei test era rosso da settimane, per quattro motivi diversi**,
+  e tutti e quattro erano **test rimasti indietro rispetto al prodotto**:
+  - lo scheduler: il test pretendeva le 02:00 «giuste» mentre dalla 3.20.10 il
+    cron si legge in ora locale e il valore restituito è UTC (d'estate,
+    mezzanotte). L'attesa adesso si costruisce dal fuso invece di essere un
+    numero scritto a mano, così resta vera anche d'inverno;
+  - il piano di replica file: un test che pretendeva una tappa `rsync` **e**,
+    tre righe sotto, che il piano fosse `rclone_sync` — aggiornamento lasciato
+    a metà quando è entrato rclone. Diviso in due test, uno per strada;
+  - la replica file in errore: il test faceva `db.refresh()` su una sessione
+    che il codice, giustamente, chiude nel `finally`. Adesso rilegge dal
+    database, che è anche una verifica più forte;
+  - gli snapshot VM: il test pretendeva l'avviso `pvesr` che la 3.20.12 aveva
+    tolto di proposito. Adesso tiene ferma la decisione (nessun avviso per
+    esecuzione), così il rumore non rientra per sbaglio.
+
+  Nessuno dei quattro nascondeva un difetto del prodotto, ma un cancello che si
+  sa rosso smette di essere un cancello: erano rossi anche i test nuovi e
+  nessuno se ne sarebbe accorto.
+- **Con l'impostazione predefinita arrivava una mail per ogni job, non il riepilogo.**
+  Il menu «Quando notificare» offriva «Riepilogo giornaliero» come opzione
+  predefinita, ma il codice la trattava come «manda una mail subito per questo
+  job, al massimo una al giorno se è andata bene». Siccome il riepilogo
+  giornaliero partiva comunque, chi non aveva toccato niente riceveva **tutte
+  e due le cose**: una mail per replica più il riepilogo. Adesso «solo nel
+  riepilogo giornaliero» fa quello che dice — nessuna mail immediata, nemmeno
+  per i fallimenti. Chi vuole l'avviso al volo su un guasto ha l'opzione
+  «Riepilogo + mail subito se fallisce». L'unica notifica che continua a
+  partire da sola è l'allarme «replica in ritardo», che segnala una replica
+  **non avvenuta**: domattina sarebbe troppo tardi.
+- **Un job pianificato che non partiva più risultava «tutto a posto».** Nel
+  riepilogo lo stato veniva dall'ultima esecuzione: un job fermo da tre giorni
+  mostrava l'esito (riuscito) di tre giorni prima, in verde. Per un impianto di
+  backup è il guasto peggiore, perché non produce nessun errore da leggere.
+  Adesso ha uno stato suo, **«Non partito»**, in ambra, e viene messo in cima
+  alla sua sezione. I job manuali non sono toccati: nessuno si aspetta che
+  partano da soli.
+- **Notifiche dei job di recovery: errore a ogni invio.** Il codice leggeva
+  `job.notify_mode` su `RecoveryJob`, che quella colonna non ce l'ha (ha
+  `notify_on_each_run`): ogni recovery con la notifica accesa sollevava
+  `AttributeError` invece di mandare la mail. Cinque punti corretti in
+  `recovery_job_execution.py`.
+
+### Modifiche
+
+- **Le mail sono state rifatte perché si leggano sul telefono.** Erano una
+  tabella a sei colonne (il riepilogo) e un fascicolo lungo con due riquadri
+  affiancati (la notifica del singolo job); su uno schermo stretto entrambe si
+  accartocciavano e le cose fondamentali — che cosa, quando, com'è finita —
+  finivano annegate. Adesso ogni attività è **impilata**: una riga di
+  intestazione e i dettagli sotto, mai in colonne.
+- **Il riepilogo giornaliero è raggruppato per tipologia**, con le sigle
+  dell'impianto: REPL-VM, SNAPSHOT, DATI, NAS, BACKUP, RECOVERY, HOST,
+  MIGRAZIONE. In cima quattro numeri (esecuzioni, riuscite, fallite, durata)
+  rispondono in due secondi; dentro ogni tipologia i guasti vengono per primi e
+  la barra colorata a sinistra diventa rossa, così si trova il problema
+  scorrendo il margine. Compaiono solo le tipologie che hanno job configurati.
+  Una mail per installazione, col nome dell'impianto (`cluster_name`)
+  nell'oggetto.
+- **«Nessuna notifica» esclude il job anche dal riepilogo** — è quello che
+  «Mai» promette. Il suo nome resta però in coda alla mail («1 job escluso
+  dalle notifiche: …»): silenzioso non vuol dire invisibile.
+- **Ogni mail viaggia anche in testo semplice** (multipart), per chi legge da
+  orologio, da lettore di schermo o dall'archivio. Il messaggio Telegram del
+  riepilogo usa gli stessi gruppi ma elenca **solo ciò che non va**: un elenco
+  di trenta job su Telegram non lo legge nessuno.
+- **Nuovo strumento `backend/scripts/notifiche_stato.py`** (sola lettura, si
+  lancia su un impianto in esercizio): dice quali job mandano ancora una mail a
+  ogni esecuzione — nessuna migrazione li tocca, è una scelta di chi li ha
+  configurati — e quali sono esclusi da tutto, riepilogo compreso.
+- **La mail di prova dell'SMTP ha la stessa veste delle altre**, così chi
+  configura le notifiche vede subito che aspetto avranno davvero.
+
+
 ## [3.20.16] - 2026-07-30
 
 ### Correzioni

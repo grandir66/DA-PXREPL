@@ -158,7 +158,11 @@ async def execute_recovery_job_task(job_id: int, triggered_by: Optional[int] = N
                     details=f"Fase: Backup\n{backup_result.get('output', '')[:500]}",
                     job_id=job_id,
                     is_scheduled=bool(job.schedule),
-                    notify_mode=job.notify_mode or "daily",
+                    # `RecoveryJob` non ha `notify_mode`: ha `notify_on_each_run`, ed è
+                    # la guardia di questo blocco. Leggere `job.notify_mode` sollevava
+                    # AttributeError a ogni recovery con la notifica accesa; "always"
+                    # è la traduzione fedele del flag (2026-09-08).
+                    notify_mode="always",
                     job_type="recovery",
                     source_node_name=source_node.name,
                     dest_node_name=dest_node.name,
@@ -224,7 +228,11 @@ async def execute_recovery_job_task(job_id: int, triggered_by: Optional[int] = N
                     details="Storage PBS non configurato sul nodo destinazione",
                     job_id=job_id,
                     is_scheduled=bool(job.schedule),
-                    notify_mode=job.notify_mode or "daily",
+                    # `RecoveryJob` non ha `notify_mode`: ha `notify_on_each_run`, ed è
+                    # la guardia di questo blocco. Leggere `job.notify_mode` sollevava
+                    # AttributeError a ogni recovery con la notifica accesa; "always"
+                    # è la traduzione fedele del flag (2026-09-08).
+                    notify_mode="always",
                     job_type="recovery",
                     source_node_name=source_node.name,
                     dest_node_name=dest_node.name,
@@ -306,7 +314,11 @@ async def execute_recovery_job_task(job_id: int, triggered_by: Optional[int] = N
                     details=f"Fase: Restore\nBackup ID: {backup_id}\n{restore_result.get('output', '')[:500]}",
                     job_id=job_id,
                     is_scheduled=bool(job.schedule),
-                    notify_mode=job.notify_mode or "daily",
+                    # `RecoveryJob` non ha `notify_mode`: ha `notify_on_each_run`, ed è
+                    # la guardia di questo blocco. Leggere `job.notify_mode` sollevava
+                    # AttributeError a ogni recovery con la notifica accesa; "always"
+                    # è la traduzione fedele del flag (2026-09-08).
+                    notify_mode="always",
                     job_type="recovery",
                     source_node_name=source_node.name,
                     dest_node_name=dest_node.name,
@@ -352,7 +364,11 @@ async def execute_recovery_job_task(job_id: int, triggered_by: Optional[int] = N
                 details=f"Backup ID: {backup_id}\nBackup: {backup_duration}s\nRestore: {restore_duration}s",
                 job_id=job_id,
                 is_scheduled=bool(job.schedule),
-                notify_mode=job.notify_mode or "daily",
+                # `RecoveryJob` non ha `notify_mode`: ha `notify_on_each_run`, ed è
+                # la guardia di questo blocco. Leggere `job.notify_mode` sollevava
+                # AttributeError a ogni recovery con la notifica accesa; "always"
+                # è la traduzione fedele del flag (2026-09-08).
+                notify_mode="always",
                 job_type="recovery",
                 source_node_name=source_node.name,
                 dest_node_name=dest_node.name,
@@ -393,7 +409,11 @@ async def execute_recovery_job_task(job_id: int, triggered_by: Optional[int] = N
                         error=f"Errore critico: {str(e)}",
                         job_id=job_id,
                         is_scheduled=bool(job.schedule),
-                        notify_mode=job.notify_mode or "daily",
+                        # `RecoveryJob` non ha `notify_mode`: ha `notify_on_each_run`, ed è
+                        # la guardia di questo blocco. Leggere `job.notify_mode` sollevava
+                        # AttributeError a ogni recovery con la notifica accesa; "always"
+                        # è la traduzione fedele del flag (2026-09-08).
+                        notify_mode="always",
                         job_type="recovery",
                         source_node_name=source_node.name if source_node else None,
                         dest_node_name=dest_node.name if dest_node else None,

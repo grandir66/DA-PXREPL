@@ -7,7 +7,7 @@ import asyncio
 import os
 from datetime import datetime, time, timezone, timedelta
 from zoneinfo import ZoneInfo
-from typing import Dict, Optional, Callable
+from typing import Any, Dict, Optional, Callable
 import logging
 from croniter import croniter
 from sqlalchemy.orm import Session
@@ -23,6 +23,12 @@ logger = logging.getLogger(__name__)
 # Finestra (secondi) dopo l'inizio di uno slot cron in cui un restart può
 # ancora innescare la run di quello slot (evita backlog di settimane).
 _CRON_SLOT_GRACE_SEC = 120
+
+# Quante volte ritentare il riepilogo giornaliero se nessun canale lo accetta.
+# I tentativi cadono a un minuto l'uno dall'altro (il giro dello scheduler) e
+# stanno dentro la finestra dell'ora, quindi coprono un SMTP che torna su da
+# solo senza martellarlo per sessanta minuti.
+_MAX_TENTATIVI_RIEPILOGO = 5
 
 # Timezone in cui interpretare le espressioni cron dei job schedulati.
 # Default Europe/Rome (ORA LOCALE, come si aspetta l'utente). Storage e
@@ -75,6 +81,29 @@ def compute_initial_next_run(
     return next_future
 
 
+def _riepilogo_consegnato(result: dict) -> Optional[bool]:
+    """Il riepilogo è arrivato a qualcuno?
+
+    Tre risposte, non due, ed è la ragione per cui questa funzione esiste:
+
+    * ``True``  — almeno un canale l'ha accettato: giornata fatta.
+    * ``False`` — si è provato e nessun canale l'ha preso (SMTP giù, token
+      Telegram scaduto): vale la pena ritentare.
+    * ``None``  — non c'era niente da mandare (notifiche non configurate,
+      nessun canale acceso, nessun job): ritentare non cambierebbe nulla.
+
+    `send_daily_summary` mette ``sent: True`` appena decide di provarci; se
+    l'invio poi fallisce lo dice solo dentro ``channels``. Leggere il primo e
+    non i secondi è esattamente l'errore che faceva perdere il riepilogo.
+    """
+    if not result.get("sent"):
+        return None
+    canali = result.get("channels") or {}
+    if not canali:
+        return None
+    return any(bool(c.get("success")) for c in canali.values())
+
+
 class SchedulerService:
     """Servizio per scheduling dei job di sincronizzazione"""
     
@@ -87,6 +116,14 @@ class SchedulerService:
         # le stesse usate per `_jobs` (es. "sync_42", "backup_pbs_3").
         self._running_jobs: set = set()
         self._last_daily_summary: Optional[datetime] = None
+        # Tentativi di invio del riepilogo nella giornata corrente: un SMTP
+        # che non risponde alle 8:00 non deve costare l'intero riepilogo.
+        self._tentativi_riepilogo: int = 0
+        # Riprove in attesa: {job_key: {'quando','job_id','tentativo'}}.
+        # In memoria di proposito: una riprova è un rimedio a un guasto
+        # passeggero, e se il servizio si riavvia il guasto passeggero non
+        # c'è più — al prossimo slot cron il job riparte comunque.
+        self._riprove: Dict[str, Dict[str, Any]] = {}
         self._last_vm_cache_refresh: Optional[datetime] = None
         self._daily_summary_hour: int = 8  # Ora predefinita: 08:00 UTC
         self._daily_summary_enabled: bool = True
@@ -255,6 +292,7 @@ class SchedulerService:
         while self._running:
             try:
                 await self._check_and_run_jobs()
+                await self._check_riprove()
                 await self._check_daily_summary()
                 await self._check_replication_overdue()
                 await self._check_host_info_updates()
@@ -309,17 +347,46 @@ class SchedulerService:
             if not self._daily_summary_enabled:
                 return
             
-            # Invia riepilogo
+            # Invia riepilogo.
+            #
+            # La giornata si segna «fatta» SOLO se almeno un canale ha davvero
+            # accettato il messaggio. Prima la si segnava comunque, e siccome
+            # `send_daily_summary` restituisce `sent: True` anche quando il
+            # canale email fallisce (l'esito vero sta in `channels`), un SMTP
+            # irraggiungibile alle 8:00 costava il riepilogo dell'intera
+            # giornata, in silenzio. Dall'8 settembre 2026 è l'unico messaggio
+            # che arriva quando tutto va come deve — i job non mandano più
+            # posta per conto loro — quindi perderlo vuol dire non sapere
+            # niente per 24 ore.
             logger.info("Invio riepilogo giornaliero...")
             try:
                 result = await notification_service.send_daily_summary()
-                if result.get("sent"):
-                    logger.info(f"Riepilogo giornaliero inviato: {result.get('channels', {})}")
-                else:
-                    logger.debug(f"Riepilogo non inviato: {result.get('reason')}")
-                self._last_daily_summary = now
+                consegnato = _riepilogo_consegnato(result)
             except Exception as e:
                 logger.error(f"Errore invio riepilogo giornaliero: {e}")
+                consegnato = False
+
+            if consegnato is False:
+                self._tentativi_riepilogo += 1
+                if self._tentativi_riepilogo < _MAX_TENTATIVI_RIEPILOGO:
+                    logger.warning(
+                        "Riepilogo giornaliero non consegnato (tentativo %s/%s): "
+                        "riprovo al prossimo giro",
+                        self._tentativi_riepilogo, _MAX_TENTATIVI_RIEPILOGO,
+                    )
+                    return
+                logger.error(
+                    "Riepilogo giornaliero non consegnato dopo %s tentativi: "
+                    "oggi nessuno saprà com'è andata. Controllare SMTP/webhook/Telegram.",
+                    _MAX_TENTATIVI_RIEPILOGO,
+                )
+            elif consegnato:
+                logger.info(f"Riepilogo giornaliero inviato: {result.get('channels', {})}")
+            else:
+                logger.debug(f"Riepilogo non inviato: {result.get('reason')}")
+
+            self._tentativi_riepilogo = 0
+            self._last_daily_summary = now
 
     async def _check_replication_overdue(self):
         """Alert proattivo se VM/gruppi schedulati non hanno rispettato lo slot cron."""
@@ -433,18 +500,88 @@ class SchedulerService:
         finally:
             db.close()
     
-    async def _guarded_execute_sync_job(self, job_key: str, job_id: int) -> None:
+    async def _guarded_execute_sync_job(
+        self, job_key: str, job_id: int, tentativo: int = 1
+    ) -> None:
         """Esegue un SyncJob standalone; mantiene il lock se la replica continua in background."""
         from services.sync_job_execution import execute_sync_job_task
 
         keep_lock = False
         try:
-            keep_lock = await execute_sync_job_task(job_id)
+            keep_lock = await execute_sync_job_task(job_id, tentativo=tentativo)
         except Exception as e:
             logger.error(f"SyncJob {job_id} fallito: {e}", exc_info=True)
         finally:
             if not keep_lock:
                 self._unlock(job_key)
+                # Il lock è rilasciato: la replica è finita davvero e il suo
+                # esito è nel database. Se è andata male, si riprova fra un'ora.
+                self._valuta_riprova(job_key, job_id, tentativo)
+
+    def _valuta_riprova(self, job_key: str, job_id: int, tentativo: int) -> None:
+        """Registra una riprova se la replica è fallita e ne ha ancora diritto.
+
+        `retry_on_failure`, `max_retries` e `retry_delay_minutes` stanno nel
+        database di ogni job **dal primo giorno** e nessun servizio di
+        esecuzione li leggeva: configurazione promessa dalle API e mai
+        applicata (scoperto il 2026-09-08). Adesso li legge questo.
+
+        Una replica non si dichiara fallita al primo colpo: `syncoid` cade
+        anche per un `dataset is busy` o uno snapshot ancora in corso, cose
+        che un'ora dopo non ci sono più. Fallita è quella che non passa
+        **nemmeno alla riprova**.
+        """
+        db = SessionLocal()
+        try:
+            job = db.query(SyncJob).filter(SyncJob.id == job_id).first()
+            if not job:
+                return
+            if (job.last_status or "").lower() != "failed":
+                self._riprove.pop(job_key, None)
+                return
+            if not getattr(job, "retry_on_failure", False):
+                logger.info("SyncJob %s fallito, riprova disattivata sul job", job_id)
+                return
+            massimo = int(getattr(job, "max_retries", 0) or 0)
+            if tentativo > massimo:
+                logger.error(
+                    "SyncJob %s (%s) fallito anche al tentativo %s di %s: è un guasto",
+                    job_id, job.name, tentativo, massimo + 1,
+                )
+                self._riprove.pop(job_key, None)
+                return
+            attesa = int(getattr(job, "retry_delay_minutes", 0) or 60)
+            quando = datetime.utcnow() + timedelta(minutes=attesa)
+            self._riprove[job_key] = {
+                "quando": quando, "job_id": job_id, "tentativo": tentativo + 1,
+            }
+            logger.warning(
+                "SyncJob %s (%s) fallito al tentativo %s: riprova alle %s",
+                job_id, job.name, tentativo, quando.strftime("%H:%M"),
+            )
+        except Exception as e:  # noqa: BLE001 — non deve fermare lo scheduler
+            logger.error("Valutazione riprova per SyncJob %s fallita: %s", job_id, e)
+        finally:
+            db.close()
+
+    async def _check_riprove(self) -> None:
+        """Fa partire le riprove scadute. Una per giro, come i job normali."""
+        if not self._riprove:
+            return
+        now = datetime.utcnow()
+        for job_key, r in list(self._riprove.items()):
+            if now < r["quando"]:
+                continue
+            self._riprove.pop(job_key, None)
+            if not self._try_lock(job_key):
+                # Sta già girando (lo slot cron è arrivato prima della riprova):
+                # non serve riprovare quel che è già in corso.
+                logger.info("Riprova di %s saltata: il job è già in esecuzione", job_key)
+                continue
+            logger.info("Riprova %s: tentativo %s", job_key, r["tentativo"])
+            asyncio.create_task(
+                self._guarded_execute_sync_job(job_key, r["job_id"], r["tentativo"])
+            )
 
     async def _check_and_run_jobs(self):
         """Verifica e esegue i job schedulati"""

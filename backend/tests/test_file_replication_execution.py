@@ -39,17 +39,31 @@ async def test_preflight_missing_rsync(db):
     )
     db.add_all([src, dest, job])
     db.commit()
+    job_id = job.id
 
     with patch.object(exec_mod, "SessionLocal", return_value=db), patch.object(
         exec_mod.shutil, "which", return_value=None
     ), patch.object(exec_mod, "decrypt_password", return_value="secret"):
-        await exec_mod.execute_file_replication_job(job.id)
+        await exec_mod.execute_file_replication_job(job_id)
 
-    db.refresh(job)
+    # NON `db.refresh(job)`: il codice sotto prova possiede la sessione che
+    # `SessionLocal` gli restituisce e nel `finally` la chiude — `close()`
+    # sgancia dalla sessione tutte le istanze, e un `refresh` su un oggetto
+    # sganciato alza «Instance is not persistent within this Session». La
+    # sessione resta però usabile (ne apre una nuova alla prossima query), e
+    # rileggere da zero è anche una verifica più forte: dice cosa c'è
+    # davvero nel database, non cosa ricordava l'oggetto in memoria.
+    job = (
+        db.query(FileReplicationJob)
+        .filter(FileReplicationJob.id == job_id)
+        .first()
+    )
+    assert job is not None
     assert job.last_run_status == "failed"
+    assert job.current_status == "failed", "un job fallito non resta 'running'"
     log = (
         db.query(JobLog)
-        .filter(JobLog.job_type == "file_replication", JobLog.job_id == job.id)
+        .filter(JobLog.job_type == "file_replication", JobLog.job_id == job_id)
         .order_by(JobLog.id.desc())
         .first()
     )

@@ -295,13 +295,15 @@ onMounted(loadEndpoints)
         <div class="form-group">
           <label>Notifiche email</label>
           <select v-model="form.notify_mode" class="form-input">
-            <option value="daily">Riepilogo giornaliero (max 1 OK/giorno) + errori</option>
-            <option value="always">Ogni esecuzione</option>
-            <option value="failure">Solo fallimenti</option>
-            <option value="never">Mai</option>
+            <option value="daily">Solo nel riepilogo giornaliero (predefinito)</option>
+            <option value="failure">Riepilogo + mail subito se fallisce</option>
+            <option value="always">Mail a ogni esecuzione</option>
+            <option value="never">Nessuna notifica, escluso dal riepilogo</option>
           </select>
           <small class="text-muted">
-            Richiede SMTP configurato in Impostazioni → Notifiche e «Notifica successi» attivo per le email OK.
+            Con l'impostazione predefinita non arriva nessuna mail per questo job: le sue
+            esecuzioni compaiono nel riepilogo giornaliero, una mail sola per l'impianto.
+            Serve SMTP configurato in Impostazioni → Notifiche.
           </small>
         </div>
         <div class="form-group">

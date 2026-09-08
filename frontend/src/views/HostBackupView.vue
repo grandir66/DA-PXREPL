@@ -74,10 +74,10 @@
  <div class="form-group">
  <label>Notifiche Email</label>
  <select v-model="form.notify_mode" class="form-input">
- <option value="never">Mai</option>
- <option value="always">Sempre</option>
- <option value="failure">Solo su errore</option>
- <option value="daily">Solo nel riepilogo giornaliero</option>
+ <option value="daily">Solo nel riepilogo giornaliero (predefinito)</option>
+ <option value="failure">Riepilogo + mail subito se fallisce</option>
+ <option value="always">Mail a ogni esecuzione</option>
+ <option value="never">Nessuna notifica, escluso dal riepilogo</option>
  </select>
  </div>
  <div class="form-group" v-if="form.notify_mode !== 'never' && form.notify_mode !== 'daily'">

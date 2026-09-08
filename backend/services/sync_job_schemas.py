@@ -64,7 +64,8 @@ class SyncJobCreate(BaseModel):
     
     # Retry
     retry_on_failure: bool = True
-    max_retries: int = 3
+    max_retries: int = 1
+    retry_delay_minutes: int = 60
 
 
 class SyncJobUpdate(BaseModel):

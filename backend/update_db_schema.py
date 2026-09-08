@@ -13,6 +13,11 @@ def _table_columns(conn, table: str) -> list[str]:
     return [r[1] for r in rows]
 
 
+def _tables(conn) -> list[str]:
+    rows = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
+    return [r[0] for r in rows]
+
+
 def _ensure_column(conn, table: str, column: str, ddl_type: str) -> None:
     """Idempotente: aggiunge la colonna solo se non esiste già."""
     try:
@@ -109,6 +114,26 @@ def update_schema():
                 "CREATE INDEX IF NOT EXISTS ix_joblog_started_status "
                 "ON job_logs (started_at, status)"
             ))
+
+            # Riprova: da «15 minuti, 3 tentativi» a «60 minuti, 1 tentativo».
+            # SOLO per chi è rimasto ai vecchi valori predefiniti: chi ha
+            # scelto a mano un'attesa diversa se la tiene. Una UPDATE secca
+            # cancellerebbe quella scelta senza dirlo a nessuno.
+            for tabella in ("sync_jobs", "recovery_jobs"):
+                if tabella not in _tables(conn):
+                    continue
+                colonne = _table_columns(conn, tabella)
+                if "retry_delay_minutes" not in colonne or "max_retries" not in colonne:
+                    continue
+                esito = conn.execute(text(
+                    f"UPDATE {tabella} SET retry_delay_minutes = 60, max_retries = 1 "
+                    "WHERE retry_delay_minutes = 15 AND max_retries = 3"
+                ))
+                if esito.rowcount:
+                    logger.info(
+                        "Riprova portata a 60 min / 1 tentativo su %s job di %s",
+                        esito.rowcount, tabella,
+                    )
 
             conn.commit()
         except Exception as e:

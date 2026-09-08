@@ -54,7 +54,8 @@ class EmailService:
         subject: str,
         body: str,
         to_addrs: Optional[List[str]] = None,
-        html: bool = False
+        html: bool = False,
+        text_body: Optional[str] = None
     ) -> Tuple[bool, str]:
         """
         Invia un'email.
@@ -86,7 +87,13 @@ class EmailService:
             msg["To"] = ", ".join(recipients)
             msg["Date"] = datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S +0000")
             
-            # Aggiungi corpo
+            # Aggiungi corpo. In `multipart/alternative` l'ordine conta: il
+            # testo semplice PRIMA, l'HTML dopo — chi legge sceglie l'ultima
+            # parte che sa mostrare. Invertirli fa vedere il testo grezzo a
+            # tutti. Chi legge da orologio, da lettore di schermo o
+            # dall'archivio deve trovare le stesse cose dell'HTML.
+            if html and text_body:
+                msg.attach(MIMEText(text_body, "plain", "utf-8"))
             content_type = "html" if html else "plain"
             msg.attach(MIMEText(body, content_type, "utf-8"))
             
@@ -144,161 +151,139 @@ class EmailService:
         transferred: Optional[str] = None,
         notify_subject: Optional[str] = None,
     ) -> Tuple[bool, str]:
-        """
-        Invia notifica per un job di replica.
-        
-        Args:
-            job_name: Nome del job
-            status: Stato (success, failed, warning)
-            source: Dataset sorgente
-            destination: Dataset destinazione
-            duration: Durata in secondi
-            error: Messaggio di errore (se fallito)
-            details: Dettagli aggiuntivi
-            cluster_name: Nome del cluster
-            source_node_name: Nome del nodo sorgente
-            dest_node_name: Nome del nodo destinazione
-            job_type: Tipo di job (sync, backup, recovery, migration)
-            vm_name: Nome della VM
-            vm_id: ID della VM
-        """
-        status_emoji = {
-            "success": "✅",
-            "failed": "❌",
-            "warning": "⚠️"
-        }.get(status, "ℹ️")
-        
-        status_text = {
-            "success": "Completato",
-            "failed": "Fallito",
-            "warning": "Attenzione"
-        }.get(status, status)
-        
-        # Determina il tipo di job e il modulo
-        job_type_labels = {
-            "sync": "📦 Sync (ZFS/BTRFS)",
-            "backup": "💾 Backup (PBS)",
-            "recovery": "🔄 Recovery (PBS)",
-            "migration": "🚀 Migration (Live)",
-            "file_replication": "📁 Replica file (NAS)",
-            "nas_sync": "📁 Repliche dati (NAS)",
-            "vm_snapshot": "📸 Snapshot VM",
-            "host_backup": "🛡️ Host Backup",
-        }
-        module_label = job_type_labels.get(job_type, "📋 Job") if job_type else "📋 Job"
-        
-        # Formatta informazioni VM
-        vm_info = ""
-        if vm_id:
-            if vm_name:
-                vm_info = f"<p><span class=\"label\">VM:</span> <strong>{vm_name}</strong> (ID: {vm_id})</p>"
-            else:
-                vm_info = f"<p><span class=\"label\">VM ID:</span> {vm_id}</p>"
-        
-        # Formatta durata
-        duration_str = ""
-        if duration:
-            hours = duration // 3600
-            minutes = (duration % 3600) // 60
-            seconds = duration % 60
-            if hours > 0:
-                duration_str = f"{hours}h {minutes}m {seconds}s"
-            elif minutes > 0:
-                duration_str = f"{minutes}m {seconds}s"
-            else:
-                duration_str = f"{seconds}s"
-        
-        subject = notify_subject.strip() if notify_subject and notify_subject.strip() else (
-            f"{status_emoji} {module_label} {status_text}: {job_name}"
-        )
-        
-        # Corpo email HTML
-        body = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body {{ font-family: Arial, sans-serif; margin: 20px; }}
-        .header {{ background: {'#28a745' if status == 'success' else '#dc3545' if status == 'failed' else '#ffc107'}; 
-                   color: {'white' if status != 'warning' else 'black'}; padding: 15px; border-radius: 8px; }}
-        .content {{ background: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 15px; }}
-        .info-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px; }}
-        .info-box {{ background: white; padding: 12px; border-radius: 6px; border-left: 4px solid #007bff; }}
-        .label {{ font-weight: bold; color: #495057; }}
-        .value {{ color: #212529; margin-top: 4px; }}
-        .error {{ background: #f8d7da; border: 1px solid #f5c6cb; padding: 10px; border-radius: 4px; margin-top: 10px; }}
-        .footer {{ margin-top: 20px; color: #6c757d; font-size: 12px; }}
-        .module-badge {{ display: inline-block; background: #007bff; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; margin-left: 8px; }}
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h2>{status_emoji} Job: {job_name} <span class="module-badge">{module_label}</span></h2>
-        <p>Stato: <strong>{status_text}</strong></p>
-    </div>
-    
-    <div class="content">
-        {'<p><span class="label">Cluster:</span> <strong>' + cluster_name + '</strong></p>' if cluster_name else ''}
-        {'<p><span class="label">Modulo:</span> <strong>' + module_label + '</strong></p>' if job_type else ''}
-        
-        <div class="info-grid">
-            <div class="info-box">
-                <div class="label">Server Sorgente</div>
-                <div class="value">{source_node_name or 'N/A'}</div>
-                <div class="value" style="font-size: 11px; color: #6c757d; margin-top: 4px;">{source}</div>
-            </div>
-            <div class="info-box">
-                <div class="label">Server Destinazione</div>
-                <div class="value">{dest_node_name or 'N/A'}</div>
-                <div class="value" style="font-size: 11px; color: #6c757d; margin-top: 4px;">{destination}</div>
-            </div>
-        </div>
-        
-        {vm_info}
-        
-        <p><span class="label">Data/Ora:</span> {datetime.now().astimezone().strftime('%d/%m/%Y %H:%M:%S %Z')}</p>
-        {'<p><span class="label">Durata:</span> <strong>' + duration_str + '</strong></p>' if duration_str else ''}
-        {'<p><span class="label">Trasferito:</span> <strong>' + transferred + '</strong></p>' if transferred else ''}
-    </div>
-    
-    {'<div class="error"><strong>Errore:</strong><br><pre style="white-space: pre-wrap; word-break: break-all;">' + (error or '') + '</pre></div>' if error else ''}
-    
-    {'<div class="content"><strong>Dettagli:</strong><br><pre style="white-space: pre-wrap; word-break: break-all;">' + (details or '') + '</pre></div>' if details else ''}
-    
-    <div class="footer">
-        <p>Questa email è stata generata automaticamente da DAPX-backandrepl.</p>
-    </div>
-</body>
-</html>
-"""
-        
-        return self.send_email(subject, body, html=True)
-    
-    def send_test_email(self) -> Tuple[bool, str]:
-        """Invia un'email di test"""
-        subject = "🧪 Email di Test"
-        body = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body {{ font-family: Arial, sans-serif; margin: 20px; }}
-        .success {{ background: #d4edda; border: 1px solid #c3e6cb; padding: 20px; border-radius: 8px; }}
-    </style>
-</head>
-<body>
-    <div class="success">
-        <h2>✅ Test Notifiche Email</h2>
-        <p>Se stai leggendo questa email, la configurazione SMTP è corretta!</p>
-        <p><strong>Server:</strong> {self.host}:{self.port}</p>
-        <p><strong>Mittente:</strong> {self.from_addr}</p>
-        <p><strong>Data test:</strong> {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC</p>
-    </div>
-</body>
-</html>
-"""
-        return self.send_email(subject, body, html=True)
+        """Notifica per una singola esecuzione (modalità `always` e `failure`).
 
+        Era un fascicolo: intestazione, cluster, modulo ripetuto due volte,
+        due riquadri affiancati con `display:grid` (che in Outlook non
+        esiste), VM, data, durata, dettagli — tutto per dire una cosa sola.
+        Adesso è una scheda: intestazione con quel che serve, dettagli sotto.
+        Con l'impostazione predefinita dei job questa mail non parte affatto:
+        l'attività finisce nel riepilogo giornaliero.
+        """
+        from services import mail_layout as ml
+        from services import notification_summary as riepilogo
+
+        tipologia = riepilogo.tipologia(job_type)
+        parola_stato = {
+            "success": "completata",
+            "failed": "FALLITA",
+            "warning": "con avvisi",
+        }.get(status, status)
+
+        # L'oggetto: la cosa replicata, non il nome del job. Il nome lo ha
+        # scelto chi ha creato il job e spesso non dice niente a chi legge.
+        if vm_name and vm_id:
+            oggetto = f"{vm_name} ({vm_id})"
+        elif vm_name:
+            oggetto = vm_name
+        elif vm_id:
+            oggetto = f"VM {vm_id}"
+        else:
+            oggetto = job_name
+
+        percorso = ""
+        if source_node_name and dest_node_name:
+            percorso = f"{source_node_name} → {dest_node_name}"
+        elif source_node_name:
+            percorso = source_node_name
+
+        dettagli = []
+        if transferred:
+            dettagli.append(f"trasferiti {transferred}")
+        if source or destination:
+            dettagli.append(f"{source or '—'} → {destination or '—'}")
+
+        quando = datetime.now().astimezone().strftime("%d/%m/%Y %H:%M %Z").strip()
+
+        # Ogni informazione una volta sola. Prima l'oggetto della replica
+        # compariva tre volte (titolo, riquadro, badge) e il modulo due: la
+        # mail sembrava lunga senza dire niente di più.
+        corpo = ml.sezione(
+            titolo=f"{tipologia.sigla} · {tipologia.descrizione}",
+            sottotitolo="",
+            colore=ml.colore_stato(status),
+            conta=False,
+            voci=[
+                ml.attivita(
+                    stato=status,
+                    oggetto=job_name,
+                    quando=quando,
+                    durata=riepilogo.durata_breve(duration),
+                    percorso=percorso,
+                    dettagli=dettagli,
+                    errore=error or "",
+                    ultima=True,
+                )
+            ],
+            vuoto="",
+        )
+        # L'output del comando serve a chi indaga, non a chi legge l'esito:
+        # sta in fondo, in piccolo, e non toglie spazio alle cose importanti.
+        if details:
+            corpo += ml.nota_tecnica("Dettagli", details)
+
+        html = ml.documento(
+            titolo=f"{parola_stato.capitalize()}: {oggetto}",
+            occhiello=" · ".join(x for x in (cluster_name, quando) if x),
+            corpo=corpo,
+            piede="",
+        )
+
+        testo_semplice = "\n".join(
+            x
+            for x in (
+                f"{parola_stato.capitalize()}: {oggetto}",
+                f"{tipologia.sigla} · {job_name}",
+                f"{quando} · {riepilogo.durata_breve(duration) or 'durata n/d'}",
+                percorso,
+                *dettagli,
+                f"Errore: {error}" if error else "",
+            )
+            if x
+        )
+
+        emoji = {"success": "✅", "failed": "❌", "warning": "⚠️"}.get(status, "ℹ️")
+        subject = (
+            notify_subject.strip()
+            if notify_subject and notify_subject.strip()
+            else f"{emoji} {tipologia.sigla} {parola_stato}: {oggetto}"
+        )
+
+        return self.send_email(subject, html, html=True, text_body=testo_semplice)
+
+    def send_test_email(self) -> Tuple[bool, str]:
+        """Mail di prova. Porta la stessa veste delle altre: chi configura
+        l'SMTP vede subito che aspetto avranno davvero le notifiche."""
+        from services import mail_layout as ml
+
+        quando = datetime.now().astimezone().strftime("%d/%m/%Y %H:%M %Z").strip()
+        corpo = ml.sezione(
+            titolo="Prova riuscita",
+            sottotitolo="la configurazione SMTP funziona",
+            colore=ml.VERDE,
+            voci=[
+                ml.attivita(
+                    stato="success",
+                    oggetto="Invio di prova",
+                    quando=quando,
+                    percorso=f"{self.host}:{self.port}",
+                    dettagli=[f"mittente {self.from_addr}"],
+                    ultima=True,
+                )
+            ],
+            vuoto="",
+        )
+        html = ml.documento(
+            titolo="Prova notifiche DAPX",
+            occhiello=quando,
+            corpo=corpo,
+            piede="Se leggi questo messaggio, le notifiche possono partire.",
+        )
+        testo = (
+            f"Prova notifiche DAPX — riuscita\n{quando}\n"
+            f"Server {self.host}:{self.port} · mittente {self.from_addr}"
+        )
+        return self.send_email("🧪 Prova notifiche", html, html=True, text_body=testo)
 
 # Istanza singleton
 email_service = EmailService()
