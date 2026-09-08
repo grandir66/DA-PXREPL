@@ -436,12 +436,17 @@ Entrambi confrontano il `version.json` di root locale con quello remoto: per que
 
 - **NO**: bumpare solo `backend/version.json` o solo `frontend/package.json` "tanto è la stessa cosa". Sono 5 file, non 1.
 - **NO**: pushare il tag senza `gh release create`. L'UI continuerà a mostrare la release precedente.
+- **NO**: fermarsi al commit di release senza tag né `gh release create` (v3.21.0, 8 settembre 2026): l'appliance legge `version.json` dal codice pullato e la release da GitHub, quindi si ritrova «installata 3.21.0 → ultima 3.20.16». Il rilascio finisce al passo 7, non al 4.
 - **NO**: dimenticare il rebuild del `frontend/dist/`. Il fallback di `update.sh` userebbe il dist vecchio del repo e l'UI installata resterebbe alla versione precedente, anche con backend nuovo.
 - **NO**: hardcodare versioni in nuovi endpoint/health-check. Se serve, leggere da `version.json` con un helper, non duplicare la stringa.
 - **NO**: forzare `git reset --hard` sul server senza prima aver fatto `gh release create`: il pull funziona ma la pagina Updates resta bloccata sulla release vecchia.
 
 ### Checklist pre-commit per un rilascio
 
+- [ ] **`git branch --show-current` dice `main`.** Il repo ha tre worktree e
+      rami di lavoro allineati a `main`: un commit di release su un ramo
+      qualsiasi si pusha, si taggia e non arriva mai su `main` (8 settembre
+      2026, v3.21.1 nata su `restyle-notifiche`).
 - [ ] `grep '"version"'` mostra la stessa `X.Y.Z` nei 5 file.
 - [ ] `frontend/dist/` rigenerato con la nuova versione.
 - [ ] `CHANGELOG.md` ha la sezione `## [X.Y.Z] - YYYY-MM-DD`.
