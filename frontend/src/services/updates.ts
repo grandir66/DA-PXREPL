@@ -4,6 +4,8 @@ export interface UpdateCheckResult {
     current_version: string;
     available_version: string | null;
     update_available: boolean;
+    /** installata piu' recente della pubblicata: non e' un aggiornamento */
+    local_ahead?: boolean;
     last_check: string | null;
     changelog?: string;
     release_date?: string;

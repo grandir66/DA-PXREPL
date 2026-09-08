@@ -6,6 +6,7 @@ Gestione aggiornamenti da interfaccia web
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
+import re
 import subprocess
 import shutil
 import os
@@ -29,6 +30,7 @@ update_status = {
     "current_version": None,
     "available_version": None,
     "update_available": False,
+    "local_ahead": False,
     "log": [],
     "error": None
 }
@@ -44,6 +46,7 @@ class UpdateCheckResponse(BaseModel):
     current_version: str
     available_version: Optional[str]
     update_available: bool
+    local_ahead: bool = False
     last_check: Optional[str]
     changelog: Optional[str] = None
     release_date: Optional[str] = None
@@ -114,6 +117,54 @@ def get_current_version() -> str:
     except Exception as e:
         logger.error(f"Errore lettura versione: {e}")
         return "unknown"
+
+
+# Versioni: confronto semantico
+#
+# Fino alla 3.21.0 il confronto era `current != available`, cioe' "diverso"
+# invece di "piu' nuovo". Il 2026-09-08 l'appliance DA-PXREPL, che girava
+# 3.21.0 (commit di release pushato ma tag e GitHub Release mai creati),
+# leggeva 3.20.16 come ultima pubblicata e mostrava il badge verde
+# "Aggiornamento disponibile!" verso una versione PRECEDENTE. La stessa riga
+# accendeva il badge anche quando GitHub rispondeva "rate_limit".
+_VERSION_RE = re.compile(r"^\s*v?(\d+)\.(\d+)\.(\d+)")
+
+# Valori che arrivano al posto di una versione quando qualcosa non ha funzionato
+_NON_VERSIONI = {"", "unknown", "rate_limit"}
+
+
+def parse_version(value: Optional[str]) -> Optional[tuple]:
+    """(major, minor, patch) da 'v3.21.0' o '3.21.0-rc1'; None se non e' una versione."""
+    if not value:
+        return None
+    match = _VERSION_RE.match(value)
+    if not match:
+        return None
+    return tuple(int(part) for part in match.groups())
+
+
+def confronta_versioni(current: str, available: str) -> tuple:
+    """Ritorna (update_available, local_ahead).
+
+    `update_available` e' vero SOLO se la versione pubblicata e' maggiore di
+    quella installata. `local_ahead` segnala il caso opposto — installata piu'
+    recente della pubblicata — che non e' un aggiornamento e non deve
+    accendere il badge.
+    """
+    if (current or "") in _NON_VERSIONI or (available or "") in _NON_VERSIONI:
+        return False, False
+
+    installata = parse_version(current)
+    pubblicata = parse_version(available)
+    if installata and pubblicata:
+        return pubblicata > installata, installata > pubblicata
+
+    # Almeno una delle due non e' un numero di versione: installazione da
+    # commit (hash corto), perche' il repo non ha ne' release ne' tag. Li' si
+    # puo' dire solo "diverso", non "piu' nuovo".
+    if len(current) == 7 and len(available) >= 7:
+        return current != available[:7], False
+    return current != available, False
 
 
 async def get_latest_release() -> Dict[str, Any]:
@@ -472,21 +523,17 @@ async def check_for_updates(user: User = Depends(require_admin)):
         update_status["available_version"] = available
         update_status["last_check"] = datetime.now().isoformat()
         
-        # Confronta versioni (semplificato)
-        update_available = False
-        if current != available and available:
-            # Se la versione corrente è un hash corto, confronta
-            if len(current) == 7 and len(available) >= 7:
-                update_available = current != available[:7]
-            else:
-                update_available = current != available
-        
+        # Confronto semantico: aggiornamento solo se la pubblicata e' MAGGIORE
+        update_available, local_ahead = confronta_versioni(current, available)
+
         update_status["update_available"] = update_available
-        
+        update_status["local_ahead"] = local_ahead
+
         return UpdateCheckResponse(
             current_version=current,
             available_version=available,
             update_available=update_available,
+            local_ahead=local_ahead,
             last_check=update_status["last_check"],
             changelog=latest.get("changelog"),
             release_date=latest.get("date"),

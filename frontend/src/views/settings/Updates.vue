@@ -26,6 +26,7 @@
  <span class="label">Ultima versione:</span>
  <span class="version-number">{{ updateInfo.available_version || 'N/A' }}</span>
  <span v-if="updateInfo.update_available" class="badge badge-success">Aggiornamento disponibile!</span>
+ <span v-else-if="updateInfo.local_ahead" class="badge badge-warning" title="Il codice installato e' piu' recente dell'ultima release pubblicata su GitHub: manca il tag/release del rilascio.">Installata piu' recente della pubblicata</span>
  <span v-else class="badge badge-secondary">Aggiornato</span>
  </div>
  

@@ -5,6 +5,37 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.21.1] - 2026-09-08
+
+### Correzioni
+
+- **«Aggiornamento disponibile» verso una versione più VECCHIA.** La pagina
+  Aggiornamenti Sistema dell'appliance mostrava «Versione attuale 3.21.0 →
+  Ultima versione 3.20.16» con il badge verde acceso. Nessuno dei due numeri
+  era sbagliato: il confronto lo era. La riga diceva
+  `update_available = current != available`, cioè **«diverso»** invece di
+  **«più nuovo»**, quindi qualunque scarto accendeva l'invito ad aggiornare —
+  compreso quello di un'installazione più avanti del pubblicato, e compresa la
+  risposta `rate_limit` che GitHub manda quando l'API è satura (l'UI arrivava a
+  proporre l'aggiornamento «alla versione rate_limit»). Adesso il confronto è
+  numerico su `major.minor.patch`: aggiornamento **solo** se la pubblicata è
+  maggiore. Il caso opposto ha un badge suo, ambra — *«Installata più recente
+  della pubblicata»* — perché è il sintomo di un rilascio lasciato a metà, non
+  di un aggiornamento. Tredici test lo tengono fermo, incidente in testa al
+  file: `backend/tests/test_updates_version_compare.py`.
+  Come stringhe, per inciso, `3.20.9` risultava più recente di `3.20.16`: lo
+  stesso confronto avrebbe sbagliato anche nel verso giusto.
+
+### Modifiche
+
+- **Rilascio 3.21.0 chiuso davvero.** Il commit di release era su `main` ma il
+  tag `v3.21.0` non esisteva e la GitHub Release non era mai stata creata: è
+  per questo che l'appliance leggeva 3.20.16 come «ultima versione». Tag e
+  release creati a posteriori sul commit `ef02b0a`. Allineate anche le due
+  versioni rimaste indietro in quel rilascio — `backend/main.py` (FastAPI e
+  `/api/health`) e `frontend/package.json`, ferme a 3.20.16 — che sono i punti
+  3, 4 e 5 dei cinque elencati in `CLAUDE.md`.
+
 ## [3.21.0] - 2026-09-08
 
 > Nota per chi rilascia: la versione vive in **due** file, `version.json`
