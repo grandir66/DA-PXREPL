@@ -345,20 +345,9 @@ class NotificationService:
         if not config.notify_on_warning:
             return {"sent": False, "reason": "notify_on_warning_disabled"}
 
-        lines = []
-        for g in overdue_groups:
-            name = g.get("vm_name") or g.get("key") or "?"
-            missed = g.get("missed_slots") or 0
-            last = g.get("last_run") or "Mai"
-            delay = g.get("hours_since_last_run")
-            delay_txt = f"{delay:.1f}h" if delay is not None else "—"
-            nxt = g.get("next_run") or "—"
-            lines.append(
-                f"• {name} (VMID {g.get('vm_id') or '—'}): "
-                f"{missed} slot saltati, ritardo {delay_txt}, ultima run {last}, prossima {nxt}"
-            )
+        from services.replication_health_service import descrivi_gruppo_in_ritardo
 
-        details = "\n".join(lines)
+        details = "\n".join(descrivi_gruppo_in_ritardo(g) for g in overdue_groups)
         title = f"Replica in ritardo — {len(overdue_groups)} VM/gruppi"
 
         return await self.send_job_notification(

@@ -266,6 +266,17 @@ async def reconcile_pending_vm_registrations() -> None:
             )
             if "yes" in (exists.stdout or ""):
                 continue
+            if exists.exit_code != 1:
+                # `test -f` risponde 0 (c'è) o 1 (manca). Tutto il resto è il
+                # TRASPORTO che ha fallito (-1: SSH scartato, timeout): lo
+                # stdout vuoto non dice niente sul conf, e leggerlo come
+                # «manca» faceva partire una registrazione — decine di
+                # comandi SSH — ogni due minuti (DTS, 2026-09-13).
+                logger.debug(
+                    "Registrazione VM %s rimandata: %s non risponde (%s)",
+                    target_vmid, dest.hostname, (exists.stderr or "").strip()[:120],
+                )
+                continue
             log = (
                 db.query(JobLog)
                 .filter(JobLog.job_id == job.id)

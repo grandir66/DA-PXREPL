@@ -5,6 +5,7 @@ SSH Service - Gestione connessioni SSH ai nodi Proxmox
 import asyncio
 import paramiko
 import threading
+import time
 from typing import Optional, Tuple, List, Dict
 import logging
 import os
@@ -29,6 +30,10 @@ def sanitize_zfs_name(name: str) -> str:
     return name
 
 
+class HostInQuarantena(ConnectionError):
+    """L'host ha appena rifiutato un connect: si aspetta, non si riprova."""
+
+
 @dataclass
 class SSHResult:
     """Risultato di un comando SSH"""
@@ -45,12 +50,22 @@ class SSHService:
     
     DEFAULT_KEY_PATH = str(Path.home() / ".ssh" / "id_rsa")
 
+    # Dopo un connect fallito l'host resta in quarantena per questi secondi:
+    # ogni chiamata nel frattempo fallisce subito, senza toccare la rete.
+    # Nato il 2026-09-13 su DTS: senza, ogni `execute` di ogni thread riapriva
+    # una connessione verso un nodo che le scartava (`MaxStartups`), e la
+    # tempesta — ~2.000 connect falliti l'ora — teneva il nodo scartante.
+    QUARANTENA_SEC = 60
+
     def __init__(self):
         self._connections: Dict[str, paramiko.SSHClient] = {}
         # P-14/B11: il pool è letto/scritto da thread diversi (run_in_executor).
-        # Il lock protegge SOLO le mutazioni del dict; le connect (lente) restano
-        # fuori dal lock così host diversi non si serializzano.
+        # Il lock protegge SOLO le mutazioni dei dict; le connect (lente) stanno
+        # sotto un lock PER HOST, così host diversi non si serializzano ma sei
+        # thread verso lo stesso host aprono UNA connessione e la condividono.
         self._lock = threading.Lock()
+        self._host_locks: Dict[str, threading.Lock] = {}
+        self._quarantena: Dict[str, tuple] = {}  # key -> (scade_a, ultimo errore)
         # Override se siamo root
         if os.geteuid() == 0:
             self.DEFAULT_KEY_PATH = "/root/.ssh/id_rsa"
@@ -66,26 +81,66 @@ class SSHService:
         key_path = key_path or self.DEFAULT_KEY_PATH
         key = f"{username}@{hostname}:{port}"
 
+        client = self._client_attivo(key)
+        if client is not None:
+            return client
+
+        with self._lock:
+            host_lock = self._host_locks.setdefault(key, threading.Lock())
+
+        # Una riconnessione alla volta per host: chi arriva mentre un altro
+        # thread sta già connettendo aspetta e poi riusa la sua connessione.
+        with host_lock:
+            client = self._client_attivo(key)
+            if client is not None:
+                return client
+            self._alza_se_in_quarantena(key, hostname)
+            try:
+                return self._connetti(key, hostname, port, username, key_path)
+            except Exception as e:
+                with self._lock:
+                    self._quarantena[key] = (time.monotonic() + self.QUARANTENA_SEC, str(e))
+                raise
+
+    def _client_attivo(self, key: str) -> Optional[paramiko.SSHClient]:
+        """La connessione in pool, se c'è ed è viva; altrimenti la scarta."""
         with self._lock:
             client = self._connections.get(key)
-        if client is not None:
-            # Verifica se la connessione è ancora attiva
+        if client is None:
+            return None
+        try:
+            transport = client.get_transport()
+            if transport and transport.is_active():
+                return client
+        except Exception:
+            pass
+        with self._lock:
+            stale = self._connections.pop(key, None)
+        if stale is not None:
             try:
-                transport = client.get_transport()
-                if transport and transport.is_active():
-                    return client
+                stale.close()
             except Exception:
                 pass
-            # Connessione non attiva: rimuovila e chiudila
-            with self._lock:
-                stale = self._connections.pop(key, None)
-            if stale is not None:
-                try:
-                    stale.close()
-                except Exception:
-                    pass
+        return None
 
-        # Crea nuova connessione (fuori dal lock: la connect è lenta)
+    def _alza_se_in_quarantena(self, key: str, hostname: str) -> None:
+        with self._lock:
+            voce = self._quarantena.get(key)
+            if voce is None:
+                return
+            scade_a, errore = voce
+            if time.monotonic() >= scade_a:
+                self._quarantena.pop(key, None)
+                return
+            resta = int(scade_a - time.monotonic())
+        raise HostInQuarantena(
+            f"{hostname} in quarantena SSH per altri {resta}s dopo: {errore}"
+        )
+
+    def _connetti(
+        self, key: str, hostname: str, port: int, username: str, key_path: str
+    ) -> paramiko.SSHClient:
+        """Apre la connessione e la mette in pool. Chiamata sotto il lock dell'host."""
         client = paramiko.SSHClient()
         # Load system known_hosts for host key verification
         known_hosts_paths = [
@@ -111,28 +166,10 @@ class SSHService:
                 timeout=10,
                 banner_timeout=10
             )
-            # Race: se un altro thread ha già creato una connessione valida per
-            # questa chiave nel frattempo, riusa quella e chiudi la duplicata.
             with self._lock:
-                existing = self._connections.get(key)
-                is_active = False
-                if existing is not None:
-                    try:
-                        t = existing.get_transport()
-                        is_active = bool(t and t.is_active())
-                    except Exception:
-                        is_active = False
-                if is_active:
-                    winner = existing
-                else:
-                    self._connections[key] = client
-                    winner = client
-            if winner is not client:
-                try:
-                    client.close()
-                except Exception:
-                    pass
-            return winner
+                self._connections[key] = client
+                self._quarantena.pop(key, None)
+            return client
         except Exception as e:
             logger.error(f"Errore connessione SSH a {hostname}: {e}")
             raise
@@ -163,6 +200,10 @@ class SSHService:
                     stderr=stderr_text,
                     exit_code=exit_code
                 )
+            except HostInQuarantena as e:
+                # Già loggato il connect che l'ha causata: qui non si grida.
+                logger.debug(str(e))
+                return SSHResult(success=False, stdout="", stderr=str(e), exit_code=-1)
             except Exception as e:
                 logger.error(f"Errore esecuzione comando su {hostname}: {e}")
                 return SSHResult(
@@ -217,6 +258,9 @@ class SSHService:
                     stderr=stderr_text,
                     exit_code=exit_code
                 )
+            except HostInQuarantena as e:
+                logger.debug(str(e))
+                return SSHResult(success=False, stdout="", stderr=str(e), exit_code=-1)
             except Exception as e:
                 logger.error(f"Errore esecuzione script su {hostname}: {e}")
                 # Try cleanup in case of error

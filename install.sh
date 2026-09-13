@@ -771,8 +771,8 @@ TimeoutStartSec=30
 TimeoutStopSec=30
 
 # Logging
-StandardOutput=append:$LOG_DIR/dapx-unified.log
-StandardError=append:$LOG_DIR/dapx-unified.log
+StandardOutput=journal
+StandardError=journal
 
 # Security (relaxed for SSH operations)
 NoNewPrivileges=false

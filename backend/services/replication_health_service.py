@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from croniter import croniter  # noqa: F401 (retro-compat; la valutazione cron locale usa cron_tz)
-from services.cron_tz import next_run_after, prev_run_before, cron_iter_local, to_naive_utc
+from services.cron_tz import SCHEDULER_TZ, next_run_after, prev_run_before, cron_iter_local, to_naive_utc
 
-# Ri-allerta notifiche se l'ultimo invio è più vecchio di N ore.
-OVERDUE_ALERT_COOLDOWN_HOURS = 6
+# Ri-allerta se l'ultimo invio è più vecchio di N ore — oppure subito, se un
+# gruppo NUOVO è entrato in ritardo (lo decide lo scheduler). Erano 6 ore:
+# per un job settimanale in ritardo volevano dire 28 mail prima del suo slot.
+OVERDUE_ALERT_COOLDOWN_HOURS = 24
+
+_GIORNI_BREVI = ["lun", "mar", "mer", "gio", "ven", "sab", "dom"]
 
 
 def check_job_overdue(
@@ -166,6 +170,9 @@ def build_schedule_groups(jobs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 "last_run": None,
                 "next_run": job.get("next_run"),
                 "last_status": job.get("last_status"),
+                "expected_slot": None,
+                "overdue_disks": [],
+                "overdue_last_run": None,  # la più vecchia fra i dischi fermi
                 "jobs": [],
             }
             groups[key] = group
@@ -176,6 +183,13 @@ def build_schedule_groups(jobs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         if job.get("overdue"):
             group["overdue"] = True
             group["missed_slots"] = max(group["missed_slots"], job.get("missed_slots") or 0)
+            group["overdue_disks"].append(job.get("disk_name") or job.get("name") or str(job.get("id")))
+            es = job.get("expected_slot")
+            if es and (group["expected_slot"] is None or es > group["expected_slot"]):
+                group["expected_slot"] = es
+            olr = job.get("last_run")
+            if olr and (group["overdue_last_run"] is None or olr < group["overdue_last_run"]):
+                group["overdue_last_run"] = olr
             hrs = job.get("hours_since_last_run")
             if hrs is not None and (group["hours_since_last_run"] is None or hrs > group["hours_since_last_run"]):
                 group["hours_since_last_run"] = hrs
@@ -244,3 +258,67 @@ def build_replication_health_report(
         "overdue_groups": overdue_groups,
         "running_jobs": running_jobs,
     }
+
+
+def _locale(iso_utc: Optional[str]) -> Optional[datetime]:
+    """Da ISO naive UTC (come viaggia nei gruppi) a datetime aware in ora locale."""
+    if not iso_utc:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(iso_utc))
+    except ValueError:
+        return None
+    return dt.replace(tzinfo=timezone.utc).astimezone(SCHEDULER_TZ)
+
+
+def _quando(iso_utc: Optional[str]) -> str:
+    """«sab 12/09 19:00», in ora locale. Un orario UTC in ISO non lo legge nessuno."""
+    dt = _locale(iso_utc)
+    if dt is None:
+        return "—"
+    return f"{_GIORNI_BREVI[dt.weekday()]} {dt.strftime('%d/%m %H:%M')}"
+
+
+def _da_quanto(ore: Optional[float]) -> str:
+    if ore is None:
+        return "mai"
+    if ore < 48:
+        return f"{int(round(ore))} ore fa"
+    return f"{int(ore // 24)} giorni fa"
+
+
+def _cadenza(schedule: Optional[str]) -> str:
+    """«ogni lunedì, giovedì e sabato alle 19:00» (ora locale), dal cron."""
+    if not schedule:
+        return "—"
+    try:
+        from services.schedule_translator import from_cron, humanize
+        testo = humanize(from_cron(schedule))
+    except Exception:
+        return str(schedule)
+    if not testo or testo == "—" or testo.startswith("Avanzato"):
+        return str(schedule)
+    return testo[0].lower() + testo[1:]
+
+
+def descrivi_gruppo_in_ritardo(g: Dict[str, Any]) -> str:
+    """Una riga per gruppo, per chi legge la mail: cadenza, slot atteso in ora
+    locale, quanti slot saltati, ultima replica, prossimo slot, dischi fermi.
+
+    Per un job che gira tre volte a settimana «ritardo 189.6h» non dice se è
+    un guasto o la normalità; «atteso sab 12/09 19:00, 1 slot saltato» sì.
+    """
+    nome = g.get("vm_name") or g.get("key") or "?"
+    vmid = g.get("vm_id") or "—"
+    saltati = int(g.get("missed_slots") or 0)
+    parti = [
+        f"• {nome} (VMID {vmid}) — {_cadenza(g.get('schedule'))}",
+        f"atteso {_quando(g.get('expected_slot'))}",
+        f"{saltati} slot saltat{'o' if saltati == 1 else 'i'}",
+        f"ultima replica {_quando(g.get('overdue_last_run') or g.get('last_run'))} ({_da_quanto(g.get('hours_since_last_run'))})",
+        f"prossimo {_quando(g.get('next_run'))}",
+    ]
+    dischi = g.get("overdue_disks") or []
+    if dischi:
+        parti.append(f"dischi fermi: {', '.join(dischi)}")
+    return " · ".join(parti)

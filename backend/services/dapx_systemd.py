@@ -90,7 +90,13 @@ def build_exec_start(config: dict[str, Any] | None = None) -> str:
 
 
 def sync_systemd_unit(config: dict[str, Any] | None = None) -> bool:
-    """Allinea ExecStart/DAPX_* nel unit file systemd."""
+    """Allinea ExecStart/DAPX_*/log nel unit file systemd.
+
+    Le righe `Environment="DAPX_*"` stanno in [Service]: accodate in fondo al
+    file finivano sotto [Install], dove systemd le ignora con un warning a ogni
+    avvio (dts-repl, 2026-09-13). Stdout e stderr vanno al journal, che ruota
+    da solo: `StandardOutput=append:<file>` aveva prodotto un file da 934 MB.
+    """
     if not SYSTEMD_UNIT.exists():
         logger.warning("Unit systemd non trovato: %s", SYSTEMD_UNIT)
         return False
@@ -101,34 +107,52 @@ def sync_systemd_unit(config: dict[str, Any] | None = None) -> bool:
     cert_path, key_path = ssl_cert_paths()
     effective_ssl = ssl_enabled and cert_path.exists() and key_path.exists()
     exec_start = build_exec_start(cfg)
+    env_lines = [
+        f'Environment="DAPX_PORT={port}"',
+        f'Environment="DAPX_SSL={str(effective_ssl).lower()}"',
+    ]
 
     lines = SYSTEMD_UNIT.read_text(encoding="utf-8").splitlines()
     new_lines: list[str] = []
-    has_port_env = False
-    has_ssl_env = False
-
+    sezione = ""
     for line in lines:
         stripped = line.strip()
-        if stripped.startswith("ExecStart="):
-            new_lines.append(exec_start)
-        elif stripped.startswith('Environment="DAPX_PORT='):
-            new_lines.append(f'Environment="DAPX_PORT={port}"')
-            has_port_env = True
-        elif stripped.startswith('Environment="DAPX_SSL='):
-            new_lines.append(f'Environment="DAPX_SSL={str(effective_ssl).lower()}"')
-            has_ssl_env = True
-        else:
+        if stripped.startswith("[") and stripped.endswith("]"):
+            if sezione == "Service":
+                _chiudi_service(new_lines, env_lines)
+            sezione = stripped[1:-1]
             new_lines.append(line)
-
-    if not has_port_env:
-        new_lines.append(f'Environment="DAPX_PORT={port}"')
-    if not has_ssl_env:
-        new_lines.append(f'Environment="DAPX_SSL={str(effective_ssl).lower()}"')
+            continue
+        if stripped.startswith('Environment="DAPX_PORT=') or stripped.startswith('Environment="DAPX_SSL='):
+            continue  # riscritte in [Service], qualunque sezione le ospitasse
+        if sezione == "Service":
+            if stripped.startswith("ExecStart="):
+                new_lines.append(exec_start)
+                continue
+            if stripped.startswith("StandardOutput="):
+                new_lines.append("StandardOutput=journal")
+                continue
+            if stripped.startswith("StandardError="):
+                new_lines.append("StandardError=journal")
+                continue
+        new_lines.append(line)
+    if sezione == "Service":
+        _chiudi_service(new_lines, env_lines)
 
     SYSTEMD_UNIT.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
     subprocess.run(["systemctl", "daemon-reload"], check=False, capture_output=True)
     logger.info("Systemd unit sincronizzato (port=%s ssl=%s)", port, effective_ssl)
     return True
+
+
+def _chiudi_service(lines: list[str], env_lines: list[str]) -> None:
+    """Le righe Environment vanno in coda a [Service], prima della riga vuota
+    che separa la sezione successiva."""
+    coda: list[str] = []
+    while lines and not lines[-1].strip():
+        coda.insert(0, lines.pop())
+    lines.extend(env_lines)
+    lines.extend(coda)
 
 
 def service_access_url(config: dict[str, Any] | None = None) -> str:

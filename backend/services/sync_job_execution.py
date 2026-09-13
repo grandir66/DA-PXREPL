@@ -247,7 +247,11 @@ async def _try_register_vm_after_sync(job_id: int, log_entry_id: int) -> None:
             if warnings:
                 log.message += f" [Avvisi: {'; '.join(warnings)}]"
         else:
-            log.message = (log.message or "") + f" | Registrazione VM fallita: {msg}"
+            # La riconciliazione ci riprova ogni due minuti: la stessa nota
+            # accodata a ogni giro faceva crescere il messaggio senza limite.
+            nota = f" | Registrazione VM fallita: {msg}"
+            if nota not in (log.message or ""):
+                log.message = (log.message or "") + nota
         db.commit()
     except Exception as e:
         logger.warning(f"Registrazione VM post-sync job {job_id}: {e}")

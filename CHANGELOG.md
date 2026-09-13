@@ -5,6 +5,52 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.21.2] - 2026-09-13
+
+### Correzioni
+
+- **Tempesta SSH verso il nodo di destinazione, che faceva fallire le proprie
+  repliche.** Su DTS `dts-repl` apriva ~2.000 connessioni SSH fallite l'ora
+  verso PX-04: `sshd` raggiungeva `MaxStartups` e scartava a caso — le
+  registrazioni delle VM replicate («Registrazione VM fallita: Error reading
+  SSH protocol banner» su ogni run), i dischi successivi al primo fallito di
+  un gruppo (VM-109 ferma dal 5/9), e perfino il proxy interno del cluster
+  Proxmox verso quel nodo. Due cause, corrette entrambe:
+  1. `reconcile_pending_vm_registrations` (ogni 2 min) faceva `test -f` sul
+     conf della VM e leggeva lo **stdout vuoto di un comando fallito per
+     trasporto** come «la VM non è registrata», lanciando una registrazione
+     — decine di comandi SSH — a ogni giro. Adesso solo l'uscita `1` di
+     `test -f` vale «manca»; tutto il resto è «non so» e si rimanda.
+  2. `SSHService._get_client` lasciava che sei thread riaprissero **insieme**
+     la stessa connessione caduta. Adesso la riconnessione è una per host
+     (lock per host: gli altri aspettano e riusano) e dopo un connect fallito
+     l'host resta in **quarantena 60 s**: le chiamate falliscono subito senza
+     toccare la rete, e senza gridare nel log.
+  Sei prove in `tests/test_ssh_storm_2026_09_13.py`, viste fallire prima.
+- **Unit systemd**: le due `Environment="DAPX_*"` venivano accodate in fondo al
+  file, cioè sotto `[Install]`, dove systemd le ignorava con un warning a ogni
+  avvio; ora stanno in `[Service]`. E `StandardOutput=append:<file>` aveva
+  prodotto un `dapx-unified.log` da **934 MB** che nessuno ruotava: stdout e
+  stderr vanno al journal (anche in `install.sh`), che ruota da solo. I log
+  applicativi (`dapx.log`, `dapx-errors.log`) restano dov'erano.
+- La nota «Registrazione VM fallita» non si accoda più al messaggio del job a
+  ogni tentativo di riconciliazione.
+
+### Modifiche
+
+- **Allarme «replica in ritardo» leggibile per i job che non girano ogni
+  giorno.** Prima: «VM-109: 1 slot saltati, ritardo 189.6h, ultima run
+  2026-09-05T17:02:59, prossima 2026-09-14T17:00:00» — orari UTC in ISO,
+  nessuna cadenza, nessun disco. Ora, in ora locale: «VM-109 (VMID 109) —
+  ogni lunedì, giovedì e sabato alle 19:00 · atteso sab 12/09 19:00 · 3 slot
+  saltati · ultima replica sab 05/09 19:02 (7 giorni fa) · prossimo lun 14/09
+  19:00 · dischi fermi: scsi2, scsi3». Il gruppo porta `expected_slot`,
+  `overdue_disks` e `overdue_last_run`.
+- Il ri-allarme per gli stessi gruppi passa da **ogni 6 ore a una volta al
+  giorno** (un settimanale in ritardo mandava 28 mail prima del suo slot);
+  un gruppo **nuovo** in ritardo si segnala subito, cooldown o no
+  (`replication_overdue_last_alert_keys` in `system_config`).
+
 ## [3.21.1] - 2026-09-08
 
 ### Correzioni

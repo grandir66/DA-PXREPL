@@ -411,7 +411,16 @@ class SchedulerService:
             last_alert_cfg = db.query(SystemConfig).filter(
                 SystemConfig.key == "replication_overdue_last_alert"
             ).first()
-            if last_alert_cfg and last_alert_cfg.value:
+            keys_cfg = db.query(SystemConfig).filter(
+                SystemConfig.key == "replication_overdue_last_alert_keys"
+            ).first()
+            chiavi = sorted(str(g.get("key")) for g in (report.get("overdue_groups") or []))
+            gia_avvisate = set((keys_cfg.value or "").split(",")) if keys_cfg and keys_cfg.value else set()
+            nuove = [k for k in chiavi if k not in gia_avvisate]
+            if last_alert_cfg and last_alert_cfg.value and not nuove:
+                # Stessi gruppi dell'ultima mail: si ripete una volta al
+                # giorno, non ogni sei ore. Un gruppo NUOVO in ritardo invece
+                # si segnala subito, cooldown o no.
                 try:
                     last_alert = datetime.fromisoformat(last_alert_cfg.value)
                     if (now - last_alert).total_seconds() < OVERDUE_ALERT_COOLDOWN_HOURS * 3600:
@@ -434,6 +443,10 @@ class SchedulerService:
                 last_alert_cfg.value = now.isoformat()
             else:
                 db.add(SystemConfig(key="replication_overdue_last_alert", value=now.isoformat()))
+            if keys_cfg:
+                keys_cfg.value = ",".join(chiavi)
+            else:
+                db.add(SystemConfig(key="replication_overdue_last_alert_keys", value=",".join(chiavi)))
             db.commit()
             logger.info("Alert replica in ritardo inviato: %s", result.get("channels", {}))
         except Exception as e:
