@@ -171,3 +171,17 @@ def test_get_client_la_quarantena_e_per_host():
             svc._get_client("h2", 22, "root", "/k")
 
     assert conta["n"] == 2, "la quarantena di h1 non tocca h2"
+
+
+# --- 3. authorized_keys: mai `mv` sopra un link simbolico -------------------
+
+def test_ensure_executor_key_scrive_attraverso_il_link_non_lo_sostituisce():
+    """Su Proxmox ~/.ssh/authorized_keys è un link a /etc/pve/priv/authorized_keys
+    (condiviso dal cluster). `mv tmp ~/.ssh/authorized_keys` sostituiva il link
+    con un file normale: da quel momento il nodo leggeva un file suo, senza la
+    chiave dell'orchestratore (PX-04 di DTS, dal 9 settembre 2026)."""
+    import inspect
+    from services.syncoid_service import SyncoidService
+    src = inspect.getsource(SyncoidService)
+    assert "mv ~/.ssh/authorized_keys.dapx.tmp ~/.ssh/authorized_keys" not in src
+    assert "cat ~/.ssh/authorized_keys.dapx.tmp > ~/.ssh/authorized_keys" in src

@@ -8,6 +8,48 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+# Parole «umane» che le prime versioni della UI salvavano al posto di un cron.
+# Lo scheduler le scarta a ogni avvio («Cron non valido 'daily'») e il job non
+# parte MAI — senza fallire, quindi senza che nessuno se ne accorga (DTS,
+# 2026-09-13: tre backup config fermi da luglio). L'indice scagliona i
+# giornalieri di dieci minuti, come i job creati a mano l'8 settembre.
+_PAROLE_LEGACY = {
+    "daily": lambda i: f"{(i * 10) % 60} 1 * * *",
+    "weekly": lambda i: "0 1 * * 0",
+    "hourly": lambda i: "0 * * * *",
+}
+
+
+def cron_da_parola(schedule, indice: int = 0):
+    """Il cron equivalente a una parola legacy; None se non è una di quelle."""
+    if not schedule:
+        return None
+    parola = str(schedule).strip().lower()
+    regola = _PAROLE_LEGACY.get(parola)
+    return regola(indice) if regola else None
+
+
+def migra_schedule_legacy(conn, tabella: str = "host_backup_jobs") -> int:
+    """Sostituisce le parole legacy con un cron vero. Ritorna quante righe."""
+    if tabella not in _tables(conn) or "schedule" not in _table_columns(conn, tabella):
+        return 0
+    righe = conn.execute(text(
+        f"SELECT id, schedule FROM {tabella} WHERE schedule IS NOT NULL ORDER BY id"
+    )).fetchall()
+    cambiati = 0
+    for riga in righe:
+        cron = cron_da_parola(riga[1], cambiati)
+        if cron is None:
+            continue
+        conn.execute(
+            text(f"UPDATE {tabella} SET schedule = :cron WHERE id = :id"),
+            {"cron": cron, "id": riga[0]},
+        )
+        logger.info("%s #%s: pianificazione '%s' → '%s'", tabella, riga[0], riga[1], cron)
+        cambiati += 1
+    return cambiati
+
+
 def _table_columns(conn, table: str) -> list[str]:
     rows = conn.execute(text(f"PRAGMA table_info({table})")).fetchall()
     return [r[1] for r in rows]
@@ -134,6 +176,8 @@ def update_schema():
                         "Riprova portata a 60 min / 1 tentativo su %s job di %s",
                         esito.rowcount, tabella,
                     )
+
+            migra_schedule_legacy(conn)
 
             conn.commit()
         except Exception as e:

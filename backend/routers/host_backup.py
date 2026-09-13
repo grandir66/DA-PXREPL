@@ -6,7 +6,8 @@ Ispirato a ProxSave (https://github.com/tis24dev/proxsave)
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from croniter import croniter
 from typing import Optional, List
 from datetime import datetime
 
@@ -43,6 +44,20 @@ def _require_job_node(db: Session, user: User, job: HostBackupJob) -> Node:
 
 # ============== SCHEMAS ==============
 
+def _cron_o_niente(v):
+    """Vuoto → nessuna pianificazione. Tutto il resto deve essere un cron vero:
+    una parola come `daily` passava, lo scheduler la scartava, e il job non
+    partiva mai senza dirlo a nessuno."""
+    if v is None or not str(v).strip():
+        return None
+    v = str(v).strip()
+    if not croniter.is_valid(v):
+        raise ValueError(
+            f"pianificazione '{v}' non valida: serve un cron a 5 campi (es. '0 1 * * *')"
+        )
+    return v
+
+
 class HostBackupJobCreate(BaseModel):
     """Schema per creazione job host backup."""
     name: str
@@ -57,6 +72,8 @@ class HostBackupJobCreate(BaseModel):
     notify_mode: str = "daily"
     notify_subject: Optional[str] = None
 
+    _valida_schedule = field_validator("schedule")(classmethod(lambda cls, v: _cron_o_niente(v)))
+
 
 class HostBackupJobUpdate(BaseModel):
     """Schema per modifica job host backup."""
@@ -70,6 +87,8 @@ class HostBackupJobUpdate(BaseModel):
     is_active: Optional[bool] = None
     notify_mode: Optional[str] = None
     notify_subject: Optional[str] = None
+
+    _valida_schedule = field_validator("schedule")(classmethod(lambda cls, v: _cron_o_niente(v)))
 
 
 class ManualBackupRequest(BaseModel):

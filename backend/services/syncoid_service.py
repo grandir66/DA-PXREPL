@@ -501,7 +501,12 @@ class SyncoidService:
                 f'MARKER="$(echo {marker_b64} | base64 -d)" && '
                 'awk -v m="$MARKER" \'index($0, m)==0\' ~/.ssh/authorized_keys '
                 '> ~/.ssh/authorized_keys.dapx.tmp && '
-                'mv ~/.ssh/authorized_keys.dapx.tmp ~/.ssh/authorized_keys && '
+                # `cat >` scrive ATTRAVERSO il link: su Proxmox authorized_keys
+                # è un symlink a /etc/pve/priv/authorized_keys (cluster-wide) e
+                # un `mv` lo sostituiva con un file normale, scollegato dal
+                # cluster e senza la chiave dell'orchestratore (DTS, 2026-09-13).
+                'cat ~/.ssh/authorized_keys.dapx.tmp > ~/.ssh/authorized_keys && '
+                'rm -f ~/.ssh/authorized_keys.dapx.tmp && '
                 # appendi la riga corrente (decodificata).
                 f'LINE="$(echo {managed_b64} | base64 -d)" && '
                 'grep -qxF "$LINE" ~/.ssh/authorized_keys || '

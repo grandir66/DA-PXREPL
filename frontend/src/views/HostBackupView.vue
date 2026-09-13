@@ -42,10 +42,12 @@
  <div class="grid-3">
  <div class="form-group">
  <label>Schedule</label>
+ <!-- I valori sono cron: la parola «daily» che c'era prima lo scheduler
+      la scartava a ogni avvio, e il backup non partiva mai (2026-09-13). -->
  <select v-model="form.schedule" class="form-input">
  <option :value="null">⏸️ Manuale (disattivato)</option>
- <option value="daily">Giornaliero (00:00)</option>
- <option value="weekly">Settimanale (Domenica)</option>
+ <option value="0 1 * * *">Giornaliero (01:00)</option>
+ <option value="0 1 * * 0">Settimanale (domenica 01:00)</option>
  </select>
  </div>
  <div class="form-group">
@@ -118,7 +120,7 @@
  <tr v-for="job in jobs" :key="job.id">
  <td class="font-bold">{{ job.name }}</td>
  <td>{{ job.node_name }}</td>
- <td>{{ job.schedule || 'Manuale' }}</td>
+ <td :title="job.schedule || ''">{{ etichettaSchedule(job.schedule) }}</td>
  <td>{{ job.keep_last }}</td>
  <td class="text-xs">{{ formatDate(job.last_run) }}</td>
  <td>
@@ -340,6 +342,16 @@ const runManualBackup = async () => {
  } finally {
  runningManual.value = false;
  }
+};
+
+const etichettaSchedule = (cron: string | null) => {
+ if (!cron) return 'Manuale';
+ const m = cron.trim().match(/^(\d+) (\d+) \* \* (\*|[0-6])$/);
+ if (!m) return cron;
+ const ora = `${m[2].padStart(2, '0')}:${m[1].padStart(2, '0')}`;
+ if (m[3] === '*') return `Giornaliero (${ora})`;
+ const giorni = ['domenica', 'lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì', 'sabato'];
+ return `Settimanale (${giorni[Number(m[3])]} ${ora})`;
 };
 
 const formatDate = (d: string) => {

@@ -5,6 +5,40 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.21.3] - 2026-09-13
+
+### Correzioni
+
+- **La chiave dell'orchestratore spariva dal nodo di destinazione.** Per
+  installare la chiave dell'executor, `syncoid_service` faceva
+  `awk … > tmp && mv tmp ~/.ssh/authorized_keys`. Su Proxmox quel file è un
+  **link simbolico** a `/etc/pve/priv/authorized_keys`, condiviso dal cluster:
+  il `mv` lo sostituiva con un file normale, scollegato dal cluster, e da lì
+  in poi il nodo non riconosceva più la chiave dell'appliance
+  («Authentication failed», PX-04 di DTS dal 9 settembre). Ora si scrive
+  **attraverso** il link (`cat tmp > file`). Sul nodo colpito il link va
+  ripristinato a mano: `ln -sf /etc/pve/priv/authorized_keys
+  /root/.ssh/authorized_keys` (prima di farlo, verificare che il file
+  staccato non contenga chiavi assenti nel cluster).
+- **Backup della configurazione host che non partivano mai.** La pagina
+  proponeva «Giornaliero» e «Settimanale» salvando le parole `daily` e
+  `weekly` al posto di un cron; lo scheduler le scartava a ogni avvio
+  («Cron non valido 'daily'») e il job restava fermo senza fallire — su DTS
+  tre nodi con backup di luglio e agosto. Ora: la pagina manda cron veri
+  (`0 1 * * *`, `0 1 * * 0`) e li mostra in chiaro; l'API rifiuta con 422
+  una pianificazione che non sia un cron; la migrazione
+  (`migra_schedule_legacy`) converte le parole già salvate, scaglionando i
+  giornalieri di dieci minuti (01:00, 01:10, 01:20…).
+
+### Note operative
+
+- Sui nodi con OpenSSH ≥ 9.8 (Proxmox 9) è attivo `PerSourcePenalties`: una
+  raffica di connessioni fallite mette la sorgente in penalità e `sshd`
+  rifiuta anche quelle buone. Conviene esentare l'appliance con un drop-in
+  `/etc/ssh/sshd_config.d/01-dapx-repl-exempt.conf` contenente
+  `PerSourcePenaltyExemptList <ip-appliance>` (prefisso `01-`: in `sshd`
+  vince la prima riga letta).
+
 ## [3.21.2] - 2026-09-13
 
 ### Correzioni
