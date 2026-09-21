@@ -919,7 +919,12 @@ async def execute_sync_job_task(
         # message scritti incrementalmente.
         _final_out = result.get("output") or ""
         if _final_out:
-            # Refresha per leggere progress eventualmente scritti dal callback
+            # Refresha per leggere progress eventualmente scritti dal callback.
+            # PRIMA si flusha: con autoflush=False `refresh()` scarterebbe lo
+            # status/message/error appena scritti e il log resterebbe
+            # `started` (corretto poi «automaticamente» dalla riconciliazione,
+            # con l'errore leggibile perso). Visto il 2026-09-22.
+            db_session.flush()
             db_session.refresh(log_entry)
             prev = log_entry.output or ""
             sep = "\n--- output ---\n" if prev and not prev.endswith("\n--- output ---\n") else ""
