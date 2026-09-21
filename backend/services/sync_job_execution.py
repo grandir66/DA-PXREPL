@@ -190,6 +190,22 @@ async def _try_register_vm_after_sync(job_id: int, log_entry_id: int) -> None:
         if not source_node or not dest_node:
             return
 
+        # La config si legge da dove la VM sta ADESSO (il job segue la VM,
+        # 3.23.0): la riconciliazione può arrivare qui senza una sync in mezzo.
+        from services.vm_locator import risolvi_nodo_sorgente, persisti_spostamento
+
+        posizione = await risolvi_nodo_sorgente(db, job, source_node, dest_node, ssh_service=ssh_service)
+        if posizione.esito == "rifiutata":
+            nota = f" | Registrazione VM non possibile: {posizione.messaggio}"
+            if nota not in (log.message or ""):
+                log.message = (log.message or "") + nota
+                db.commit()
+            return
+        if posizione.spostata:
+            persisti_spostamento(db, job, posizione.nodo)
+            db.commit()
+            source_node = posizione.nodo
+
         vm_type = job.vm_type or "qemu"
         config_path = (
             f"/etc/pve/qemu-server/{job.vm_id}.conf"
@@ -536,11 +552,16 @@ async def _monitor_sync_job_completion(
     finally:
         scheduler_service.mark_done(job_key)
 async def execute_sync_job_task(
-    job_id: int, triggered_by_user_id: int = None, tentativo: int = 1
+    job_id: int, triggered_by_user_id: int = None, tentativo: int = 1,
+    replica_completa: bool = False,
 ) -> bool:
     """
     Esegue un job di sync. Ritorna True se il lock scheduler va tenuto
     (replica ancora attiva sui nodi, monitor in background).
+
+    `replica_completa` vale per QUESTA corsa: syncoid con --force-delete,
+    cioè ricrea la destinazione se non ha snapshot in comune (dopo una
+    migrazione live). Non si salva sul job: è una decisione di chi preme.
 
     `tentativo` finisce in `JobLog.attempt_number` (la colonna c'era da
     sempre e nessuno la valorizzava): è così che il riepilogo distingue una
@@ -577,6 +598,27 @@ async def execute_sync_job_task(
             job_type = "sync_pve_native"
         else:
             job_type = "sync"
+
+        # Il job segue la VM (3.23.0): dove sta ADESSO nel cluster? Se è
+        # migrata su un nodo censito col dataset, si parte da lì e il job
+        # lo ricorda; se sta dove non si può replicare, si fallisce PRIMA
+        # di partire con un motivo leggibile, non con un errore ZFS.
+        from services.vm_locator import risolvi_nodo_sorgente, persisti_spostamento
+
+        posizione = await risolvi_nodo_sorgente(
+            db_session, job, source_node, dest_node, ssh_service=ssh_service
+        )
+        if posizione.esito == "rifiutata":
+            await _fallisci_prima_di_partire(
+                db_session, job, source_node, dest_node, job_type,
+                posizione.messaggio, tentativo, triggered_by_user_id,
+            )
+            return False
+        if posizione.spostata:
+            persisti_spostamento(db_session, job, posizione.nodo)
+            db_session.commit()
+            source_node = posizione.nodo
+            logger.info("Job %s: %s", job_id, posizione.messaggio)
         
         # Crea log entry. Inizializziamo `output` con un header
         # informativo cosi' il viewer di /progress vede subito qualcosa
@@ -590,6 +632,10 @@ async def execute_sync_job_task(
             f"[{_t0}] Source: {source_node.name} ({source_node.hostname})\n"
             f"[{_t0}] Dest:   {dest_node.name} ({dest_node.hostname})\n"
         )
+        if posizione.messaggio:
+            _initial_output += f"[{_t0}] Posizione VM: {posizione.messaggio}\n"
+        if replica_completa:
+            _initial_output += f"[{_t0}] Replica COMPLETA richiesta: la destinazione viene ricreata se non ha snapshot in comune\n"
         log_entry = JobLog(
             job_type=job_type,
             job_id=job_id,
@@ -769,7 +815,11 @@ async def execute_sync_job_task(
                     compress=job.compress or "lz4",
                     mbuffer_size=job.mbuffer_size or "128M",
                     no_sync_snap=job.no_sync_snap,
-                    force_delete=job.force_delete,
+                    force_delete=bool(
+                        job.force_delete
+                        or replica_completa
+                        or (posizione.spostata and getattr(job, "resync_dopo_migrazione", False))
+                    ),
                     extra_args=job.extra_args or ""
                 )
             finally:
@@ -887,8 +937,12 @@ async def execute_sync_job_task(
                 except Exception:
                     pass
             job_record.consecutive_failures = 0
+            if getattr(job_record, "richiede_replica_completa", False):
+                job_record.richiede_replica_completa = False
             log_entry.status = "success"
             log_entry.message = (log_entry.message or "") + " Sincronizzazione completata"
+            if posizione.spostata:
+                log_entry.message += f" | {posizione.messaggio}"
             await _try_register_vm_after_sync(job_id, log_entry.id)
             
             # Log retention info
@@ -912,6 +966,15 @@ async def execute_sync_job_task(
             if result.get("output") and "error" in result.get("output", "").lower():
                 error_msg = f"{error_msg}\n\nOutput:\n{result.get('output')}" if error_msg else result.get("output")
             error_msg = f"Comando: {result.get('command', 'N/A')}\n\n{error_msg}" if error_msg else f"Comando: {result.get('command', 'N/A')}\nErrore sconosciuto"
+            from services.vm_locator import senza_snapshot_in_comune, motivo_replica_completa
+            if senza_snapshot_in_comune((result.get("error") or "") + "\n" + (result.get("output") or "")):
+                # Dopo una migrazione live la destinazione non ha snapshot in
+                # comune: syncoid si rifiuta (giustamente). Lo si dice in
+                # chiaro e si segna sul job, così la UI propone «Esegui con
+                # replica completa» invece di lasciare un errore criptico.
+                error_msg = motivo_replica_completa(posizione.nodo_pve if posizione.spostata else None) + "\n\n" + error_msg
+                if hasattr(job_record, "richiede_replica_completa"):
+                    job_record.richiede_replica_completa = True
             log_entry.error = error_msg
         
         # Append dell'output finale al log progressivo (prodotto da
@@ -1043,11 +1106,55 @@ async def execute_sync_job_task(
         db_session.close()
 
 
-async def _run_sync_job_background(job_id: int, job_key: str, triggered_by_user_id: int = None):
+async def _fallisci_prima_di_partire(
+    db_session, job, source_node, dest_node, job_type: str, motivo: str,
+    tentativo: int, triggered_by_user_id,
+) -> None:
+    """La corsa non parte: JobLog `failed` col motivo, contatori, notifica."""
+    from database import JobLog
+
+    adesso = datetime.utcnow()
+    log_entry = JobLog(
+        job_type=job_type, job_id=job.id,
+        node_name=f"{source_node.name} -> {dest_node.name}",
+        dataset=f"{job.source_dataset} -> {job.dest_dataset}",
+        status="failed", message="Non avviato", error=motivo,
+        output=f"[{adesso.strftime('%H:%M:%S')}] {motivo}\n",
+        attempt_number=tentativo, triggered_by=triggered_by_user_id,
+        started_at=adesso, completed_at=adesso, duration=0,
+    )
+    db_session.add(log_entry)
+    job.last_run = adesso
+    job.last_status = "failed"
+    if hasattr(job, "current_status"):
+        job.current_status = "idle"
+    job.run_count = (job.run_count or 0) + 1
+    job.error_count = (job.error_count or 0) + 1
+    job.consecutive_failures = (job.consecutive_failures or 0) + 1
+    db_session.commit()
+    logger.warning("Job %s non avviato: %s", job.id, motivo)
+    try:
+        await send_job_notification_helper(
+            job_id=job.id, job_name=job.name, status="failed",
+            source=f"{source_node.name}:{job.source_dataset}",
+            destination=f"{dest_node.name}:{job.dest_dataset}",
+            duration=0, error=motivo, details=None, is_scheduled=False,
+            notify_mode=job.notify_mode or "daily",
+            source_node_name=source_node.name,
+        )
+    except Exception as e:  # pragma: no cover - la notifica non blocca
+        logger.debug("Notifica «non avviato» job %s: %s", job.id, e)
+
+
+async def _run_sync_job_background(
+    job_id: int, job_key: str, triggered_by_user_id: int = None, replica_completa: bool = False
+):
     """Avvia execute_sync_job_task in background; rilascia lock se il job termina qui."""
     keep_lock = False
     try:
-        keep_lock = await execute_sync_job_task(job_id, triggered_by_user_id)
+        keep_lock = await execute_sync_job_task(
+            job_id, triggered_by_user_id, replica_completa=replica_completa
+        )
     finally:
         if not keep_lock:
             scheduler_service.mark_done(job_key)

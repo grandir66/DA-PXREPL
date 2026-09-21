@@ -104,6 +104,7 @@
                   <span class="status-dot" /> {{ statusLabel(groupStatus(g)) }}
                 </span>
                 <span v-if="g.jobs.some(j => !j.is_active)" class="badge badge-outline">disattivato</span>
+                <span v-if="g.jobs.some(j => j.raw?.richiede_replica_completa)" class="badge badge-warning" title="VM migrata senza snapshot in comune con la destinazione: «Esegui» propone la replica completa">replica completa richiesta</span>
               </template>
             </td>
             <td class="jl-actions" @click.stop>

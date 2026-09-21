@@ -16,6 +16,8 @@ export interface SyncJob {
   schedule_config?: Record<string, unknown>
   is_active: boolean
   register_vm?: boolean
+  resync_dopo_migrazione?: boolean
+  richiede_replica_completa?: boolean
   vm_id?: number
   dest_vm_id?: number
   vm_type?: string
@@ -48,12 +50,14 @@ export default {
     return apiClient.delete(`/sync-jobs/${id}`)
   },
 
-  runJob(id: number | string) {
-    return apiClient.post(`/sync-jobs/${id}/run`)
+  // replicaCompleta (3.23.0): syncoid con --force-delete per QUESTA corsa —
+  // ricrea la destinazione se non ha snapshot in comune (dopo una migrazione live).
+  runJob(id: number | string, replicaCompleta = false) {
+    return apiClient.post(`/sync-jobs/${id}/run${replicaCompleta ? '?replica_completa=true' : ''}`)
   },
 
-  runVmGroup(groupId: string) {
-    return apiClient.post(`/sync-jobs/vm-group/${groupId}/run`)
+  runVmGroup(groupId: string, replicaCompleta = false) {
+    return apiClient.post(`/sync-jobs/vm-group/${groupId}/run${replicaCompleta ? '?replica_completa=true' : ''}`)
   },
 
   toggleJob(id: number | string) {

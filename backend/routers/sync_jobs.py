@@ -447,6 +447,7 @@ async def create_vm_replica_jobs(
             dest_vlan=vm_data.dest_vlan,
             force_cpu_host=vm_data.force_cpu_host,
             keep_snapshots=0,
+            resync_dopo_migrazione=bool(getattr(vm_data, 'resync_dopo_migrazione', False)),
             vm_group_id=vm_group_id,
             disk_name=None,
             source_storage=None,
@@ -526,6 +527,7 @@ async def create_vm_replica_jobs(
             dest_vlan=vm_data.dest_vlan,
             force_cpu_host=vm_data.force_cpu_host,
             keep_snapshots=vm_data.keep_snapshots,
+            resync_dopo_migrazione=bool(getattr(vm_data, 'resync_dopo_migrazione', False)),
             vm_group_id=vm_group_id,
             disk_name=disk.get("disk_name"),
             source_storage=source_storage,
@@ -609,6 +611,7 @@ async def run_vm_group_jobs(
     vm_group_id: str,
     request: Request,
     background_tasks: BackgroundTasks,
+    replica_completa: bool = False,
     user: User = Depends(require_operator),
     db: Session = Depends(get_db)
 ):
@@ -627,12 +630,13 @@ async def run_vm_group_jobs(
         raise HTTPException(status_code=409, detail="Replica VM già in esecuzione")
 
     background_tasks.add_task(
-        _run_vm_group_background, vm_group_id, group_key, user.id, True
+        _run_vm_group_background, vm_group_id, group_key, user.id, True, replica_completa
     )
 
     log_audit(
         db, user.id, "vm_group_started", "sync_job",
-        details=f"Sequential run group {vm_group_id} ({len(active_jobs)} dischi)",
+        details=f"Sequential run group {vm_group_id} ({len(active_jobs)} dischi)"
+                + (" [REPLICA COMPLETA]" if replica_completa else ""),
         ip_address=request.client.host if request.client else None,
     )
 
@@ -875,6 +879,7 @@ async def run_sync_job(
     job_id: int,
     request: Request,
     background_tasks: BackgroundTasks,
+    replica_completa: bool = False,
     user: User = Depends(require_operator),
     db: Session = Depends(get_db)
 ):
@@ -897,7 +902,7 @@ async def run_sync_job(
         if not scheduler_service.mark_running(group_key):
             raise HTTPException(status_code=409, detail="Replica VM già in esecuzione")
         background_tasks.add_task(
-            _run_vm_group_background, job.vm_group_id, group_key, user.id, True
+            _run_vm_group_background, job.vm_group_id, group_key, user.id, True, replica_completa
         )
         log_audit(
             db, user.id, "sync_job_started", "sync_job",
@@ -917,7 +922,7 @@ async def run_sync_job(
     if not scheduler_service.mark_running(job_key):
         raise HTTPException(status_code=409, detail="Job già in esecuzione")
 
-    background_tasks.add_task(_run_sync_job_background, job_id, job_key, user.id)
+    background_tasks.add_task(_run_sync_job_background, job_id, job_key, user.id, replica_completa)
     
     log_audit(
         db, user.id, "sync_job_started", "sync_job",

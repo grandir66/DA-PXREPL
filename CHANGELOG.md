@@ -5,6 +5,41 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.23.0] - 2026-09-22
+
+### Aggiunte
+
+- **Il job segue la VM.** Un job di replica partiva sempre dal nodo
+  registrato alla creazione; se la VM era migrata (a mano o per HA) cadeva
+  su «dataset does not exist» senza dire perché. Ora prima di ogni corsa si
+  chiede al cluster dove sta la VM (`services/vm_locator.py`, una chiamata
+  per cluster al minuto) e, se il nodo nuovo è censito, raggiungibile e ha
+  il dataset, si parte da lì e il job lo ricorda su tutti i dischi del
+  gruppo. Se la VM sta dove non si può replicare (nodo non censito, dataset
+  assente, nodo di destinazione) la corsa **non parte** e lo dice in chiaro;
+  se il cluster non risponde si usa il nodo registrato e lo si scrive nel
+  log. Vale anche per la registrazione post-sync. Documento:
+  `docs/il-job-segue-la-vm.md`.
+- **Replica completa dopo una migrazione live.** I dischi copiati con
+  drive-mirror non portano gli snapshot ZFS: syncoid si rifiuta («no
+  snapshots matching»). Di default la corsa fallisce con il motivo in chiaro
+  e il job viene segnato (`sync_jobs.richiede_replica_completa`, badge
+  «replica completa richiesta»); «Esegui» chiede conferma e lancia la corsa
+  con `--force-delete` per quella volta sola (`?replica_completa=true` sulle
+  rotte di run). Opzione per job `resync_dopo_migrazione` (spenta di
+  default) per ripartire da soli. Migrazione in `update_db_schema.py`.
+
+### Correzioni
+
+- **Il JobLog di una corsa restava `started` e perdeva l'errore.** Dopo aver
+  scritto `status`/`message`/`error`, `execute_sync_job_task` faceva
+  `refresh(log_entry)` per rileggere l'output del callback di avanzamento;
+  con `autoflush=False` il refresh scartava quelle modifiche. Il log veniva
+  «corretto automaticamente» dalla riconciliazione al giro dopo, ma l'errore
+  leggibile era perso — è il motivo per cui i fallimenti arrivavano
+  criptici. Ora si flusha prima del refresh; prova di regressione in
+  `tests/test_joblog_stato_sopravvive_al_refresh.py`.
+
 ## [3.22.0] - 2026-09-21
 
 ### Correzioni

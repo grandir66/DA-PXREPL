@@ -58,6 +58,7 @@ async def execute_vm_group_sync_task(
     vm_group_id: str,
     triggered_by_user_id: int = None,
     force_rerun: bool = False,
+    replica_completa: bool = False,
 ) -> None:
     """Replica sequenziale di tutti i dischi di un gruppo VM."""
     from database import SessionLocal
@@ -123,7 +124,9 @@ async def execute_vm_group_sync_task(
 
         keep_lock = False
         try:
-            keep_lock = await execute_sync_job_task(job_id, triggered_by_user_id)
+            keep_lock = await execute_sync_job_task(
+                job_id, triggered_by_user_id, replica_completa=replica_completa
+            )
         except Exception as e:
             logger.error(f"VM group {vm_group_id} job {job_id}: {e}", exc_info=True)
             scheduler_service.mark_done(job_key)
@@ -151,10 +154,12 @@ async def run_vm_group_background(
     group_key: str,
     triggered_by_user_id: int = None,
     force_rerun: bool = False,
+    replica_completa: bool = False,
 ) -> None:
     try:
         await execute_vm_group_sync_task(
-            vm_group_id, triggered_by_user_id, force_rerun=force_rerun
+            vm_group_id, triggered_by_user_id, force_rerun=force_rerun,
+            replica_completa=replica_completa,
         )
     finally:
         scheduler_service.mark_done(group_key)

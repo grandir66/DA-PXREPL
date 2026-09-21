@@ -516,6 +516,17 @@ class SyncJob(Base):
     source_vmgenid = Column(String(36), nullable=True)
     replica_smbios_uuid = Column(String(36), nullable=True)
 
+    # Il job segue la VM (3.23.0): `source_node_id` viene aggiornato quando
+    # la VM risulta migrata su un altro nodo censito. Dopo una migrazione
+    # LIVE la destinazione non ha snapshot in comune con la sorgente e
+    # syncoid si rifiuta: `richiede_replica_completa` lo segna (la UI
+    # propone «Esegui con replica completa»); `resync_dopo_migrazione`, se
+    # acceso, fa ripartire da solo con --force-delete su quella corsa.
+    # Nasce spento: una manutenzione di un nodo non deve produrre N repliche
+    # complete contemporanee sul link.
+    resync_dopo_migrazione = Column(Boolean, default=False)
+    richiede_replica_completa = Column(Boolean, default=False)
+
     # Parametri specifici per sync_method = "pve_native"
     # (vzdump --mode snapshot + scp + qmrestore, qualunque storage).
     dump_dir = Column(String(255), nullable=True)         # default runtime: /var/lib/vz/dump

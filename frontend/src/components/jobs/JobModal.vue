@@ -324,6 +324,13 @@
                   <span>Replica ricorsiva (incluse i dataset figli)</span>
                 </label>
               </div>
+              <div class="field field-checkbox">
+                <label class="checkbox-row">
+                  <input type="checkbox" v-model="form.resync_dopo_migrazione" />
+                  <span>Dopo una migrazione della VM riparti da solo con replica completa</span>
+                </label>
+                <small>Se la VM cambia nodo il job la segue. Dopo una migrazione <em>live</em> i dischi non hanno snapshot in comune con la destinazione: spento (consigliato) la corsa fallisce e chiede conferma; acceso ricrea la destinazione da zero senza chiedere.</small>
+              </div>
               <div class="field">
                 <label>Snapshot da mantenere su destinazione</label>
                 <input
@@ -514,6 +521,7 @@ interface FormState {
   compress: string
   mbuffer_size: string
   recursive: boolean
+  resync_dopo_migrazione: boolean
   keep_snapshots: number
 
   // pbs advanced
@@ -667,6 +675,7 @@ function emptyForm(kind: JobKind): FormState {
     compress: 'lz4',
     mbuffer_size: '128M',
     recursive: false,
+    resync_dopo_migrazione: false,
     keep_snapshots: 0,
     backup_mode: 'snapshot',
     backup_compress: 'zstd',
@@ -701,6 +710,7 @@ function hydrateFromJob(j: UnifiedJob) {
     f.compress = r.compress || 'lz4'
     f.mbuffer_size = r.mbuffer_size || '128M'
     f.recursive = !!r.recursive
+    f.resync_dopo_migrazione = !!r.resync_dopo_migrazione
     f.keep_snapshots = r.keep_snapshots ?? 0
     f.registration.dest_storage = r.dest_storage ?? null
     f.registration.dest_vm_id = r.dest_vm_id ?? null
@@ -1073,6 +1083,7 @@ function buildSyncoidPayload() {
     schedule_config: form.value.schedule_config,
     compress: form.value.compress,
     recursive: form.value.recursive,
+    resync_dopo_migrazione: form.value.resync_dopo_migrazione,
     register_vm: form.value.registration.register_vm,
     keep_snapshots: form.value.keep_snapshots,
     sync_method: 'syncoid',
@@ -1197,6 +1208,7 @@ async function submit() {
           schedule_config: form.value.schedule_config,
           compress: form.value.compress,
           recursive: form.value.recursive,
+          resync_dopo_migrazione: form.value.resync_dopo_migrazione,
           keep_snapshots: form.value.keep_snapshots,
           register_vm: form.value.registration.register_vm,
           dest_vm_id: form.value.registration.dest_vm_id,

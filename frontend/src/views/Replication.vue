@@ -261,16 +261,30 @@ function onShowLog(j: UnifiedJob) {
   logVisible.value = true
 }
 
-async function onRun(j: UnifiedJob, _group?: { jobs: UnifiedJob[] }) {
+async function onRun(j: UnifiedJob, group?: { jobs: UnifiedJob[] }) {
+  // Dopo una migrazione live la destinazione non ha snapshot in comune e
+  // syncoid si rifiuta: il job lo segna e qui si chiede se ricreare la
+  // destinazione da zero (replica completa) per questa corsa soltanto.
+  const chiedeCompleta = [j, ...(group?.jobs ?? [])].some(x => x.raw?.richiede_replica_completa)
+  let replicaCompleta = false
+  if (chiedeCompleta && (j.kind === 'syncoid' || j.kind === 'pve_native')) {
+    replicaCompleta = await confirmDangerous(
+      `"${j.name}": l'ultima corsa ha chiesto una REPLICA COMPLETA (VM migrata senza snapshot in comune con la destinazione). ` +
+      `Eseguire ricreando la destinazione da zero? Trasferisce tutti i dati del disco.`,
+      undefined,
+      'Replica completa'
+    )
+    if (!replicaCompleta) return
+  }
   try {
     if (
       (j.kind === 'syncoid' || j.kind === 'pve_native') &&
       j.raw?.vm_group_id
     ) {
-      await syncJobsService.runVmGroup(String(j.raw.vm_group_id))
+      await syncJobsService.runVmGroup(String(j.raw.vm_group_id), replicaCompleta)
     } else if (j.kind === 'syncoid' || j.kind === 'pve_native') {
       // pve_native vive nello stesso endpoint /api/sync-jobs
-      await syncJobsService.runJob(String(j.id))
+      await syncJobsService.runJob(String(j.id), replicaCompleta)
     } else if (j.kind === 'recovery_pbs') {
       await recoveryJobsService.runJob(String(j.id))
     }

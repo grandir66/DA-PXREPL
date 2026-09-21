@@ -23,6 +23,7 @@ class SyncJobCreate(BaseModel):
     mbuffer_size: str = "128M"
     no_sync_snap: bool = False
     force_delete: bool = False
+    resync_dopo_migrazione: bool = False  # dopo una migrazione senza snapshot in comune riparti con replica completa
     extra_args: Optional[str] = None
     
     # BTRFS options
@@ -83,6 +84,7 @@ class SyncJobUpdate(BaseModel):
     mbuffer_size: Optional[str] = None
     no_sync_snap: Optional[bool] = None
     force_delete: Optional[bool] = None
+    resync_dopo_migrazione: Optional[bool] = None
     extra_args: Optional[str] = None
     
     # BTRFS options
@@ -142,6 +144,8 @@ class SyncJobResponse(BaseModel):
     mbuffer_size: Optional[str]
     no_sync_snap: bool
     force_delete: bool
+    resync_dopo_migrazione: Optional[bool] = False
+    richiede_replica_completa: Optional[bool] = False
     extra_args: Optional[str]
     
     # BTRFS options
@@ -233,6 +237,7 @@ class VMReplicaCreate(BaseModel):
     recursive: bool = False
     register_vm: bool = True
     keep_snapshots: int = 0  # 0 = solo ultima, N = mantieni ultime N snapshot
+    resync_dopo_migrazione: bool = False  # 3.23.0: replica completa automatica dopo una migrazione live
     disks: List[dict] = []  # Lista dischi da replicare (se vuota, replica tutti)
     # pve_native specific
     dump_dir: Optional[str] = None

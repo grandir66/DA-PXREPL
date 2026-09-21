@@ -133,6 +133,10 @@ def update_schema():
             _ensure_column(conn, "sync_jobs", "source_vmgenid", "VARCHAR(36)")
             _ensure_column(conn, "sync_jobs", "replica_smbios_uuid", "VARCHAR(36)")
 
+            # Il job segue la VM (3.23.0).
+            _ensure_column(conn, "sync_jobs", "resync_dopo_migrazione", "BOOLEAN")
+            _ensure_column(conn, "sync_jobs", "richiede_replica_completa", "BOOLEAN")
+
             # Parametri sync_method=pve_native (3.17.0): vzdump+scp+qmrestore
             # senza dipendenza da ZFS/BTRFS/PBS.
             _ensure_column(conn, "sync_jobs", "dump_dir", "VARCHAR(255)")
