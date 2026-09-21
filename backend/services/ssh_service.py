@@ -4,6 +4,7 @@ SSH Service - Gestione connessioni SSH ai nodi Proxmox
 
 import asyncio
 import paramiko
+import socket
 import threading
 import time
 from typing import Optional, Tuple, List, Dict
@@ -164,8 +165,10 @@ class SSHService:
                 username=username,
                 key_filename=key_path,
                 timeout=10,
-                banner_timeout=10
+                banner_timeout=10,
+                auth_timeout=30,
             )
+            self._arma_keepalive(client, hostname)
             with self._lock:
                 self._connections[key] = client
                 self._quarantena.pop(key, None)
@@ -174,6 +177,52 @@ class SSHService:
             logger.error(f"Errore connessione SSH a {hostname}: {e}")
             raise
     
+    # Keepalive: una connessione mezza morta (nodo spento col tasto, tempesta
+    # L2) restava «active» per il pool e ogni comando su di lei si bloccava
+    # in `recv_exit_status()` — per sempre, senza timeout, fermando lo
+    # scheduler intero (dts-repl, 21/09/2026, nove ore). Con il keepalive di
+    # paramiko e il TCP_USER_TIMEOUT del kernel il trasporto si accorge in
+    # ~2 minuti che dall'altra parte non c'e' piu' nessuno e si chiude.
+    KEEPALIVE_S = 30
+    TCP_USER_TIMEOUT_MS = 120_000
+    ATTESA_ESITO_PASSO_S = 30
+
+    def _arma_keepalive(self, client, hostname: str) -> None:
+        try:
+            transport = client.get_transport()
+            if transport is None:
+                return
+            transport.set_keepalive(self.KEEPALIVE_S)
+            sock = getattr(transport, "sock", None)
+            if sock is None:
+                return
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            if hasattr(socket, "TCP_KEEPIDLE"):
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 30)
+            if hasattr(socket, "TCP_KEEPINTVL"):
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 10)
+            if hasattr(socket, "TCP_KEEPCNT"):
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 6)
+            if hasattr(socket, "TCP_USER_TIMEOUT"):
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_USER_TIMEOUT, self.TCP_USER_TIMEOUT_MS)
+        except Exception as e:  # pragma: no cover - dipende dal sistema
+            logger.debug("keepalive non impostato verso %s: %s", hostname, e)
+
+    def _attendi_esito(self, channel, hostname: str) -> int:
+        """L'exit status del comando, senza aspettare per sempre.
+
+        `recv_exit_status()` non ha timeout: se il trasporto muore mentre il
+        comando gira, paramiko chiude il canale e l'evento scatta; ma finche'
+        il TCP non se ne accorge si resta appesi. Qui si aspetta a passi e a
+        ogni passo si guarda se il trasporto e' ancora vivo. Un comando lungo
+        e vivo (una replica di ore) non viene toccato.
+        """
+        while not channel.status_event.wait(self.ATTESA_ESITO_PASSO_S):
+            transport = channel.get_transport() if hasattr(channel, "get_transport") else None
+            if transport is not None and not transport.is_active():
+                raise ConnectionError(f"connessione SSH verso {hostname} caduta durante il comando")
+        return channel.recv_exit_status()
+
     async def execute(
         self,
         hostname: str,
@@ -190,7 +239,7 @@ class SSHService:
                 client = self._get_client(hostname, port, username, key_path)
                 stdin, stdout, stderr = client.exec_command(command, timeout=timeout)
                 
-                exit_code = stdout.channel.recv_exit_status()
+                exit_code = self._attendi_esito(stdout.channel, hostname)
                 stdout_text = stdout.read().decode('utf-8', errors='replace')
                 stderr_text = stderr.read().decode('utf-8', errors='replace')
                 
@@ -242,7 +291,7 @@ class SSHService:
                 
                 # 2. Execute script
                 stdin, stdout, stderr = client.exec_command(remote_tmp_path, timeout=timeout)
-                exit_code = stdout.channel.recv_exit_status()
+                exit_code = self._attendi_esito(stdout.channel, hostname)
                 stdout_text = stdout.read().decode('utf-8', errors='replace')
                 stderr_text = stderr.read().decode('utf-8', errors='replace')
                 

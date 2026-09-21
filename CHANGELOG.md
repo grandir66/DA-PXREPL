@@ -5,6 +5,28 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.24.0] - 2026-09-22
+
+### Correzioni
+
+- **Lo scheduler non muore più in silenzio.** Su dts-repl il loop si è
+  bloccato il 21/09 alle 15:52 dentro un SSH a un nodo (connessione mezza
+  morta durante una tempesta di rete: `recv_exit_status()` non ha timeout) e
+  per nove ore non ha fatto niente — niente corse, niente cache, niente
+  errori — mentre `/api/health` diceva `scheduler: running`. Ora ogni check
+  del giro ha un tetto (`SchedulerService.CHECKS`, `asyncio.wait_for`): se
+  non finisce si logga `ERROR` e il giro prosegue; due scadenze di fila →
+  `warning` sulle notifiche (uno al giorno per check). A fine giro un
+  battito (`last_tick`, `SystemConfig scheduler_last_tick`); `/api/health`
+  lo espone e risponde 503 `degraded` con `scheduler: stale (N min)` se ha
+  più di dieci minuti. Documento: `docs/vita-dello-scheduler.md`.
+- **Le connessioni SSH non restano appese.** Keepalive paramiko (30 s) e
+  TCP (`SO_KEEPALIVE`, `TCP_USER_TIMEOUT` 120 s) al connect, `auth_timeout`
+  30 s, e l'attesa dell'esito di un comando controlla a passi che il
+  trasporto sia vivo: se è caduto il comando torna con errore di trasporto
+  invece di bloccare il thread per sempre. Un comando lungo e vivo (una
+  replica di ore) non viene toccato. (`services/ssh_service.py`)
+
 ## [3.23.1] - 2026-09-22
 
 ### Correzioni

@@ -113,6 +113,7 @@ cd /opt/dapx-unified
 
 *   **SSH Keys**: The installer generates an SSH key for the `root` user (or the service user). You must install this public key (`/root/.ssh/id_rsa.pub`) on all target Proxmox nodes you wish to manage.
 *   **ZFS Datasets**: Ensure your target ZFS datasets are created and accessible before configuring replication jobs.
+*   **Scheduler liveness**: every scheduler check has a timeout, the loop heartbeats, and `/api/health` returns 503 `degraded` with `scheduler: stale` when no round completed in ten minutes — point your monitoring at it. See [`docs/vita-dello-scheduler.md`](docs/vita-dello-scheduler.md).
 *   **The job follows the VM**: if a VM migrates inside the cluster (by hand or HA), the replica job runs from the node where the VM is now; after a *live* migration the target has no common snapshots and a full replica is asked for explicitly — see [`docs/il-job-segue-la-vm.md`](docs/il-job-segue-la-vm.md).
 *   **Replica identity**: a registered replica never carries the source VM's SMBIOS uuid (Veeam would drop the source from backup); how it is derived, how to activate DR, and the duplicate-uuid check are in [`docs/identita-replica.md`](docs/identita-replica.md).
 

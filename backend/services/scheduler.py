@@ -127,6 +127,13 @@ class SchedulerService:
         self._last_vm_cache_refresh: Optional[datetime] = None
         self._daily_summary_hour: int = 8  # Ora predefinita: 08:00 UTC
         self._daily_summary_enabled: bool = True
+        # Vita del loop (3.24.0, dopo nove ore di silenzio su dts-repl il
+        # 21/09: un check bloccato su un SSH aveva fermato tutto, e nessuno
+        # lo vedeva). `last_tick` è l'ultimo giro completo; `_scadenze` conta,
+        # per check, quante volte di fila ha superato il suo tetto.
+        self.last_tick: Optional[datetime] = None
+        self._scadenze: Dict[str, int] = {}
+        self._ultimo_avviso_check: Dict[str, datetime] = {}
 
     async def start(self):
         """Avvia lo scheduler"""
@@ -139,6 +146,7 @@ class SchedulerService:
         self._reset_stale_running_jobs()
 
         self._running = True
+        self.last_tick = datetime.utcnow()
         self._task = asyncio.create_task(self._scheduler_loop())
         self._last_sync_reconcile: Optional[datetime] = None
         asyncio.create_task(self._reconcile_sync_jobs_on_startup())
@@ -287,23 +295,109 @@ class SchedulerService:
         finally:
             db.close()
     
+    # I check di ogni giro, con il tetto in secondi oltre il quale si passa
+    # al successivo. I tetti sono larghi (un giro di cache su cinque nodi puo'
+    # durare minuti): servono a non morire, non a fare in fretta.
+    CHECKS = (
+        ("jobs", "_check_and_run_jobs", 120),
+        ("riprove", "_check_riprove", 120),
+        ("riepilogo", "_check_daily_summary", 180),
+        ("in_ritardo", "_check_replication_overdue", 120),
+        ("uuid_duplicati", "_check_uuid_duplicati", 300),
+        ("host_info", "_check_host_info_updates", 600),
+        ("cache_vm", "_refresh_vm_cache", 600),
+        ("pulizia_log", "_daily_log_cleanup", 300),
+        ("job_bloccati", "_reconcile_stuck_sync_jobs", 300),
+    )
+    STALE_DOPO_S = 600          # /api/health: oltre dieci minuti senza giro, «stale»
+    AVVISO_CHECK_COOLDOWN_S = 24 * 3600
+
     async def _scheduler_loop(self):
-        """Loop principale dello scheduler"""
+        """Loop principale dello scheduler.
+
+        Ogni check ha un tetto (`CHECKS`): se non finisce si logga, si conta e
+        si passa oltre — un SSH che non torna non ferma le repliche degli
+        altri (dts-repl, 21/09/2026: fermo dalle 15:52 per nove ore dentro
+        `update_host_details`, senza una riga di log). A fine giro il battito.
+        """
         while self._running:
+            for nome, metodo, tetto in self.CHECKS:
+                if not self._running:
+                    break
+                await self._esegui_check(nome, metodo, tetto)
+            self._battito()
+            await asyncio.sleep(60)  # Check ogni minuto
+
+    async def _esegui_check(self, nome: str, metodo: str, tetto: int) -> bool:
+        """Un check col suo tetto. Ritorna True se ha finito in tempo."""
+        try:
+            await asyncio.wait_for(getattr(self, metodo)(), timeout=tetto)
+            self._scadenze[nome] = 0
+            return True
+        except asyncio.TimeoutError:
+            n = self._scadenze.get(nome, 0) + 1
+            self._scadenze[nome] = n
+            logger.error(
+                "Scheduler: il check %s non ha finito in %ss (%s di fila): passo oltre",
+                nome, tetto, n,
+            )
+            if n >= 2:
+                await self._avvisa_check_bloccato(nome, tetto, n)
+            return False
+        except Exception as e:
+            logger.error(f"Errore nello scheduler ({nome}): {e}")
+            return False
+
+    def _battito(self) -> None:
+        """Il giro e' finito: lo si scrive in memoria e nel DB (per /api/health
+        dopo un riavvio e per chi legge il DB). Non alza mai."""
+        adesso = datetime.utcnow()
+        self.last_tick = adesso
+        try:
+            db = SessionLocal()
             try:
-                await self._check_and_run_jobs()
-                await self._check_riprove()
-                await self._check_daily_summary()
-                await self._check_replication_overdue()
-                await self._check_uuid_duplicati()
-                await self._check_host_info_updates()
-                await self._refresh_vm_cache()
-                await self._daily_log_cleanup()
-                await self._reconcile_stuck_sync_jobs()
-                await asyncio.sleep(60)  # Check ogni minuto
-            except Exception as e:
-                logger.error(f"Errore nello scheduler: {e}")
-                await asyncio.sleep(60)
+                cfg = db.query(SystemConfig).filter(SystemConfig.key == "scheduler_last_tick").first()
+                if cfg:
+                    cfg.value = adesso.isoformat()
+                else:
+                    db.add(SystemConfig(key="scheduler_last_tick", value=adesso.isoformat()))
+                db.commit()
+            finally:
+                db.close()
+        except Exception as e:
+            logger.debug("Battito dello scheduler non scritto nel DB: %s", e)
+
+    def stale_da_secondi(self, adesso: Optional[datetime] = None) -> Optional[float]:
+        """Secondi dall'ultimo giro completo; None se il loop non e' partito."""
+        if self.last_tick is None:
+            return None
+        return ((adesso or datetime.utcnow()) - self.last_tick).total_seconds()
+
+    async def _avvisa_check_bloccato(self, nome: str, tetto: int, volte: int) -> None:
+        """Warning sul canale delle notifiche, al massimo uno al giorno per check."""
+        adesso = datetime.utcnow()
+        ultimo = self._ultimo_avviso_check.get(nome)
+        if ultimo and (adesso - ultimo).total_seconds() < self.AVVISO_CHECK_COOLDOWN_S:
+            return
+        try:
+            esito = await notification_service.send_job_notification(
+                job_name=f"Scheduler: check «{nome}» bloccato",
+                status="warning",
+                source="Scheduler DAPX",
+                destination="—",
+                details=(
+                    f"Il check «{nome}» non finisce entro {tetto} s da {volte} giri di fila. "
+                    "Gli altri check proseguono, ma qualcosa (di solito un nodo che non risponde "
+                    "via SSH) lo tiene fermo: guardare il journal e i nodi."
+                ),
+                is_scheduled=True,
+                notify_mode="always",
+                job_type="sync",
+            )
+            if esito.get("sent"):
+                self._ultimo_avviso_check[nome] = adesso
+        except Exception as e:
+            logger.debug("Avviso check bloccato non inviato: %s", e)
 
     async def _daily_log_cleanup(self):
         """Una volta al giorno (UTC 03:30) cancella JobLog/AuditLog scaduti.

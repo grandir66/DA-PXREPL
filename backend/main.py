@@ -107,7 +107,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="DAPX-backandrepl",
     description="Sistema centralizzato di backup e replica per Proxmox VE. Supporta ZFS (Sanoid/Syncoid), BTRFS (btrfs send/receive) e PBS (Proxmox Backup Server).",
-    version="3.23.1",
+    version="3.24.0",
     lifespan=lifespan
 )
 
@@ -193,7 +193,7 @@ async def health_check():
     from datetime import datetime as _dt
     payload: dict = {
         "status": "healthy",
-        "version": "3.23.1",
+        "version": "3.24.0",
         "auth_enabled": True,
         "mode": dapx_mode,
         "checks": {},
@@ -212,10 +212,18 @@ async def health_check():
     except Exception as e:
         payload["checks"]["db"] = f"error: {type(e).__name__}"
         healthy = False
-    # Scheduler vivo
+    # Scheduler vivo: non il flag, il battito (3.24.0). Un loop bloccato su
+    # un SSH restava «running» per ore (dts-repl, 21/09/2026).
     try:
         if scheduler and getattr(scheduler, "_running", False):
-            payload["checks"]["scheduler"] = "running"
+            eta = scheduler.stale_da_secondi() if hasattr(scheduler, "stale_da_secondi") else None
+            tick = getattr(scheduler, "last_tick", None)
+            payload["scheduler_last_tick"] = tick.isoformat() + "Z" if tick else None
+            if eta is not None and eta > scheduler.STALE_DOPO_S:
+                payload["checks"]["scheduler"] = f"stale ({int(eta // 60)} min senza giro)"
+                healthy = False
+            else:
+                payload["checks"]["scheduler"] = "running"
         else:
             payload["checks"]["scheduler"] = "stopped"
             healthy = False
