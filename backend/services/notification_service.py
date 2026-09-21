@@ -361,6 +361,36 @@ class NotificationService:
             job_type="sync",
         )
 
+    async def send_uuid_duplicati_alert(
+        self,
+        duplicati: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Notifica per VM che condividono lo stesso uuid SMBIOS (Veeam le esclude)."""
+        if not duplicati:
+            return {"sent": False, "reason": "nothing_duplicated"}
+
+        config = self._load_config()
+        if not config:
+            return {"sent": False, "reason": "not_configured"}
+        if not (config.smtp_enabled or config.webhook_enabled or config.telegram_enabled):
+            return {"sent": False, "reason": "no_channels_enabled"}
+        if not config.notify_on_warning:
+            return {"sent": False, "reason": "notify_on_warning_disabled"}
+
+        from services.uuid_duplicati import descrivi_duplicati
+
+        title = f"UUID SMBIOS duplicati — {len(duplicati)} coppie di VM"
+        return await self.send_job_notification(
+            job_name=title,
+            status="warning",
+            source="Scheduler DAPX",
+            destination="—",
+            details=descrivi_duplicati(duplicati),
+            is_scheduled=True,
+            notify_mode="always",
+            job_type="sync",
+        )
+
     async def send_daily_summary(self) -> Dict[str, Any]:
         """
         Invia il riepilogo giornaliero delle attività con dettaglio per ogni job.

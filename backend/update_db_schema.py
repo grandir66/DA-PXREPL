@@ -127,6 +127,12 @@ def update_schema():
             _ensure_column(conn, "sync_jobs", "dest_bridge", "VARCHAR(50)")
             _ensure_column(conn, "sync_jobs", "dest_vlan", "INTEGER")
 
+            # Identita' della replica (3.22.0): uuid/vmgenid sorgente e uuid
+            # della replica, per «Attiva DR» e per il controllo duplicati.
+            _ensure_column(conn, "sync_jobs", "source_smbios_uuid", "VARCHAR(36)")
+            _ensure_column(conn, "sync_jobs", "source_vmgenid", "VARCHAR(36)")
+            _ensure_column(conn, "sync_jobs", "replica_smbios_uuid", "VARCHAR(36)")
+
             # Parametri sync_method=pve_native (3.17.0): vzdump+scp+qmrestore
             # senza dipendenza da ZFS/BTRFS/PBS.
             _ensure_column(conn, "sync_jobs", "dump_dir", "VARCHAR(255)")

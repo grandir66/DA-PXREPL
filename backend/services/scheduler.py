@@ -295,6 +295,7 @@ class SchedulerService:
                 await self._check_riprove()
                 await self._check_daily_summary()
                 await self._check_replication_overdue()
+                await self._check_uuid_duplicati()
                 await self._check_host_info_updates()
                 await self._refresh_vm_cache()
                 await self._daily_log_cleanup()
@@ -451,6 +452,79 @@ class SchedulerService:
             logger.info("Alert replica in ritardo inviato: %s", result.get("channels", {}))
         except Exception as e:
             logger.error(f"Errore check replica in ritardo: {e}")
+        finally:
+            db.close()
+
+    async def _check_uuid_duplicati(self):
+        """Alert se due VM di un cluster portano lo stesso `smbios1 uuid` (ogni 6 h).
+
+        Incidente DTS 2026-09-21: repliche con l'uuid della sorgente, Veeam
+        escludeva la produzione dal backup e nessuno lo vedeva. Stesso
+        canale e stessa cadenza di «replica in ritardo»: una volta al giorno
+        per le stesse coppie, subito per una coppia nuova.
+        """
+        now = datetime.utcnow()
+        ultimo = getattr(self, "_last_uuid_dup_check", None)
+        if ultimo and (now - ultimo).total_seconds() < 6 * 3600:
+            return
+        self._last_uuid_dup_check = now
+
+        db = SessionLocal()
+        try:
+            from services.ssh_service import ssh_service
+            from services.uuid_duplicati import (
+                raccogli_smbios, trova_uuid_duplicati, chiavi_duplicati,
+            )
+            from services.replication_health_service import OVERDUE_ALERT_COOLDOWN_HOURS
+
+            nodi = db.query(Node).filter(
+                Node.is_active == True,  # noqa: E712
+                Node.node_type == "pve",
+            ).all()
+            if not nodi:
+                return
+            righe, muti = await raccogli_smbios(ssh_service, nodi)
+            if muti:
+                logger.debug("uuid duplicati: nodi senza risposta %s", ", ".join(muti))
+            duplicati = trova_uuid_duplicati(righe)
+            if not duplicati:
+                return
+
+            last_alert_cfg = db.query(SystemConfig).filter(
+                SystemConfig.key == "uuid_duplicati_last_alert"
+            ).first()
+            keys_cfg = db.query(SystemConfig).filter(
+                SystemConfig.key == "uuid_duplicati_last_alert_keys"
+            ).first()
+            chiavi = chiavi_duplicati(duplicati)
+            gia_avvisate = set((keys_cfg.value or "").split(",")) if keys_cfg and keys_cfg.value else set()
+            nuove = [k for k in chiavi if k not in gia_avvisate]
+            if last_alert_cfg and last_alert_cfg.value and not nuove:
+                try:
+                    last_alert = datetime.fromisoformat(last_alert_cfg.value)
+                    if (now - last_alert).total_seconds() < OVERDUE_ALERT_COOLDOWN_HOURS * 3600:
+                        return
+                except ValueError:
+                    pass
+
+            logger.warning("UUID SMBIOS duplicati: %s coppie — invio alert", len(duplicati))
+            result = await notification_service.send_uuid_duplicati_alert(duplicati)
+            if not result.get("sent"):
+                logger.debug("Alert uuid duplicati non inviato: %s", result.get("reason"))
+                return
+
+            if last_alert_cfg:
+                last_alert_cfg.value = now.isoformat()
+            else:
+                db.add(SystemConfig(key="uuid_duplicati_last_alert", value=now.isoformat()))
+            if keys_cfg:
+                keys_cfg.value = ",".join(chiavi)
+            else:
+                db.add(SystemConfig(key="uuid_duplicati_last_alert_keys", value=",".join(chiavi)))
+            db.commit()
+            logger.info("Alert uuid duplicati inviato: %s", result.get("channels", {}))
+        except Exception as e:
+            logger.error(f"Errore check uuid duplicati: {e}")
         finally:
             db.close()
 

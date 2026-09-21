@@ -113,6 +113,7 @@ cd /opt/dapx-unified
 
 *   **SSH Keys**: The installer generates an SSH key for the `root` user (or the service user). You must install this public key (`/root/.ssh/id_rsa.pub`) on all target Proxmox nodes you wish to manage.
 *   **ZFS Datasets**: Ensure your target ZFS datasets are created and accessible before configuring replication jobs.
+*   **Replica identity**: a registered replica never carries the source VM's SMBIOS uuid (Veeam would drop the source from backup); how it is derived, how to activate DR, and the duplicate-uuid check are in [`docs/identita-replica.md`](docs/identita-replica.md).
 
 ---
 *Developed for internal use and advanced Proxmox administration.*

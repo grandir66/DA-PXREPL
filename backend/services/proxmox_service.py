@@ -11,6 +11,7 @@ import shlex
 
 from services.ssh_service import ssh_service, SSHResult
 from services.pve_tags import ensure_vm_replication_tag, merge_tag_in_vm_config
+from services.replica_identity import applica_identita_replica
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,146 @@ def disable_optical_media_in_config(config_content: str, vm_type: str = "qemu") 
         flags=re.MULTILINE | re.IGNORECASE,
     )
     return updated
+
+
+def prepara_config_replica(
+    config_content: str,
+    *,
+    vmid: int,
+    vm_type: str = "qemu",
+    source_storage: Optional[str] = None,
+    effective_dest_storage: Optional[str] = None,
+    vm_name_suffix: Optional[str] = None,
+    new_name: Optional[str] = None,
+    force_cpu_host: bool = True,
+    dest_node_bridges: Optional[List[str]] = None,
+    dest_bridge: Optional[str] = None,
+    dest_vlan: Optional[int] = None,
+    source_hostname: Optional[str] = None,
+    source_vmid: Optional[int] = None,
+) -> Tuple[str, List[str]]:
+    """Trasforma la config della VM sorgente in quella della replica.
+
+    Funzione pura (nessun SSH): e' il pezzo di `register_vm` che decide COSA
+    finisce nel `.conf` sul nodo di destinazione, estratto per poterlo provare
+    senza un nodo. Ritorna (config, warnings).
+    """
+    warnings: List[str] = []
+
+    # Identita' PRIMA di tutto: via le sezioni snapshot della sorgente (cosi'
+    # i passi che seguono lavorano solo sulla sezione principale), uuid e
+    # vmgenid derivati, onboot 0, originali nella description. Incidente DTS
+    # 2026-09-21: repliche con lo stesso BIOS UUID della produzione, e Veeam
+    # escludeva la produzione dal backup.
+    config_content, _ = applica_identita_replica(
+        config_content,
+        vm_type=vm_type,
+        source_hostname=source_hostname,
+        source_vmid=source_vmid,
+        vmid_replica=vmid,
+    )
+
+    config_content = disable_optical_media_in_config(config_content, vm_type)
+
+    # Se abbiamo source_storage e dest_storage, sostituisci nella config
+    if source_storage and effective_dest_storage and source_storage != effective_dest_storage:
+        # Sostituisci il nome dello storage (es: zfs: -> ZFS-LARGE-replica:)
+        config_content = config_content.replace(
+            f"{source_storage}:", f"{effective_dest_storage}:"
+        )
+
+    # Gestione Nome VM
+    name_pattern = re.compile(r'^(name:\s*)(.+)$', re.MULTILINE)
+    match = name_pattern.search(config_content)
+
+    final_name = None
+    original_name = None
+
+    if match:
+        original_name = match.group(2).strip()
+
+    if new_name:
+        final_name = new_name
+    elif original_name and vm_name_suffix:
+        # Original name exists, add suffix
+        final_name = original_name + vm_name_suffix
+    elif original_name:
+        # Original name exists, no suffix requested
+        final_name = original_name
+    elif vm_name_suffix:
+        # No original name found - this should not happen for valid VMs
+        # Use a descriptive name instead of just ID
+        final_name = f"replica-vm-{vmid}{vm_name_suffix}"
+        warnings.append(f"Nome originale non trovato; assegnato nome: {final_name}")
+
+    if final_name:
+        # Sanitize name: replace underscores with dashes for compatibility
+        final_name = final_name.replace('_', '-')
+
+        if match:
+            # Sostituisci linea esistente
+            config_content = name_pattern.sub(f'name: {final_name}', config_content)
+        else:
+            # Aggiungi linea nome all'inizio
+            config_content = f"name: {final_name}\n" + config_content
+
+    # Forza CPU type a 'host' per compatibilità tra host diversi
+    if force_cpu_host and vm_type == "qemu":
+        cpu_pattern = re.compile(r'^cpu:\s*.+$', re.MULTILINE)
+        if cpu_pattern.search(config_content):
+            old_cpu = cpu_pattern.search(config_content).group(0)
+            config_content = cpu_pattern.sub('cpu: host', config_content)
+            warnings.append(f"CPU cambiata da '{old_cpu}' a 'cpu: host' per compatibilità")
+
+    # Sostituzione bridge dest (se l'utente ha scelto un bridge
+    # specifico nel wizard). Sostituisce TUTTE le occorrenze
+    # di `bridge=...` nelle righe netN. Validato regex-safe.
+    if dest_bridge:
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.\-]*", dest_bridge):
+            warnings.append(f"dest_bridge non valido, ignorato: {dest_bridge!r}")
+        else:
+            config_content = re.sub(
+                r'(^net\d+:[^\n]*?\bbridge=)[^,\s]+',
+                rf'\g<1>{dest_bridge}',
+                config_content,
+                flags=re.MULTILINE,
+            )
+
+    # Sostituzione/aggiunta VLAN tag dest (se specificato).
+    if dest_vlan is not None:
+        try:
+            vlan_int = int(dest_vlan)
+            if not (1 <= vlan_int <= 4094):
+                raise ValueError("vlan fuori range")
+            def _apply_vlan(match: re.Match) -> str:
+                line = match.group(0)
+                if "tag=" in line:
+                    return re.sub(r'\btag=\d+', f'tag={vlan_int}', line)
+                return f"{line},tag={vlan_int}"
+            config_content = re.sub(
+                r'^net\d+:[^\n]+',
+                _apply_vlan,
+                config_content,
+                flags=re.MULTILINE,
+            )
+        except Exception:
+            warnings.append(f"dest_vlan non valido, ignorato: {dest_vlan!r}")
+
+    config_content = merge_tag_in_vm_config(config_content)
+
+    # Verifica bridge di rete (warning se non disponibile sul dest)
+    if dest_node_bridges:
+        net_pattern = re.compile(r'^(net\d+):.+bridge=([^,\s]+)', re.MULTILINE)
+        for match in net_pattern.finditer(config_content):
+            net_iface = match.group(1)
+            bridge = match.group(2)
+            if bridge not in dest_node_bridges:
+                warnings.append(
+                    f"RETE: {net_iface} usa bridge '{bridge}' "
+                    f"che non esiste sul nodo destinazione. "
+                    f"Bridge disponibili: {', '.join(dest_node_bridges)}"
+                )
+    return config_content, warnings
 
 
 class ProxmoxService:
@@ -707,6 +848,8 @@ class ProxmoxService:
         dest_node_bridges: Optional[List[str]] = None,
         dest_bridge: Optional[str] = None,    # Override bridge per TUTTE le netN
         dest_vlan: Optional[int] = None,      # Override VLAN tag (None = invariato)
+        source_hostname: Optional[str] = None,  # Nodo sorgente (per la description della replica)
+        source_vmid: Optional[int] = None,      # VMID sorgente (idem)
         port: int = 22,
         username: str = "root",
         key_path: str = "/root/.ssh/id_rsa"
@@ -798,109 +941,23 @@ class ProxmoxService:
                 return False, f"Errore storage: {storage_msg}", []
         
         if config_content:
-            import re
-            
-            config_content = disable_optical_media_in_config(config_content, vm_type)
-            
-            # Se abbiamo source_storage e dest_storage, sostituisci nella config
-            if source_storage and effective_dest_storage and source_storage != effective_dest_storage:
-                # Sostituisci il nome dello storage (es: zfs: -> ZFS-LARGE-replica:)
-                config_content = config_content.replace(
-                    f"{source_storage}:", f"{effective_dest_storage}:"
-                )
-            
-            # Gestione Nome VM
-            name_pattern = re.compile(r'^(name:\s*)(.+)$', re.MULTILINE)
-            match = name_pattern.search(config_content)
-            
-            final_name = None
-            original_name = None
-            
-            if match:
-                original_name = match.group(2).strip()
-            
-            if new_name:
-                final_name = new_name
-            elif original_name and vm_name_suffix:
-                # Original name exists, add suffix
-                final_name = original_name + vm_name_suffix
-            elif original_name:
-                # Original name exists, no suffix requested
-                final_name = original_name
-            elif vm_name_suffix:
-                # No original name found - this should not happen for valid VMs
-                # Use a descriptive name instead of just ID
-                final_name = f"replica-vm-{vmid}{vm_name_suffix}"
-                warnings.append(f"Nome originale non trovato; assegnato nome: {final_name}")
-            
-            if final_name:
-                # Sanitize name: replace underscores with dashes for compatibility
-                final_name = final_name.replace('_', '-')
+            config_content, warnings_config = prepara_config_replica(
+                config_content,
+                vmid=vmid,
+                vm_type=vm_type,
+                source_storage=source_storage,
+                effective_dest_storage=effective_dest_storage,
+                vm_name_suffix=vm_name_suffix,
+                new_name=new_name,
+                force_cpu_host=force_cpu_host,
+                dest_node_bridges=dest_node_bridges,
+                dest_bridge=dest_bridge,
+                dest_vlan=dest_vlan,
+                source_hostname=source_hostname,
+                source_vmid=source_vmid,
+            )
+            warnings.extend(warnings_config)
 
-                if match:
-                    # Sostituisci linea esistente
-                    config_content = name_pattern.sub(f'name: {final_name}', config_content)
-                else:
-                    # Aggiungi linea nome all'inizio
-                    config_content = f"name: {final_name}\n" + config_content
-            
-            # Forza CPU type a 'host' per compatibilità tra host diversi
-            if force_cpu_host and vm_type == "qemu":
-                cpu_pattern = re.compile(r'^cpu:\s*.+$', re.MULTILINE)
-                if cpu_pattern.search(config_content):
-                    old_cpu = cpu_pattern.search(config_content).group(0)
-                    config_content = cpu_pattern.sub('cpu: host', config_content)
-                    warnings.append(f"CPU cambiata da '{old_cpu}' a 'cpu: host' per compatibilità")
-            
-            # Sostituzione bridge dest (se l'utente ha scelto un bridge
-            # specifico nel wizard). Sostituisce TUTTE le occorrenze
-            # di `bridge=...` nelle righe netN. Validato regex-safe.
-            if dest_bridge:
-                if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.\-]*", dest_bridge):
-                    warnings.append(f"dest_bridge non valido, ignorato: {dest_bridge!r}")
-                else:
-                    config_content = re.sub(
-                        r'(^net\d+:[^\n]*?\bbridge=)[^,\s]+',
-                        rf'\g<1>{dest_bridge}',
-                        config_content,
-                        flags=re.MULTILINE,
-                    )
-
-            # Sostituzione/aggiunta VLAN tag dest (se specificato).
-            if dest_vlan is not None:
-                try:
-                    vlan_int = int(dest_vlan)
-                    if not (1 <= vlan_int <= 4094):
-                        raise ValueError("vlan fuori range")
-                    def _apply_vlan(match: re.Match) -> str:
-                        line = match.group(0)
-                        if "tag=" in line:
-                            return re.sub(r'\btag=\d+', f'tag={vlan_int}', line)
-                        return f"{line},tag={vlan_int}"
-                    config_content = re.sub(
-                        r'^net\d+:[^\n]+',
-                        _apply_vlan,
-                        config_content,
-                        flags=re.MULTILINE,
-                    )
-                except Exception:
-                    warnings.append(f"dest_vlan non valido, ignorato: {dest_vlan!r}")
-
-            config_content = merge_tag_in_vm_config(config_content)
-
-            # Verifica bridge di rete (warning se non disponibile sul dest)
-            if dest_node_bridges:
-                net_pattern = re.compile(r'^(net\d+):.+bridge=([^,\s]+)', re.MULTILINE)
-                for match in net_pattern.finditer(config_content):
-                    net_iface = match.group(1)
-                    bridge = match.group(2)
-                    if bridge not in dest_node_bridges:
-                        warnings.append(
-                            f"RETE: {net_iface} usa bridge '{bridge}' "
-                            f"che non esiste sul nodo destinazione. "
-                            f"Bridge disponibili: {', '.join(dest_node_bridges)}"
-                        )
-            
             # Crea il file di configurazione
             cmd = f"""
 mkdir -p $(dirname {config_path})

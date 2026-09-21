@@ -234,12 +234,15 @@ async def _try_register_vm_after_sync(job_id: int, log_entry_id: int) -> None:
             dest_node_bridges=dest_bridges,
             dest_bridge=getattr(job, "dest_bridge", None),
             dest_vlan=getattr(job, "dest_vlan", None),
+            source_hostname=source_node.hostname,
+            source_vmid=job.vm_id,
             port=dest_node.ssh_port,
             username=dest_node.ssh_user,
             key_path=dest_node.ssh_key_path,
         )
 
         if success:
+            salva_identita_replica(db, job, config_result.stdout, source_node.hostname, target_vmid)
             vm_info = f"VM {target_vmid}" + (
                 f" (da {job.vm_id})" if target_vmid != job.vm_id else ""
             )
@@ -263,6 +266,33 @@ async def _try_register_vm_after_sync(job_id: int, log_entry_id: int) -> None:
         if reg_key:
             _vm_register_inflight.discard(reg_key)
         db.close()
+
+
+def salva_identita_replica(db, job, config_sorgente: str, source_hostname: str, vmid_replica) -> None:
+    """Scrive su TUTTI i job del gruppo VM gli uuid della sorgente e della replica.
+
+    La registrazione avviene una volta per gruppo (un job per disco): il dato
+    va su ogni riga, o «Attiva DR» lo troverebbe solo dal disco che ha
+    registrato. Non alza mai: l'identita' e' anche nella description della
+    replica, che resta la prima fonte.
+    """
+    try:
+        from database import SyncJob
+        from services.replica_identity import identita_replica
+
+        ident = identita_replica(
+            config_sorgente, source_hostname=source_hostname,
+            source_vmid=job.vm_id, vmid_replica=vmid_replica,
+        )
+        gemelli = [job]
+        if job.vm_group_id:
+            gemelli = db.query(SyncJob).filter(SyncJob.vm_group_id == job.vm_group_id).all() or [job]
+        for g in gemelli:
+            g.source_smbios_uuid = ident.get("source_smbios_uuid")
+            g.source_vmgenid = ident.get("source_vmgenid")
+            g.replica_smbios_uuid = ident.get("replica_smbios_uuid")
+    except Exception as e:  # pragma: no cover - difensivo
+        logger.warning(f"Identita' replica non salvata per job {getattr(job, 'id', '?')}: {e}")
 
 
 def repair_terminal_job_log(log, job) -> bool:

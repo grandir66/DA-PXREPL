@@ -508,6 +508,14 @@ class SyncJob(Base):
     dest_bridge = Column(String(50), nullable=True)    # es: "vmbr0" (sostituisce bridge=... in netN)
     dest_vlan = Column(Integer, nullable=True)         # es: 100 (aggiunge/sostituisce tag=NN in netN)
 
+    # Identita' della replica (3.22.0, incidente DTS 2026-09-21): la replica
+    # porta un uuid DERIVATO dalla sorgente, mai lo stesso (Veeam escludeva la
+    # produzione dal backup per «same BIOS ID»). Gli originali restano qui e
+    # nella `description` della replica, per «Attiva DR».
+    source_smbios_uuid = Column(String(36), nullable=True)
+    source_vmgenid = Column(String(36), nullable=True)
+    replica_smbios_uuid = Column(String(36), nullable=True)
+
     # Parametri specifici per sync_method = "pve_native"
     # (vzdump --mode snapshot + scp + qmrestore, qualunque storage).
     dump_dir = Column(String(255), nullable=True)         # default runtime: /var/lib/vz/dump

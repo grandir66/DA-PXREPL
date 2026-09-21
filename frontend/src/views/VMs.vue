@@ -513,6 +513,26 @@
  </table>
  </div>
 
+ <!-- Identita' replica (solo per VM registrate da DA-PXREPL) -->
+ <div v-if="vmInfoData.replica_identity?.is_replica" class="detail-card full-width">
+ <h4><Icon name="shield" :size="20" /> Identità replica</h4>
+ <table class="simple-table">
+ <tr v-if="vmInfoData.replica_identity.source_vmid"><td>Sorgente:</td><td>VM <strong>{{ vmInfoData.replica_identity.source_vmid }}</strong><span v-if="vmInfoData.replica_identity.source_hostname"> su {{ vmInfoData.replica_identity.source_hostname }}</span></td></tr>
+ <tr><td>UUID attuale:</td><td class="text-xs font-mono">{{ vmInfoData.replica_identity.current_smbios_uuid || '—' }}</td></tr>
+ <tr><td>UUID originale:</td><td class="text-xs font-mono">{{ vmInfoData.replica_identity.source_smbios_uuid }}</td></tr>
+ <tr><td>Stato:</td><td>
+ <span v-if="vmInfoData.replica_identity.dr_attivo" class="badge badge-warning">DR attivato: porta l'uuid della sorgente</span>
+ <span v-else class="badge badge-success">Replica: uuid derivato, la sorgente resta unica per Veeam</span>
+ </td></tr>
+ </table>
+ <div class="mt-3 flex items-center gap-3">
+ <button class="btn btn-sm btn-warning" :disabled="vmInfoData.replica_identity.dr_attivo || vmInfoData.status === 'running'" @click="openActivateDR" title="Ripristina l'uuid della sorgente su questa replica (non la avvia)">
+ <Icon name="alert-triangle" :size="14" /> Attiva DR…
+ </button>
+ <span class="text-xs text-secondary">Da usare solo quando la sorgente è persa. Non avvia la VM.</span>
+ </div>
+ </div>
+
  <!-- Snapshots Summary -->
  <div class="detail-card">
  <h4><Icon name="camera" :size="20" /> Snapshots</h4>
@@ -540,6 +560,41 @@
  
  <template #footer>
  <button class="btn btn-secondary" @click="showVMInfoModal = false">Chiudi</button>
+ </template>
+ </ModalDialog>
+
+ <!-- Attiva DR (identita' replica) -->
+ <ModalDialog :visible="showActivateDR" @close="showActivateDR = false" title="Attiva DR sulla replica" width="600px">
+ <div class="alert alert-warning mb-4">
+ <Icon name="alert-triangle" :size="14" /> <strong>Cosa fa:</strong> scrive su questa replica l'uuid SMBIOS della VM sorgente, così i sistemi che la riconoscono dall'uuid (licenze, Veeam, Windows) la vedono come l'originale.
+ <strong>Cosa non fa:</strong> non la avvia. Lo start resta un'azione separata.
+ </div>
+ <div class="p-4 bg-dark-soft rounded mb-4 space-y-2">
+ <div><strong>Replica:</strong> {{ selectedVM?.name }} ({{ selectedVM?.vmid }})</div>
+ <div class="text-xs font-mono"><strong>UUID attuale:</strong> {{ vmInfoData?.replica_identity?.current_smbios_uuid }}</div>
+ <div class="text-xs font-mono"><strong>UUID che verrà scritto:</strong> {{ vmInfoData?.replica_identity?.source_smbios_uuid }}</div>
+ </div>
+ <div class="space-y-4">
+ <div>
+ <label class="block text-sm text-secondary mb-1">Scrivi <code>ATTIVA</code> per confermare <span class="text-danger">*</span></label>
+ <input v-model="activateDROptions.confirm" type="text" class="form-input" placeholder="ATTIVA" autocomplete="off">
+ </div>
+ <label class="flex items-center gap-2 text-sm">
+ <input type="checkbox" v-model="activateDROptions.ripristina_vmgenid">
+ <span>Ripristina anche il <code>vmgenid</code> originale <span class="text-secondary">(solo se la VM è un domain controller e serve davvero)</span></span>
+ </label>
+ <label class="flex items-center gap-2 text-sm">
+ <input type="checkbox" v-model="activateDROptions.force">
+ <span>Forza anche se la sorgente risulta ancora accesa <span class="text-danger">(due VM con lo stesso uuid nel cluster)</span></span>
+ </label>
+ </div>
+ <template #footer>
+ <div class="flex justify-between w-full">
+ <button class="btn btn-secondary" @click="showActivateDR = false">Annulla</button>
+ <button class="btn btn-warning" @click="confirmActivateDR" :disabled="activateDROptions.confirm !== 'ATTIVA' || activateDRBusy">
+ {{ activateDRBusy ? 'In corso…' : 'Attiva DR' }}
+ </button>
+ </div>
  </template>
  </ModalDialog>
 
@@ -577,6 +632,9 @@ const selectedVM = ref<VM | null>(null);
 // VM Info Modal State
 const showVMInfoModal = ref(false);
 const vmInfoData = ref<any>(null);
+const showActivateDR = ref(false);
+const activateDRBusy = ref(false);
+const activateDROptions = ref({ confirm: '', force: false, ripristina_vmgenid: false });
 const vmInfoLoading = ref(false);
 
 // Sorting
@@ -765,6 +823,32 @@ const openVMInfoModal = async (vm: VM) => {
  vmInfoData.value = null;
  } finally {
  vmInfoLoading.value = false;
+ }
+};
+
+// --- Attiva DR (identita' replica, 3.22.0) ---
+const openActivateDR = () => {
+ activateDROptions.value = { confirm: '', force: false, ripristina_vmgenid: false };
+ showActivateDR.value = true;
+};
+
+const confirmActivateDR = async () => {
+ if (!selectedVM.value || activateDROptions.value.confirm !== 'ATTIVA') return;
+ activateDRBusy.value = true;
+ try {
+ const res = await vmsService.activateDR(selectedVM.value.node_id!, selectedVM.value.vmid, {
+ confirm: 'ATTIVA',
+ force: activateDROptions.value.force,
+ ripristina_vmgenid: activateDROptions.value.ripristina_vmgenid,
+ vm_type: selectedVM.value.type,
+ });
+ showActivateDR.value = false;
+ toast.success('DR attivato', `smbios1 → ${res.data.smbios1_dopo}. ${res.data.avviso}`);
+ await openVMInfoModal(selectedVM.value);
+ } catch (e) {
+ toast.error('Attiva DR rifiutato', errorMessage(e));
+ } finally {
+ activateDRBusy.value = false;
  }
 };
 

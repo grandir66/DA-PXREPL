@@ -15,6 +15,12 @@ from services.proxmox_service import proxmox_service
 from services.ssh_service import ssh_service
 from services.pbs_service import pbs_service
 from services.sanoid_config_service import sanoid_config_service
+from services.replica_identity import (
+    estrai_identita_da_descrizione,
+    identita_replica_da_config_viva,
+    uuid_da_smbios1,
+    valore_config,
+)
 from routers.auth import get_current_user, require_operator, log_audit
 
 router = APIRouter()
@@ -33,6 +39,13 @@ class VMResponse(BaseModel):
 class VMDatasetResponse(BaseModel):
     vmid: int
     datasets: List[str]
+
+
+class ActivateDRRequest(BaseModel):
+    confirm: str = ""
+    force: bool = False
+    ripristina_vmgenid: bool = False
+    vm_type: str = "qemu"
 
 
 class VMRegisterRequest(BaseModel):
@@ -491,7 +504,155 @@ async def get_vm_full_details_endpoint(
         username=node.ssh_user,
         key_path=node.ssh_key_path
     )
+    # Identita' della replica (3.22.0): letta dalla description che
+    # register_vm scrive; la UI mostra «Attiva DR» solo se c'e'.
+    try:
+        details["replica_identity"] = identita_replica_da_config_viva(details.get("config") or {})
+    except Exception:
+        details["replica_identity"] = {"is_replica": False}
     return details
+
+
+@router.post("/node/{node_id}/vm/{vmid}/activate-dr")
+async def activate_dr(
+    node_id: int,
+    vmid: int,
+    body: ActivateDRRequest,
+    request: Request,
+    user: User = Depends(require_operator),
+    db: Session = Depends(get_db)
+):
+    """Ripristina sulla replica l'uuid SMBIOS della sorgente, per avviarla al posto suo.
+
+    Non avvia la VM: lo start resta un'azione separata. Si rifiuta se la
+    sorgente risulta ancora accesa (salvo `force`). L'originale si legge
+    dalla `description` della replica — vale anche per le repliche corrette
+    a mano prima della 3.22.0, che nel DB non hanno niente — e in seconda
+    battuta dal job di replica.
+    """
+    import shlex
+    from datetime import datetime
+    from sqlalchemy import or_, and_
+    from database import SyncJob, JobLog
+
+    node = db.query(Node).filter(Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    if not check_node_access(user, node):
+        raise HTTPException(status_code=403, detail="Accesso negato a questo nodo")
+    if body.confirm != "ATTIVA":
+        raise HTTPException(status_code=400, detail="Conferma mancante: scrivere ATTIVA")
+    if body.vm_type != "qemu":
+        raise HTTPException(status_code=400, detail="Solo le VM qemu hanno un uuid SMBIOS da ripristinare")
+
+    ok, config_txt = await proxmox_service.get_vm_config(
+        hostname=node.hostname, vmid=vmid, vm_type="qemu",
+        port=node.ssh_port, username=node.ssh_user, key_path=node.ssh_key_path,
+    )
+    if not ok or not (config_txt or "").strip():
+        raise HTTPException(status_code=502, detail=f"Config della VM {vmid} non leggibile su {node.name}")
+
+    job = (
+        db.query(SyncJob)
+        .filter(
+            SyncJob.dest_node_id == node.id,
+            or_(SyncJob.dest_vm_id == vmid, and_(SyncJob.dest_vm_id.is_(None), SyncJob.vm_id == vmid)),
+        )
+        .first()
+    )
+    ident = estrai_identita_da_descrizione(valore_config(config_txt, "description"))
+    source_uuid = ident.get("source_smbios_uuid") or (job.source_smbios_uuid if job else None)
+    source_vmgenid = ident.get("source_vmgenid") or (job.source_vmgenid if job else None)
+    if not source_uuid:
+        raise HTTPException(
+            status_code=404,
+            detail=f"VM {vmid} non e' una replica registrata da DA-PXREPL: nessun uuid originale da ripristinare",
+        )
+
+    smbios_attuale = valore_config(config_txt, "smbios1") or ""
+    uuid_attuale = uuid_da_smbios1(smbios_attuale)
+    if uuid_attuale == source_uuid:
+        raise HTTPException(status_code=409, detail=f"VM {vmid} porta gia' l'uuid della sorgente: DR gia' attivato")
+
+    # La sorgente e' ancora viva? Si chiede al SUO nodo; se il nodo non
+    # risponde e' lo scenario del DR, e si procede.
+    stato_sorgente = "sconosciuto"
+    if job:
+        source_node = db.query(Node).filter(Node.id == job.source_node_id).first()
+        if source_node:
+            esito = await ssh_service.execute(
+                hostname=source_node.hostname,
+                command=f"qm status {int(job.vm_id)} 2>&1",
+                port=source_node.ssh_port, username=source_node.ssh_user,
+                key_path=source_node.ssh_key_path, timeout=15,
+            )
+            if esito.success and "running" in (esito.stdout or ""):
+                stato_sorgente = "running"
+            elif esito.success:
+                stato_sorgente = (esito.stdout or "").strip().replace("status: ", "") or "sconosciuto"
+            else:
+                stato_sorgente = "irraggiungibile"
+    if stato_sorgente == "running" and not body.force:
+        raise HTTPException(
+            status_code=409,
+            detail=f"La VM sorgente {job.vm_id} risulta ancora accesa su {source_node.name}: "
+                   f"attivare il DR ora produrrebbe due VM con lo stesso uuid. Usare force solo se e' voluto.",
+        )
+    if not job and not body.force:
+        raise HTTPException(
+            status_code=409,
+            detail="Nessun job di replica collegato: impossibile verificare se la sorgente e' accesa. "
+                   "Usare force per procedere comunque.",
+        )
+
+    if uuid_attuale:
+        smbios_nuovo = smbios_attuale.replace(f"uuid={uuid_attuale}", f"uuid={source_uuid}", 1)
+    else:
+        smbios_nuovo = f"uuid={source_uuid}"
+    cmd = f"qm set {int(vmid)} --smbios1 {shlex.quote(smbios_nuovo)}"
+    vmgenid_ripristinato = False
+    if body.ripristina_vmgenid and source_vmgenid:
+        cmd += f" --vmgenid {shlex.quote(source_vmgenid)}"
+        vmgenid_ripristinato = True
+    quando = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    descr = valore_config(config_txt, "description") or ""
+    descr_nuova = f"{descr} | DR ATTIVATO {quando} da {user.username}" if descr else f"DR ATTIVATO {quando} da {user.username}"
+    cmd += f" --description {shlex.quote(descr_nuova)}"
+
+    esito = await ssh_service.execute(
+        hostname=node.hostname, command=cmd,
+        port=node.ssh_port, username=node.ssh_user, key_path=node.ssh_key_path, timeout=30,
+    )
+    if not esito.success:
+        raise HTTPException(status_code=502, detail=f"qm set fallito: {(esito.stderr or esito.stdout or '').strip()[:300]}")
+
+    messaggio = (
+        f"Attiva DR su VM {vmid} ({node.name}): smbios1 {smbios_attuale!r} -> {smbios_nuovo!r}"
+        + (f"; vmgenid -> {source_vmgenid}" if vmgenid_ripristinato else "")
+        + f"; sorgente {stato_sorgente}" + ("; FORZATO" if body.force else "")
+        + ". La VM NON e' stata avviata."
+    )
+    adesso = datetime.utcnow()
+    db.add(JobLog(
+        job_type="activate_dr", job_id=job.id if job else None, node_name=node.name,
+        status="success", message=messaggio, output=(esito.stdout or "")[:2000],
+        started_at=adesso, completed_at=adesso, triggered_by=user.id, trigger_source="manual",
+    ))
+    log_audit(
+        db, user.id, "vm_dr_activated", "vm", resource_id=vmid, details=messaggio,
+        ip_address=request.client.host if request.client else None,
+    )
+    return {
+        "success": True,
+        "vmid": vmid,
+        "smbios1_prima": smbios_attuale,
+        "smbios1_dopo": smbios_nuovo,
+        "vmgenid_ripristinato": vmgenid_ripristinato,
+        "stato_sorgente": stato_sorgente,
+        "forzato": body.force,
+        "avviso": "La VM non e' stata avviata: lo start e' un'azione separata.",
+    }
+
 
 @router.post("/node/{node_id}/vm/{vmid}/snapshot")
 async def create_vm_snapshot(

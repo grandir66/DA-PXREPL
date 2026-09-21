@@ -1243,12 +1243,16 @@ async def register_vm_manually(
         dest_node_bridges=dest_bridges,
         dest_bridge=getattr(job, "dest_bridge", None),
         dest_vlan=getattr(job, "dest_vlan", None),
+        source_hostname=source_node.hostname,
+        source_vmid=job.vm_id,
         port=dest_node.ssh_port,
         username=dest_node.ssh_user,
         key_path=dest_node.ssh_key_path
     )
     
     if success:
+        from services.sync_job_execution import salva_identita_replica
+        salva_identita_replica(db, job, config_content, source_node.hostname, target_vmid)
         log_audit(
             db, user.id, "vm_registered", "sync_job",
             resource_id=job_id,

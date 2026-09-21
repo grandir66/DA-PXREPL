@@ -4,19 +4,18 @@ tono: ok
 famiglia: 01-nucleo
 ordine: 100
 stato: manutenzione
-prossimo: domattina leggere il riepilogo delle 8:00 di DTS e Domarc e i backup config della notte; decidere che fare di DTS2-PBS 192.168.16.99 (porta 22 muta)
+prossimo: installare la 3.22.0 su dts-repl (sessione DTS) e verificare che le 12 repliche non vengano ri-registrate con l'uuid vecchio
 ---
 cruscotto backup/replica Proxmox (ZFS Sanoid/Syncoid, PBS)
 
 Otto tipologie di attività sotto un solo cruscotto: replica VM, snapshot,
 replica dati, sync NAS, backup e recovery PBS, backup host, migrazione live.
 
-**Entrambe le appliance (DTS e Domarc) in esercizio con la 3.21.3** (13 settembre): fine della tempesta SSH
-verso il nodo di destinazione (quarantena per host, `test -f` fallito non
-vale «VM assente»), chiave dell'orchestratore che non sparisce più dal nodo
-(`mv` sopra il link `authorized_keys`), backup config host con cron veri,
-alert «in ritardo» leggibile per i job non giornalieri.
+**3.22.0 (21 settembre), da installare**: la replica non porta più l'uuid
+SMBIOS della sorgente — Veeam escludeva dal backup 12 VM di produzione di
+DTS —, «Attiva DR» e controllo «UUID duplicati» (`docs/identita-replica.md`).
+Le appliance (DTS e Domarc) sono alla 3.21.3 del 13 settembre.
 
-**Trappola corrente**: il repo ha **tre worktree**, e l'8 settembre ci si è
-messi a lavorare per sbaglio su un ramo 35 commit indietro rispetto a `main`.
-Prima di toccare il codice: `git log --oneline -1` e `version.json`.
+**Trappola corrente**: il repo ha **tre worktree** (l'8 settembre si è
+lavorato su un ramo 35 commit indietro). Prima di toccare il codice:
+`git branch --show-current` e `version.json`.

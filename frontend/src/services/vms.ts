@@ -75,6 +75,11 @@ export default {
         return apiClient.get(`/vms/node/${node}/vm/${vmid}/full-details?vm_type=${vm_type}`);
     },
 
+    // Identita' della replica (3.22.0): ripristina l'uuid SMBIOS della sorgente. Non avvia la VM.
+    activateDR(node: number | string, vmid: number | string, body: { confirm: string; force?: boolean; ripristina_vmgenid?: boolean; vm_type?: string }) {
+        return apiClient.post(`/vms/node/${node}/vm/${vmid}/activate-dr`, body);
+    },
+
     // Lifecycle
     manageState(node: number | string, vmid: number | string, action: 'start' | 'stop' | 'shutdown' | 'reboot' | 'suspend' | 'resume') {
         return apiClient.post(`/vms/node/${node}/vm/${vmid}/status/${action}`);

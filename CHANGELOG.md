@@ -5,6 +5,42 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.22.0] - 2026-09-21
+
+### Correzioni
+
+- **La replica nasceva con lo stesso uuid SMBIOS della produzione, e Veeam
+  escludeva la produzione dal backup.** `register_vm` copiava la config della
+  sorgente cambiando solo nome, storage, CPU e rete: `smbios1`, `vmgenid`,
+  `onboot` e le sezioni `[snapshot]` restavano identici. Veeam Backup for
+  Proxmox riconosce le VM dal BIOS UUID e, trovandone due uguali, esclude la
+  **sorgente** («Another VM in the cluster or node has the same BIOS ID»):
+  su un cluster in esercizio erano fuori backup 12 VM di produzione, una per
+  replica, e tre repliche con `onboot: 1` ereditato sarebbero partite da sole
+  al riavvio del nodo DR con lo stesso MAC e IP. Ora la replica porta un uuid
+  **derivato** dalla sorgente (`uuid5(orig, "dapx-replica")`, deterministico:
+  ri-registrare dà lo stesso file), un `vmgenid` diverso, `onboot: 0` sempre,
+  nessuna sezione snapshot, e gli originali nella `description` (`smbios1
+  originale: uuid=…`). La trasformazione è una funzione pura
+  (`prepara_config_replica`, `services/replica_identity.py`) con prove
+  invarianti viste fallire sul codice vecchio
+  (`tests/test_register_vm_identity.py`). Documento: `docs/identita-replica.md`.
+
+### Aggiunte
+
+- **«Attiva DR»** (`POST /api/vms/node/{node_id}/vm/{vmid}/activate-dr`,
+  pulsante nel modale Info della replica): ripristina sulla replica l'uuid
+  della sorgente prima di avviarla al suo posto. Chiede di scrivere `ATTIVA`,
+  rifiuta se la sorgente risulta ancora accesa (salvo forza), **non avvia la
+  VM**; l'originale si legge dalla description della replica — vale anche per
+  le repliche corrette a mano prima di questa versione — e in seconda
+  battuta dal job (`sync_jobs.source_smbios_uuid`, `source_vmgenid`,
+  `replica_smbios_uuid`, colonne nuove in `update_db_schema.py`).
+- **Controllo «UUID duplicati»** ogni 6 ore: una lettura per nodo Proxmox
+  censito, alert `warning` sul canale di «replica in ritardo» con le coppie
+  di VM che condividono l'uuid (cooldown 24 h, coppia nuova segnalata subito).
+  `services/uuid_duplicati.py`, `SchedulerService._check_uuid_duplicati`.
+
 ## [3.21.3] - 2026-09-13
 
 ### Correzioni
