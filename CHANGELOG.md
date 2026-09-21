@@ -5,6 +5,20 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.23.1] - 2026-09-22
+
+### Correzioni
+
+- **Falso allarme «UUID SMBIOS duplicati» sulle repliche con sezioni
+  snapshot.** Il controllo leggeva tutte le righe `smbios1:` di ogni `.conf`,
+  comprese quelle dentro le sezioni `[snapshot]`: in una replica registrata
+  prima della 3.22.0 e corretta a mano con `qm set` quelle sezioni portano
+  ancora l'uuid della sorgente, e il primo giro su DTS ha segnalato due
+  coppie (9104, 9115) che non lo erano — la sezione principale era a posto.
+  Ora conta solo la prima riga per file (`grep -m1`, e il parser tiene la
+  prima occorrenza), come fa Veeam. (`services/uuid_duplicati.py`,
+  `services/replica_identity.py`)
+
 ## [3.23.0] - 2026-09-22
 
 ### Aggiunte

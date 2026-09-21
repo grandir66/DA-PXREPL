@@ -170,3 +170,24 @@ async def test_send_uuid_duplicati_alert_passa_dal_canale_warning():
     config.notify_on_warning = False
     with patch.object(notification_service, "_load_config", return_value=config):
         assert (await notification_service.send_uuid_duplicati_alert(dup))["sent"] is False
+
+
+def test_solo_la_sezione_principale_conta_non_le_sezioni_snapshot():
+    """Falso allarme su DTS il 2026-09-22, primo giro dopo l'installazione: le
+    repliche corrette a mano il 21/09 (`qm set --smbios1`) portano ancora
+    l'uuid della SORGENTE dentro le sezioni `[snapshot]` copiate alla
+    registrazione, e `grep '^smbios1:'` le prendeva tutte (9115: 11 sezioni).
+    Veeam guarda la sezione principale: conta solo la PRIMA riga per file."""
+    from services.replica_identity import righe_smbios_da_grep
+
+    out = (
+        f"/etc/pve/nodes/px-01/qemu-server/115.conf:smbios1: uuid={U1}\n"
+        f"/etc/pve/nodes/px-04/qemu-server/9115.conf:smbios1: uuid={U3}\n"        # principale: derivato
+        f"/etc/pve/nodes/px-04/qemu-server/9115.conf:smbios1: uuid={U1}\n"        # [snapshot]: sorgente
+        f"/etc/pve/nodes/px-04/qemu-server/9115.conf:smbios1: uuid={U1}\n"
+    )
+    righe = righe_smbios_da_grep(out)
+    assert righe == [("px-01", 115, U1), ("px-04", 9115, U3)]
+    assert trova_uuid_duplicati(righe) == []
+    # e il comando stesso chiede a grep una riga sola per file
+    assert "-m1" in COMANDO_SMBIOS or "-m 1" in COMANDO_SMBIOS

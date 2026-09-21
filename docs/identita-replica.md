@@ -92,6 +92,14 @@ condividono lo stesso uuid, manda un alert `warning` sullo stesso canale di
 coppia nuova si segnala subito. Codice: `services/uuid_duplicati.py`,
 `SchedulerService._check_uuid_duplicati`.
 
+Conta solo la **prima** riga `smbios1:` di ogni file, cioè la sezione
+principale: le sezioni `[snapshot]` che seguono portano l'uuid di quando lo
+snapshot fu preso — in una replica registrata prima della 3.22.0 è quello
+della sorgente — e Veeam non le guarda (3.23.1, dopo un falso allarme su DTS:
+9104 e 9115). Corollario: su una replica registrata prima della 3.22.0 **non
+fare `qm rollback`** a uno di quegli snapshot, riporterebbe in vita uuid e
+`onboot` della sorgente.
+
 Se l'alert nomina una replica registrata prima della 3.22.0, correggerla a
 mano con la stessa forma che scrive il codice:
 

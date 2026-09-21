@@ -242,17 +242,25 @@ def righe_smbios_da_grep(stdout: str) -> List[Tuple[str, int, str]]:
     """Legge `grep -H '^smbios1:' /etc/pve/nodes/*/qemu-server/*.conf`.
 
     Una riga per VM: `/etc/pve/nodes/px-01/qemu-server/101.conf:smbios1: uuid=…`.
-    Righe che non hanno quella forma (o senza uuid) si scartano.
+    Righe che non hanno quella forma (o senza uuid) si scartano; di uno stesso
+    file conta solo la PRIMA riga (la sezione principale: le altre sono
+    sezioni `[snapshot]`, con l'uuid di allora).
     """
     out: List[Tuple[str, int, str]] = []
+    visti: set = set()
     pat = re.compile(r"^/etc/pve/nodes/([^/]+)/qemu-server/(\d+)\.conf:smbios1:\s*(.*)$")
     for riga in (stdout or "").splitlines():
         m = pat.match(riga.strip())
         if not m:
             continue
+        chiave = (m.group(1), int(m.group(2)))
+        if chiave in visti:
+            # righe successive dello stesso file = sezioni [snapshot]: non contano
+            continue
         u = uuid_da_smbios1(m.group(3))
         if u:
-            out.append((m.group(1), int(m.group(2)), u))
+            visti.add(chiave)
+            out.append((chiave[0], chiave[1], u))
     return out
 
 

@@ -19,7 +19,11 @@ logger = logging.getLogger(__name__)
 # Un comando per nodo: `/etc/pve/nodes/*` e' l'intero cluster (pmxcfs), quindi
 # ogni nodo dello stesso cluster risponde lo stesso insieme — le righe si
 # fondono per (nodo, vmid) e la ripetizione non costa niente.
-COMANDO_SMBIOS = "grep -H '^smbios1:' /etc/pve/nodes/*/qemu-server/*.conf 2>/dev/null || true"
+# `-m1`: la PRIMA riga per file, cioè la sezione principale. Le sezioni
+# `[snapshot]` che seguono portano l'uuid di quando lo snapshot fu preso — in
+# una replica registrata prima della 3.22.0 è quello della SORGENTE — e Veeam
+# non le guarda (falso allarme DTS 2026-09-22: 9115 con 11 sezioni).
+COMANDO_SMBIOS = "grep -H -m1 '^smbios1:' /etc/pve/nodes/*/qemu-server/*.conf 2>/dev/null || true"
 
 
 async def raccogli_smbios(ssh_service, nodi: Iterable) -> Tuple[List[Tuple[str, int, str]], List[str]]:
