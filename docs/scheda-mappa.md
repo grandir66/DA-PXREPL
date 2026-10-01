@@ -5,6 +5,7 @@ famiglia: 01-nucleo
 ordine: 100
 stato: manutenzione
 prossimo: aggiornare l'appliance alla 3.21.1 dal bottone Aggiorna, poi guardare il riepilogo di domattina
+applicazione: repl
 ---
 cruscotto backup/replica Proxmox (ZFS Sanoid/Syncoid, PBS)
 
