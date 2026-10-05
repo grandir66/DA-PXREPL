@@ -150,3 +150,10 @@ Porta 465 resta SSL diretto.
   `settings.py`, `database.py` — da segnalare al momento del merge.
 - Rilascio: bump versione (5 file), rebuild `frontend/dist`, CHANGELOG, tag e
   GitHub Release seguono la procedura standard del repo al momento del rilascio.
+
+---
+
+Nota 05/10/2026: default destinatario `proxmox@domarc.it`, deciso da Riccardo;
+sostituisce "nessun default committato" del requisito 4. Il seed riempie
+`smtp_to` solo alla creazione della riga o se e' vuoto (NULL o spazi); un valore
+esistente non si sovrascrive mai. Costante: `DEFAULT_SMTP_TO` in `backend/database.py`.

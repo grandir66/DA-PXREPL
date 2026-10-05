@@ -5,6 +5,16 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+### Modifiche
+
+- **Il destinatario predefinito delle notifiche e' `proxmox@domarc.it`.** Prima
+  una installazione nuova partiva senza destinatario e le mail non partivano
+  finche' qualcuno non lo scriveva; due installazioni erano finite su una
+  casella sbagliata. Ora `smtp_to` nasce con il default (`DEFAULT_SMTP_TO`) e,
+  all'avvio, viene riempito se e' vuoto. Un valore gia' impostato non si tocca
+  mai. Il segnaposto del campo in Impostazioni mostra lo stesso indirizzo.
+  Sostituisce la regola del 21/07 «nessun default committato» per i destinatari.
+
 ## [3.24.0] - 2026-09-22
 
 ### Correzioni

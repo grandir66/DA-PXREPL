@@ -111,7 +111,7 @@
  </div>
  <div class="form-group">
  <label>Email Destinatari (To)</label>
- <input type="text" v-model="notifications.smtp_to" class="form-input" placeholder="admin@example.com">
+ <input type="text" v-model="notifications.smtp_to" class="form-input" placeholder="proxmox@domarc.it">
  <span class="help-text">Separare più indirizzi con virgola</span>
  </div>
  </div>

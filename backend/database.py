@@ -249,6 +249,12 @@ class SystemConfig(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+# Destinatario notifiche predefinito di ogni installazione (deciso 05/10/2026).
+# Vale per le installazioni nuove e per quelle con smtp_to vuoto; un valore
+# gia' impostato non viene mai sovrascritto.
+DEFAULT_SMTP_TO = "proxmox@domarc.it"
+
+
 class NotificationConfig(Base):
     """Configurazione notifiche"""
     __tablename__ = "notification_config"
@@ -262,7 +268,7 @@ class NotificationConfig(Base):
     smtp_user = Column(String(255), nullable=True)
     smtp_password = Column(String(255), nullable=True)  # Encrypted
     smtp_from = Column(String(255), nullable=True)
-    smtp_to = Column(String(500), nullable=True)  # Destinatari (separati da virgola)
+    smtp_to = Column(String(500), nullable=True, default=DEFAULT_SMTP_TO)  # Destinatari (separati da virgola)
     smtp_subject_prefix = Column(String(100), default="[DAPX]")  # Prefisso soggetto
     smtp_tls = Column(Boolean, default=True)
     
@@ -1156,8 +1162,12 @@ def init_default_config(db_session):
             db_session.add(config)
     
     # Inizializza NotificationConfig se non esiste
-    if not db_session.query(NotificationConfig).first():
-        db_session.add(NotificationConfig())
+    notif = db_session.query(NotificationConfig).first()
+    if not notif:
+        db_session.add(NotificationConfig(smtp_to=DEFAULT_SMTP_TO))
+    elif not (notif.smtp_to or "").strip():
+        # Idempotente: riempie solo se vuoto, mai un valore esistente.
+        notif.smtp_to = DEFAULT_SMTP_TO
     
     # Se non esistono utenti, il setup iniziale avverrà via /api/auth/setup
     if db_session.query(User).count() == 0:
