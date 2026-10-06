@@ -5,6 +5,8 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.24.1] - 2026-10-06
+
 ### Modifiche
 
 - **Il destinatario predefinito delle notifiche e' `proxmox@domarc.it`.** Prima
