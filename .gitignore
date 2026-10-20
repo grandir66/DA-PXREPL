@@ -74,3 +74,25 @@ temp/
 # Allow frontend build artifacts
 !frontend/dist/
 .claude/settings.local.json
+
+# === contesto degli agenti (riorg-contesto-agenti, 20/10/2026) ===
+.env.*
+!.env.example
+ACCESSI.md
+*-accessi.md
+*.accessi.md
+credentials.md
+*.credentials.md
+INSTALL-REPORT-*.md
+secrets/
+!secrets/*.enc
+*.p12
+*.token
+*.password
+.passphrase
+*.bak-*
+backups/
+.~lock.*#
+.AppleDouble
+._*
+.claude/worktrees/
