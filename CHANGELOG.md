@@ -5,6 +5,23 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.24.2] - 2026-11-08
+
+### Correzioni
+
+- **Le chiavi SSH del cluster non si perdono più.** Il 06/11 a DTS il file
+  `/etc/pve/priv/authorized_keys` (condiviso dai tre nodi) è rimasto senza la chiave
+  dell'orchestratore e senza quella di DTS-PX-04: repliche e backup della configurazione
+  fermi per due giorni. Ogni corsa di ogni job riscriveva l'intero file, con un tmp dal
+  nome fisso e senza serializzazione; con più job insieme una corsa leggeva il file mentre
+  un'altra lo troncava. Ora: se la chiave c'è già il file non si tocca, se manca si
+  aggiunge in coda, si riscrive solo per togliere una voce vecchia e solo se il conteggio
+  delle righe torna; tutte le modifiche passano da un lock unico.
+- **Un errore SSH si chiama errore SSH.** Il controllo del dataset sorgente diceva
+  «Dataset sorgente non trovato» e il backup config «Nessun file di configurazione
+  trovato» anche quando il nodo non rispondeva per un accesso negato: ora il messaggio
+  dice «Accesso SSH a <host> fallito».
+
 ## [3.24.1] - 2026-10-06
 
 ### Modifiche

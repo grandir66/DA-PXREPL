@@ -180,8 +180,13 @@ def test_ensure_executor_key_scrive_attraverso_il_link_non_lo_sostituisce():
     (condiviso dal cluster). `mv tmp ~/.ssh/authorized_keys` sostituiva il link
     con un file normale: da quel momento il nodo leggeva un file suo, senza la
     chiave dell'orchestratore (PX-04 di DTS, dal 9 settembre 2026)."""
+    # 08/11/2026: la prova leggeva il testo del comando; il comando è cambiato
+    # (chiavi sparite a DTS il 06/11) e ora la stessa garanzia si prova
+    # eseguendolo in bash su un link vero:
+    # test_chiavi_cluster_dts_2026_11_06.py::
+    # test_chiave_nuova_aggiunta_senza_perdere_le_altre_e_link_intatto
     import inspect
     from services.syncoid_service import SyncoidService
     src = inspect.getsource(SyncoidService)
-    assert "mv ~/.ssh/authorized_keys.dapx.tmp ~/.ssh/authorized_keys" not in src
-    assert "cat ~/.ssh/authorized_keys.dapx.tmp > ~/.ssh/authorized_keys" in src
+    assert "mv ~/.ssh/authorized_keys" not in src
+    assert 'cat "$T" > "$F"' in src

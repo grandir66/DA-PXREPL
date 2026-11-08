@@ -12,6 +12,10 @@ from services.ssh_service import ssh_service, SSHResult
 
 logger = logging.getLogger(__name__)
 
+# Serializza ogni modifica agli authorized_keys dei nodi: su Proxmox il file è
+# condiviso dal cluster, e due scritture insieme perdevano righe (DTS 06/11/2026).
+_LOCK_CHIAVI = asyncio.Lock()
+
 
 # Pattern di validazione conservativo per identificatori che andranno
 # nella riga di comando syncoid. ZFS dataset accetta lettere, cifre,
@@ -248,11 +252,22 @@ class SyncoidService:
         )
         if not precheck.success or source_dataset not in (precheck.stdout or ""):
             err_text = (precheck.stdout or precheck.stderr or "").strip()
-            msg = (
-                f"Dataset sorgente '{source_dataset}' non trovato su "
-                f"{precheck_host}. Verifica che lo storage Proxmox punti "
-                f"al pool ZFS corretto. Output: {err_text[:200]}"
-            )
+            if precheck.exit_code == -1:
+                # Trasporto SSH fallito: non è una risposta del nodo
+                # (DTS 06-08/11/2026: due giorni di «dataset non trovato»
+                # che erano chiavi SSH sparite).
+                msg = (
+                    f"Accesso SSH a {precheck_host} fallito: il dataset "
+                    f"'{source_dataset}' non è stato verificato. "
+                    f"Controlla la chiave dell'orchestratore in authorized_keys. "
+                    f"Errore: {err_text[:200]}"
+                )
+            else:
+                msg = (
+                    f"Dataset sorgente '{source_dataset}' non trovato su "
+                    f"{precheck_host}. Verifica che lo storage Proxmox punti "
+                    f"al pool ZFS corretto. Output: {err_text[:200]}"
+                )
             logger.warning(msg)
             return {
                 "success": False,
@@ -491,43 +506,56 @@ class SyncoidService:
         managed_b64 = _b64.b64encode(managed_line.encode("utf-8")).decode("ascii")
         marker_b64 = _b64.b64encode(marker.encode("utf-8")).decode("ascii")
 
-        # 2) Per ogni endpoint: rimuovi vecchie voci con lo stesso marker e
-        #    appendi la riga corrente (idempotente).
-        for host, port in endpoints:
-            cmd = (
-                "mkdir -p ~/.ssh && chmod 700 ~/.ssh && "
-                "touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && "
-                # rimuovi righe stale con lo stesso marker (decodificato).
-                f'MARKER="$(echo {marker_b64} | base64 -d)" && '
-                'awk -v m="$MARKER" \'index($0, m)==0\' ~/.ssh/authorized_keys '
-                '> ~/.ssh/authorized_keys.dapx.tmp && '
-                # `cat >` scrive ATTRAVERSO il link: su Proxmox authorized_keys
-                # è un symlink a /etc/pve/priv/authorized_keys (cluster-wide) e
-                # un `mv` lo sostituiva con un file normale, scollegato dal
-                # cluster e senza la chiave dell'orchestratore (DTS, 2026-09-13).
-                'cat ~/.ssh/authorized_keys.dapx.tmp > ~/.ssh/authorized_keys && '
-                'rm -f ~/.ssh/authorized_keys.dapx.tmp && '
-                # appendi la riga corrente (decodificata).
-                f'LINE="$(echo {managed_b64} | base64 -d)" && '
-                'grep -qxF "$LINE" ~/.ssh/authorized_keys || '
-                'printf "%s\\n" "$LINE" >> ~/.ssh/authorized_keys'
-            )
-            try:
-                r = await ssh_service.execute(
-                    hostname=host,
-                    command=cmd,
-                    port=int(port),
-                    username=executor_user,
-                    key_path=executor_key,
-                    timeout=15,
-                )
-                if not r.success:
-                    logger.warning(
-                        f"Append pub key su {host} fallito: "
-                        f"{r.stderr or r.stdout}"
+        # 2) Per ogni endpoint: se la riga c'è già non si tocca niente; se
+        #    manca, si aggiunge in coda; il file si riscrive solo per togliere
+        #    una voce vecchia con lo stesso marker, e solo se il conteggio
+        #    torna (righe di prima − righe col marker = righe di dopo).
+        #
+        #    Su Proxmox ~/.ssh/authorized_keys è un link al file del cluster
+        #    (/etc/pve/priv/authorized_keys): `cat >` scrive ATTRAVERSO il link
+        #    (un `mv` lo sostituiva, DTS 2026-09-13). Prima del 2026-11-08 il
+        #    file si riscriveva a ogni corsa con un tmp dal nome fisso e senza
+        #    serializzazione: con più job insieme verso lo stesso cluster una
+        #    corsa leggeva il file mentre un'altra lo troncava, e il 06/11 a DTS
+        #    sono sparite le chiavi dell'orchestratore e di PX-04 (repliche e
+        #    backup config fermi per due giorni). Tutte le modifiche passano ora
+        #    dal lock di processo `_LOCK_CHIAVI`: l'orchestratore è uno solo.
+        cmd = (
+            "mkdir -p ~/.ssh && chmod 700 ~/.ssh && "
+            # niente `touch`: cambierebbe la data del file del cluster a ogni corsa
+            "{ [ -e ~/.ssh/authorized_keys ] || : > ~/.ssh/authorized_keys; } && "
+            "chmod 600 ~/.ssh/authorized_keys || exit 2; "
+            f'MARKER="$(echo {marker_b64} | base64 -d)"; '
+            f'LINE="$(echo {managed_b64} | base64 -d)"; '
+            '[ -n "$MARKER" ] && [ -n "$LINE" ] || exit 3; '
+            'F=~/.ssh/authorized_keys; '
+            'grep -qxF "$LINE" "$F" && exit 0; '
+            'if ! grep -qF "$MARKER" "$F"; then printf "%s\\n" "$LINE" >> "$F"; exit $?; fi; '
+            'T="$(mktemp ~/.ssh/authorized_keys.dapx.XXXXXX)" || exit 4; '
+            'awk -v m="$MARKER" \'index($0, m)==0\' "$F" > "$T" || { rm -f "$T"; exit 5; }; '
+            'PRIMA=$(grep -c "" "$F"); TOLTE=$(grep -cF "$MARKER" "$F"); DOPO=$(grep -c "" "$T"); '
+            'if [ "$DOPO" -ne $((PRIMA - TOLTE)) ]; then rm -f "$T"; '
+            'echo "conteggio incoerente: $PRIMA - $TOLTE != $DOPO, file non toccato" >&2; exit 6; fi; '
+            'printf "%s\\n" "$LINE" >> "$T" && cat "$T" > "$F"; R=$?; rm -f "$T"; exit $R'
+        )
+        async with _LOCK_CHIAVI:
+            for host, port in endpoints:
+                try:
+                    r = await ssh_service.execute(
+                        hostname=host,
+                        command=cmd,
+                        port=int(port),
+                        username=executor_user,
+                        key_path=executor_key,
+                        timeout=15,
                     )
-            except Exception as e:
-                logger.warning(f"Append pub key su {host} ha sollevato: {e}")
+                    if not r.success:
+                        logger.warning(
+                            f"Append pub key su {host} fallito: "
+                            f"{r.stderr or r.stdout}"
+                        )
+                except Exception as e:
+                    logger.warning(f"Append pub key su {host} ha sollevato: {e}")
 
     def _is_stuck_receive_error(self, output: str) -> bool:
         """True se l'output contiene il marker di lock di un receive in corso."""

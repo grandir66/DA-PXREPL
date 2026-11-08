@@ -185,13 +185,21 @@ class HostBackupService:
             backup_name = f"proxmox-{host_type}-config-{timestamp}"
         
         # Crea directory destinazione
-        await ssh_service.execute(
+        mk = await ssh_service.execute(
             hostname=hostname,
             command=f"mkdir -p {dest_path}",
             port=port,
             username=username,
             key_path=key_path
         )
+        if mk.exit_code == -1:
+            # Trasporto SSH fallito: senza questo controllo ogni `test -e`
+            # successivo falliva in silenzio e l'errore diventava «Nessun file
+            # di configurazione trovato» (DTS 06-08/11/2026, chiavi sparite).
+            return {
+                "success": False,
+                "error": f"Accesso SSH a {hostname} fallito: {(mk.stderr or '').strip()[:200]}"
+            }
         
         # Costruisci lista file esistenti
         existing_paths = []
