@@ -493,6 +493,7 @@ class NotificationService:
                     ),
                     "vm_name": job.vm_name,
                     "vm_id": job.vm_id,
+                    "vm_group_id": getattr(job, "vm_group_id", None),
                     "source_node": source_node.name if source_node else "N/A",
                     "dest_node": dest_node.name if dest_node else "N/A",
                     "source_dataset": job.source_dataset,
@@ -516,6 +517,9 @@ class NotificationService:
                 failed += job_failed
                 total_duration += job_duration
             
+            from services.notification_summary import segna_dischi_saltati
+            segna_dischi_saltati(jobs_summary)
+
             # Processa Recovery Jobs
             for job in recovery_jobs:
                 # Ottieni logs per questo job nelle ultime 24 ore

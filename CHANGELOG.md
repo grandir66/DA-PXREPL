@@ -5,6 +5,18 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.24.4] - 2026-11-08
+
+### Correzioni
+
+- **Il riepilogo dice «Saltato: disco precedente fallito» invece di «Non partito».**
+  I dischi di una VM si replicano in fila e la fila si ferma al primo fallito: a DTS
+  il disco 0 della VM 114 è rimasto fermo dal 27/10 all'8/11 e il riepilogo lo
+  chiamava «non partito», come un guasto dello scheduler.
+- **«VMID già in uso» non è più «Registrazione VM fallita» se la VM è la replica.**
+  Si legge la config della VM esistente: se contiene già il disco del job la nota è
+  «già registrata», altrimenti «VMID occupato da un'altra VM».
+
 ## [3.24.3] - 2026-11-08
 
 ### Correzioni

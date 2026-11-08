@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import logging
 from datetime import datetime
 from typing import Any, Dict, Optional
@@ -152,6 +153,27 @@ def _dest_zfs_pool_for_job(job: SyncJob) -> str:
     return parts[0] if parts else ""
 
 
+def nota_registrazione_vm(
+    msg: str, target_vmid, config_esistente: str | None,
+    dest_dataset: str | None, dest_node_name: str,
+) -> str:
+    """La nota da accodare al log quando la registrazione non è andata.
+
+    «VMID già in uso» non è un fallimento se la VM che c'è è proprio la
+    replica, cioè se nella sua config c'è già il disco di questo job: a DTS
+    l'8/11/2026 la 9114 era a posto e il riepilogo diceva «Registrazione VM
+    fallita». Se il disco non c'è, il VMID è di un'altra VM e resta errore."""
+    if "già in uso" in (msg or "") and config_esistente is not None:
+        disco = (dest_dataset or "").rstrip("/").rsplit("/", 1)[-1]
+        if disco and re.search(rf":{re.escape(disco)}(,|\s|$)", config_esistente, re.M):
+            return f" | VM {target_vmid} già registrata su {dest_node_name}"
+        return (
+            f" | Registrazione VM fallita: VMID {target_vmid} occupato da "
+            f"un'altra VM su {dest_node_name} (il disco {disco} non c'è)"
+        )
+    return f" | Registrazione VM fallita: {msg}"
+
+
 async def _try_register_vm_after_sync(job_id: int, log_entry_id: int) -> None:
     """Registra la VM su Proxmox quando la sync (e tutti i dischi gemelli) sono OK."""
     from database import SessionLocal, SyncJob, Node, JobLog, SyncMethod
@@ -268,7 +290,20 @@ async def _try_register_vm_after_sync(job_id: int, log_entry_id: int) -> None:
         else:
             # La riconciliazione ci riprova ogni due minuti: la stessa nota
             # accodata a ogni giro faceva crescere il messaggio senza limite.
-            nota = f" | Registrazione VM fallita: {msg}"
+            config_esistente = None
+            if "già in uso" in (msg or ""):
+                letto = await ssh_service.execute(
+                    hostname=dest_node.hostname,
+                    command=f"qm config {int(target_vmid)} 2>/dev/null",
+                    port=dest_node.ssh_port,
+                    username=dest_node.ssh_user,
+                    key_path=dest_node.ssh_key_path,
+                    timeout=15,
+                )
+                config_esistente = letto.stdout if letto.success else None
+            nota = nota_registrazione_vm(
+                msg, target_vmid, config_esistente, job.dest_dataset, dest_node.name
+            )
             if nota not in (log.message or ""):
                 log.message = (log.message or "") + nota
         db.commit()

@@ -183,6 +183,9 @@ STATI = {
     # Pianificato ma fermo. Non è «mai eseguito»: può aver funzionato per mesi
     # e aver smesso ieri, ed è il caso peggiore perché non alza nessun errore.
     "fermo": ("Non partito", AMBRA),
+    # Disco dopo uno fallito della stessa VM: non è partito perché la fila
+    # dei dischi si è fermata prima (DTS, 08/11/2026).
+    "saltato": ("Saltato: disco precedente fallito", AMBRA),
     # Fallito e rimesso a posto dalla riprova automatica: il sistema si è
     # aggiustato da solo. Ciano scuro, non ambra: non c'è niente da fare.
     "riprovato": ("Riuscita alla riprova", CIANO_SCURO),

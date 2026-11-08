@@ -65,7 +65,7 @@ _SCONOSCIUTA = Tipologia("", "ALTRO", "Attività non classificate")
 # Chi sta peggio si legge per primo. Un job attivo mai partito conta come
 # guasto in attesa di essere scoperto, non come riga neutra in fondo.
 _PESO_STATO = {
-    "failed": 0, "fermo": 1, "warning": 2, "riprovato": 3,
+    "failed": 0, "fermo": 1, "saltato": 1, "warning": 2, "riprovato": 3,
     "never_run": 4, "running": 5, "success": 6,
 }
 
@@ -103,6 +103,28 @@ def _riuscito_alla_riprova(job: dict[str, Any]) -> bool:
     )
 
 
+def segna_dischi_saltati(jobs: list[dict[str, Any]]) -> None:
+    """I dischi di una VM si replicano in fila e la fila si ferma al primo
+    disco fallito o fermo: quelli dopo non partono. Li segna con
+    `saltato_dopo` (il nome del disco che li ha fermati) perché il riepilogo
+    dica «saltato» e non «non partito», che sembrava un guasto dello
+    scheduler (DTS, VM 114 disco 0 fermo dal 27/10 all'8/11/2026)."""
+    gruppi: dict[str, list[dict[str, Any]]] = {}
+    for j in jobs:
+        g = j.get("vm_group_id")
+        if g and j.get("type", "sync") == "sync":
+            gruppi.setdefault(g, []).append(j)
+    for membri in gruppi.values():
+        bloccante = None
+        for j in sorted(membri, key=lambda x: x.get("id") or 0):
+            if bloccante and j.get("in_ritardo"):
+                j["saltato_dopo"] = bloccante
+                continue
+            if int(j.get("failed_24h") or 0) > 0 or j.get("in_ritardo") \
+                    or str(j.get("last_status") or "") == "failed":
+                bloccante = bloccante or str(j.get("name") or f"job {j.get('id')}")
+
+
 def _stato(job: dict[str, Any]) -> str:
     """Lo stato che conta è quello delle 24 ore, non l'ultimo per caso.
 
@@ -125,7 +147,9 @@ def _stato(job: dict[str, Any]) -> str:
     if int(job.get("failed_24h") or 0) > 0:
         return "failed"
     if job.get("in_ritardo"):
-        return "fermo"
+        # Disco dopo uno fallito nella stessa VM: la catena del gruppo si è
+        # fermata prima di lui (DTS, VM 114, 27/10-08/11/2026).
+        return "saltato" if job.get("saltato_dopo") else "fermo"
     ultimo = str(job.get("last_status") or "never_run")
     if ultimo in ml.STATI:
         return ultimo
@@ -233,7 +257,7 @@ def conta_fermi(sezioni: list[dict[str, Any]]) -> int:
     e un job che non parte non produce esecuzioni, quindi non ne produce
     nemmeno di fallite. Contato sul primo riepilogo vero, il 2026-09-08.
     """
-    return sum(1 for s in sezioni for j in s["jobs"] if _stato(j) == "fermo")
+    return sum(1 for s in sezioni for j in s["jobs"] if _stato(j) in ("fermo", "saltato"))
 
 
 def _riga_esclusi(esclusi: list[str]) -> str:
@@ -251,7 +275,7 @@ def _colore_sezione(sezione: dict[str, Any]) -> str:
     """Il colore della barra dice, scorrendo il margine, dove guardare."""
     if sezione["falliti"]:
         return ml.ROSSO
-    if any(_stato(j) == "fermo" for j in sezione["jobs"]):
+    if any(_stato(j) in ("fermo", "saltato") for j in sezione["jobs"]):
         return ml.AMBRA
     if sezione["esecuzioni"] == 0:
         return ml.MUTED
