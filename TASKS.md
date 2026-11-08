@@ -17,5 +17,7 @@ Diagnosi (08/11, sola lettura sul live):
 - [x] Rilascio v3.24.2 e DTS aggiornato (snapshot LXC 124 `pre-pxrepl-3242-20261108` su DTS-PX-04, /api/health 3.24.2 healthy)
 - [ ] Leggere il riepilogo DAPX di domani 09:00: repliche e backup config di UP/DOWN verdi
 - [x] Job falliti rilanciati a mano l'08/11 alle 15:00: 13 dischi ok (101 tutti, 103, 109 tutti, 115 tutti, 117, 126, 130) e backup config UP/DOWN ok; 104/111/112/114/122 rilanciati alle ~15:25 (esito da leggere)
-- [ ] **Difetto nuovo (08/11)**: 12 gruppi di replica insieme esauriscono il pool SQLAlchemy (5+10): ogni replica tiene una sessione per tutta la durata. 5 gruppi sono morti in background senza riga nel registro, `/run` del backup config ha dato 500, e la registrazione post-sync della VM 117 (job 4) è saltata (`_try_register_vm_after_sync`): verificare la VM 9117 su DTS-PX-04
+- [x] Corretto in v3.24.3 (tetto `DAPX_MAX_REPLICHE`=4, gruppo interrotto nel log), DTS aggiornato alle ~16:10 (snapshot LXC 124 `pre-pxrepl-3243-20261108`). VM 9117 verificata: config e snapshot del 08/11 15:01 ok. Esiti: 104, 111, 112, 122, 114 disk-1 ok
+- [ ] VM 114: disk-1 ok ma «Registrazione VM fallita: VMID 9114 già in uso»; disk-0 (555 GB) non compare nel registro delle 2 ore: controllare il gruppo e la 9114
+- [x] ~~Difetto nuovo (08/11)~~: 12 gruppi di replica insieme esauriscono il pool SQLAlchemy (5+10): ogni replica tiene una sessione per tutta la durata. 5 gruppi sono morti in background senza riga nel registro, `/run` del backup config ha dato 500, e la registrazione post-sync della VM 117 (job 4) è saltata (`_try_register_vm_after_sync`): verificare la VM 9117 su DTS-PX-04
 - [ ] A parte: i job dei dischi secondari (101 disk-2/3/4, 109 disk-2/3, 114 disk-0, 115 disk-1) «NON PARTITO» dal 26-27/10
