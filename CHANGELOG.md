@@ -5,6 +5,19 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.24.3] - 2026-11-08
+
+### Correzioni
+
+- **Al massimo 4 repliche insieme, le altre in coda.** Ogni replica tiene una
+  connessione al database per tutto il trasferimento: l'8/11 a DTS dodici VM
+  rilanciate insieme hanno esaurito il pool (5 + 10), cinque non sono mai partite,
+  il «Esegui» del backup config ha dato 500 e la registrazione della replica della
+  VM 117 è saltata. Ora chi supera il tetto aspetta prima di aprire la connessione;
+  `DAPX_MAX_REPLICHE` nel file d'ambiente lo cambia.
+- **Una replica di gruppo che si interrompe lo dice nel log.** Prima moriva in
+  silenzio: niente riga nel registro, niente errore nel journal.
+
 ## [3.24.2] - 2026-11-08
 
 ### Correzioni

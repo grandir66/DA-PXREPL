@@ -161,6 +161,10 @@ async def run_vm_group_background(
             vm_group_id, triggered_by_user_id, force_rerun=force_rerun,
             replica_completa=replica_completa,
         )
+    except Exception:
+        # Prima moriva in silenzio: a DTS l'8/11/2026 cinque gruppi «avviati»
+        # non hanno lasciato né una riga nel registro né un errore nel journal.
+        logger.error(f"Replica del gruppo VM {vm_group_id} interrotta", exc_info=True)
     finally:
         scheduler_service.mark_done(group_key)
 

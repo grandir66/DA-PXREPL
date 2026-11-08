@@ -551,6 +551,30 @@ async def _monitor_sync_job_completion(
         logger.warning(f"Monitor job {job_id} interrotto: {e}")
     finally:
         scheduler_service.mark_done(job_key)
+# Tetto alle repliche contemporanee. Ogni replica tiene una sessione
+# SQLAlchemy per tutto il trasferimento: l'8/11/2026 a DTS dodici gruppi
+# lanciati insieme hanno esaurito il pool (5 + 10), cinque sono morti senza
+# una riga nel registro e le altre pagine rispondevano 500. Chi supera il
+# tetto aspetta qui, PRIMA di aprire la sessione. DAPX_MAX_REPLICHE lo cambia.
+import functools
+import os as _os
+
+try:
+    MAX_REPLICHE_CONTEMPORANEE = max(1, int(_os.environ.get("DAPX_MAX_REPLICHE", "4")))
+except ValueError:
+    MAX_REPLICHE_CONTEMPORANEE = 4
+_SEMAFORO_REPLICHE = asyncio.Semaphore(MAX_REPLICHE_CONTEMPORANEE)
+
+
+def _con_tetto_repliche(fn):
+    @functools.wraps(fn)
+    async def wrapper(*args, **kwargs):
+        async with _SEMAFORO_REPLICHE:
+            return await wrapper.__wrapped__(*args, **kwargs)
+    return wrapper
+
+
+@_con_tetto_repliche
 async def execute_sync_job_task(
     job_id: int, triggered_by_user_id: int = None, tentativo: int = 1,
     replica_completa: bool = False,
