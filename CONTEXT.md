@@ -12,7 +12,7 @@ Otto tipologie di attività sotto un solo cruscotto: replica VM, snapshot,
 replica dati, sync NAS, backup e recovery PBS, backup host, migrazione live.
 
 **3.24.1 rilasciata il 6 ottobre**: destinatario predefinito delle notifiche
-`proxmox@domarc.it` (solo dove è vuoto). In esercizio: DTS alla 3.24.0 dal 22
+`proxmox@domarc.it` (solo dove è vuoto). In esercizio: **DTS alla 3.24.2 dall'8 novembre** (chiavi SSH del cluster sparite il 06/11, vedi TASKS.md); prima 3.24.0 dal 22
 settembre (scheduler con battito, il job segue la VM), Domarc ancora 3.21.3.
 
 **Trappola corrente**: il rilascio si fa solo da `main` e finisce alla
