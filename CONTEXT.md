@@ -13,9 +13,9 @@ replica dati, sync NAS, backup e recovery PBS, backup host, migrazione live.
 
 **3.24.1 rilasciata il 6 ottobre**: destinatario predefinito delle notifiche
 `proxmox@domarc.it` (solo dove è vuoto). In esercizio: **DTS alla 3.24.4 dall'8 novembre** (chiavi SSH del cluster sparite il 06/11, vedi TASKS.md); prima 3.24.0 dal 22
-settembre (scheduler con battito, il job segue la VM), Domarc ancora 3.21.3.
+settembre (scheduler con battito, il job segue la VM), Domarc alla 3.24.5 dal 24 novembre.
 
-**Verifica del 24/11** (dettaglio in TASKS.md): l'LXC 124 di DTS è rimasto spento dal 12/11 al 24/11 dopo un riavvio di DTS-PX-04, 12 giorni senza repliche e senza avvisi; Domarc è ancora alla 3.21.3 con un job orfano (VM 666) che fallisce da 50 giorni.
+**Verifica del 24/11** (dettaglio in TASKS.md): l'LXC 124 di DTS è rimasto spento dal 12/11 al 24/11 dopo un riavvio di DTS-PX-04, 12 giorni senza repliche e senza avvisi; Domarc è stata portata alla 3.24.5 (rilasciata il 24/11) e il job 6 ripuntato sul firewall nuovo (VM 699): la prima corsa è da leggere. DTS resta alla 3.24.4.
 
 **Trappola corrente**: il rilascio si fa solo da `main` e finisce alla
 release di GitHub (`.claude/rules/rilascio.md`): l'8 settembre una versione

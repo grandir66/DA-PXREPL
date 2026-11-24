@@ -13,17 +13,22 @@ DTS (LXC 124 su DTS-PX-04):
 - [ ] Journal del container: 502 MB, nessun tetto
 
 Domarc (LXC 332 su DA-PX-04):
-- [ ] Ancora 3.21.3: mancano la correzione delle chiavi del cluster (3.24.2), il tetto alle repliche (3.24.3), il battito dello scheduler in `/api/health`. Nessuno snapshot del container
-- [ ] Job 6 VM-666: 50 fallimenti di fila, la VM 666 non esiste più nel cluster. Job 15 VM-402 senza orario, fermo dal 17/07
-- [ ] Backup Config DA-PX-04: 3 falliti in 14 giorni con «Errore creazione backup:» vuoto (`host_backup_service.py:255`, stderr e stdout vuoti)
+- [x] (24/11: aggiornata alla 3.24.5, snapshot LXC 332 `pre-pxrepl-3245-20261124` su DA-PX-04, health 3.24.5 healthy, chiavi del cluster 10 righe prima e dopo) Ancora 3.21.3: mancano la correzione delle chiavi del cluster (3.24.2), il tetto alle repliche (3.24.3), il battito dello scheduler in `/api/health`. Nessuno snapshot del container
+- [x] Job 6: Riccardo, 24/11: «la 666 era il vecchio firewall che ora ha cambiato ID e va replicato quello». È la 699 Stormshield-SS-EVA2-OK su DA-PX-03: job 6 ripuntato a mano nel DB su `zfs/vm-699-disk-0` → `ZFS-LARGE/replica/vm-699-disk-0`, VMID di destinazione 20699. Prima corsa (completa, 10 GB) stanotte alle 00:00: **esito da leggere**
+- [ ] Su PX-NAS resta la replica vecchia: VM 20005 e `ZFS-LARGE/replica/vm-666-disk-0` (1,85 GB, ultima snapshot 05/10). Si toglie solo se lo dice Riccardo
+- [ ] Job 15 VM-402 senza orario, fermo dal 17/07: tenerlo o toglierlo?
+- [x] (3.24.5: uscita 1 di tar = avviso, errore col codice e il messaggio; causa probabile, non provata: file di /etc/pve cambiato durante la lettura. Leggere le prossime corse) Backup Config DA-PX-04: 3 falliti in 14 giorni con «Errore creazione backup:» vuoto (`host_backup_service.py:255`, stderr e stdout vuoti)
 - [ ] 36 copie di `dapx.db.backup-*` e 15+ `.env.pre-update-*` mai ruotate; resti: `/opt/dapx-unified/_archive`, `get_valid_key.py`, `/var/log/dapx-backandrepl`
 
+- [ ] DTS è ancora alla 3.24.4: portarla alla 3.24.5 (cliente: aspetta l'ok di Riccardo)
+- [ ] `cache_service`: se il nodo non risponde l'elenco è vuoto e le VM in cache vengono cancellate (ripiego muto, visto leggendo il codice il 24/11, non corretto)
+
 Codice (valgono per tutti e due):
-- [ ] `cleanup_old_logs` cancella `audit_logs WHERE timestamp`, la colonna è `created_at`: la pulizia dell'audit non ha mai funzionato (`update_db_schema.py`)
-- [ ] `cache_service.refresh_node_vms` tratta i PBS come PVE: ~1900 avvisi a settimana a Domarc
-- [ ] `nodes.last_check` non lo scrive nessuno (aprile-giugno a Domarc, NULL a DTS): `is_online` non dice niente
-- [ ] Una scansione (percorsi `/../etc/passwd`, byte non validi) dà 500 con traceback invece di 404: 36 a settimana a Domarc (visto su 3.21.3, da riprovare sulla 3.24.4)
-- [ ] `/api/health` dice «healthy» anche con job falliti da 50 giorni: aggiungere il conto dei job in ritardo/falliti
+- [x] (3.24.5) `cleanup_old_logs` cancella `audit_logs WHERE timestamp`, la colonna è `created_at`: la pulizia dell'audit non ha mai funzionato (`update_db_schema.py`)
+- [x] (3.24.5) `cache_service.refresh_node_vms` tratta i PBS come PVE: ~1900 avvisi a settimana a Domarc
+- [x] (3.24.5: lo scrive il giro della cache quando il nodo risponde con dei dati; `is_online` resta quello del test a mano) `nodes.last_check` non lo scriveva nessuno (aprile-giugno a Domarc, NULL a DTS): `is_online` non dice niente
+- [x] (3.24.5, prova `test_percorso_illeggibile_e_404_non_500`) Una scansione (percorsi `/../etc/passwd`, byte non validi) dà 500 con traceback invece di 404: 36 a settimana a Domarc (visto su 3.21.3, da riprovare sulla 3.24.4)
+- [x] (3.24.5: campo `jobs`, lo stato non cambia) `/api/health` dice «healthy» anche con job falliti da 50 giorni: aggiungere il conto dei job in ritardo/falliti
 
 ## 2026-11-08 — DTS: repliche e backup config falliti (chiavi ssh sparite)
 
