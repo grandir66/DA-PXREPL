@@ -1,5 +1,30 @@
 # TASKS — DA-PXREPL
 
+## 2026-11-24 — Verifica delle due installazioni (Domarc 3.21.3, DTS 3.24.4)
+
+Riccardo: «analizza il progetto e verifichiamo le due implementazioni, una in Domarc e una in DTS, per valutarne errori e miglioramenti». Sola lettura sul live, 24/11 ore 14:05 (diagnostica via `pct exec`, DB aperto in sola lettura).
+
+DTS (LXC 124 su DTS-PX-04):
+- [ ] **LXC 124 spento dal 12/11 23:36 al 24/11 13:46**: DTS-PX-04 si è riavviato il 12/11 alle 23:38 e il container non è ripartito (oggi l'ha avviato root@pam a mano; `onboot: 1` oggi c'è). 12 giorni senza repliche né backup config, ultima snapshot sul pool 12/11 22:02. Nessuno è stato avvisato: chi avvisa è il container stesso. Alla ripartenza è uscito l'alert «12 gruppi in ritardo»; lo scheduler non recupera le corse perse, ripartono al prossimo orario
+- [ ] Controllo dal di fuori (Zabbix su `/api/health` + età dell'ultima corsa): manca in tutti e due i siti
+- [ ] Job 2 VM-103: la VM sta su DTS-PX-04 che è la destinazione, fallisce dal 12/11: decidere se spostare la VM o rivedere il job
+- [ ] Destinatari notifiche `…@dts-automotime.it` (il mittente è `dts-automotive.com`): refuso? `smtp_host` ha uno spazio in coda
+- [ ] DTS2-PBS (192.168.16.99) non risponde sulla 22 a ogni giro; UUID SMBIOS duplicati: 1 coppia; tre job «Backup Config» con lo stesso nome
+- [ ] Journal del container: 502 MB, nessun tetto
+
+Domarc (LXC 332 su DA-PX-04):
+- [ ] Ancora 3.21.3: mancano la correzione delle chiavi del cluster (3.24.2), il tetto alle repliche (3.24.3), il battito dello scheduler in `/api/health`. Nessuno snapshot del container
+- [ ] Job 6 VM-666: 50 fallimenti di fila, la VM 666 non esiste più nel cluster. Job 15 VM-402 senza orario, fermo dal 17/07
+- [ ] Backup Config DA-PX-04: 3 falliti in 14 giorni con «Errore creazione backup:» vuoto (`host_backup_service.py:255`, stderr e stdout vuoti)
+- [ ] 36 copie di `dapx.db.backup-*` e 15+ `.env.pre-update-*` mai ruotate; resti: `/opt/dapx-unified/_archive`, `get_valid_key.py`, `/var/log/dapx-backandrepl`
+
+Codice (valgono per tutti e due):
+- [ ] `cleanup_old_logs` cancella `audit_logs WHERE timestamp`, la colonna è `created_at`: la pulizia dell'audit non ha mai funzionato (`update_db_schema.py`)
+- [ ] `cache_service.refresh_node_vms` tratta i PBS come PVE: ~1900 avvisi a settimana a Domarc
+- [ ] `nodes.last_check` non lo scrive nessuno (aprile-giugno a Domarc, NULL a DTS): `is_online` non dice niente
+- [ ] Una scansione (percorsi `/../etc/passwd`, byte non validi) dà 500 con traceback invece di 404: 36 a settimana a Domarc (visto su 3.21.3, da riprovare sulla 3.24.4)
+- [ ] `/api/health` dice «healthy» anche con job falliti da 50 giorni: aggiungere il conto dei job in ritardo/falliti
+
 ## 2026-11-08 — DTS: repliche e backup config falliti (chiavi ssh sparite)
 
 Diagnosi (08/11, sola lettura sul live):
