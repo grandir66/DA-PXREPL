@@ -1,25 +1,25 @@
 <template>
     <div class="user-profile">
-        <h3>Il Tuo Profilo</h3>
+        <h3>{{ t('profilo.titolo') }}</h3>
         
         <div class="card-section mt-4">
-            <h4>Cambia Password</h4>
+            <h4>{{ t('profilo.cambia') }}</h4>
             <div class="form-group">
-                <label>Password Attuale</label>
+                <label>{{ t('profilo.attuale') }}</label>
                 <input v-model="form.current_password" type="password" class="form-input">
             </div>
             <div class="form-group">
-                <label>Nuova Password</label>
+                <label>{{ t('profilo.nuova') }}</label>
                 <input v-model="form.new_password" type="password" class="form-input">
             </div>
             <div class="form-group">
-                <label>Conferma Nuova Password</label>
+                <label>{{ t('profilo.conferma') }}</label>
                 <input v-model="form.confirm_password" type="password" class="form-input">
             </div>
             
             <div class="mt-4">
                 <button class="btn btn-primary" @click="updatePassword" :disabled="loading">
-                    {{ loading ? 'Updating...' : 'Aggiorna Password' }}
+                    {{ loading ? t('comune.salvataggio') : t('profilo.aggiorna') }}
                 </button>
             </div>
         </div>
@@ -30,6 +30,9 @@
 import { useToast, errorMessage } from '../../stores/toast';
 import { reactive, ref } from 'vue';
 import authService from '../../services/auth';
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const toast = useToast()
 
@@ -42,7 +45,7 @@ const form = reactive({
 
 const updatePassword = async () => {
     if (form.new_password !== form.confirm_password) {
-        toast.warning("Le nuove password non coincidono");
+        toast.warning(t('profilo.nonCoincidono'));
         return;
     }
     
@@ -52,12 +55,12 @@ const updatePassword = async () => {
             current_password: form.current_password,
             new_password: form.new_password
         });
-        toast.success("Password aggiornata");
+        toast.success(t('profilo.aggiornata'));
         form.current_password = '';
         form.new_password = '';
         form.confirm_password = '';
     } catch (e: any) {
-        toast.error('Errore', errorMessage(e));
+        toast.error(t('comune.errore'), errorMessage(e));
     } finally {
         loading.value = false;
     }

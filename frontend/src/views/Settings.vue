@@ -1,8 +1,8 @@
 <template>
  <div class="settings-page">
  <PageHeader
- title="Impostazioni"
- subtitle="Configurazione sistema, utenti e sicurezza"
+ :title="t('menu.impostazioni')"
+ :subtitle="t('impostazioni.sottotitolo')"
  icon="settings"
  />
 
@@ -10,25 +10,25 @@
  <!-- Sidebar Navigation -->
  <div class="settings-sidebar">
  <div class="nav-item" :class="{ active: activeTab === 'general' }" @click="activeTab = 'general'">
- <Icon name="wrench" :size="14" /> Generale
+ <Icon name="wrench" :size="14" /> {{ t('impostazioni.sGenerale') }}
  </div>
  <div class="nav-item" :class="{ active: activeTab === 'notifications' }" @click="activeTab = 'notifications'">
- <Icon name="bell" :size="14" /> Notifiche
+ <Icon name="bell" :size="14" /> {{ t('impostazioni.sNotifiche') }}
  </div>
  <div class="nav-item" :class="{ active: activeTab === 'users' }" @click="activeTab = 'users'" v-if="isAdmin">
- <Icon name="users" :size="14" /> Utenti
+ <Icon name="users" :size="14" /> {{ t('impostazioni.sUtenti') }}
  </div>
  <div class="nav-item" :class="{ active: activeTab === 'profile' }" @click="activeTab = 'profile'">
- <Icon name="user" :size="14" /> Profilo
+ <Icon name="user" :size="14" /> {{ t('impostazioni.sProfilo') }}
  </div>
  <div class="nav-item" :class="{ active: activeTab === 'certs' }" @click="activeTab = 'certs'" v-if="isAdmin">
- <Icon name="lock" :size="14" /> Certificati SSL
+ <Icon name="lock" :size="14" /> {{ t('impostazioni.sCertificati') }}
  </div>
  <div class="nav-item" :class="{ active: activeTab === 'ssh' }" @click="activeTab = 'ssh'" v-if="isAdmin">
- <Icon name="key" :size="14" /> Chiavi SSH
+ <Icon name="key" :size="14" /> {{ t('impostazioni.sChiavi') }}
  </div>
  <div class="nav-item" :class="{ active: activeTab === 'syslog' }" @click="activeTab = 'syslog'" v-if="isAdmin">
- <Icon name="file-text" :size="14" /> Syslog remoto
+ <Icon name="file-text" :size="14" /> {{ t('impostazioni.sSyslog') }}
  </div>
  </div>
 
@@ -36,29 +36,28 @@
  <div class="settings-content">
  <!-- GENERAL TAB -->
  <div v-if="activeTab === 'general'" class="card">
- <h3>Autenticazione Sistema</h3>
+ <h3>{{ t('impostazioni.auth') }}</h3>
  <div class="card-body" v-if="authConfig">
  <div class="form-group">
- <label>Metodo Autenticazione</label>
+ <label>{{ t('impostazioni.authMetodo') }}</label>
  <select v-model="authConfig.auth_method" class="form-input">
- <option value="proxmox">Proxmox PVE (PAM/PVE)</option>
- <option value="local">Locale</option>
+ <option value="proxmox">{{ t('impostazioni.authPve') }}</option>
+ <option value="local">{{ t('impostazioni.authLocale') }}</option>
  </select>
  </div>
- <button class="btn btn-primary btn-sm mt-2" @click="saveAuth">Salva Auth</button>
+ <button class="btn btn-primary btn-sm mt-2" @click="saveAuth">{{ t('impostazioni.authSalva') }}</button>
  </div>
  </div>
 
  <!-- SCHEDULER (nella scheda Generale) -->
  <div v-if="activeTab === 'general' && isAdmin" class="card" style="margin-top: 24px;">
- <h3>Scheduler</h3>
+ <h3>{{ t('impostazioni.scheduler') }}</h3>
  <div class="card-body">
  <label style="display: flex; gap: 8px; align-items: center;">
- <input type="checkbox" v-model="recuperoAvvio" @change="salvaRecupero" /> Recupera all'avvio le corse saltate
+ <input type="checkbox" v-model="recuperoAvvio" @change="salvaRecupero" /> {{ t('impostazioni.recupero') }}
  </label>
  <p class="text-secondary text-sm mt-2">
- Se il servizio riparte dopo un fermo, i job che hanno saltato il loro ultimo orario partono subito, una volta sola
- (le repliche restano al massimo 4 insieme). Spento: aspettano il prossimo orario. Vale dal prossimo avvio del servizio.
+ {{ t('impostazioni.recuperoNota') }}
  </p>
  </div>
  </div>
@@ -66,11 +65,11 @@
  <!-- NOTIFICATIONS TAB -->
  <div v-if="activeTab === 'notifications'" class="card">
  <div class="card-header">
- <h3>Configurazione Notifiche</h3>
+ <h3>{{ t('impostazioni.notTitolo') }}</h3>
  <div style="display: flex; gap: 12px; align-items: center;">
- <button class="btn btn-secondary btn-sm" @click="testNotification('email')">Test Email</button>
+ <button class="btn btn-secondary btn-sm" @click="testNotification('email')">{{ t('impostazioni.notProva') }}</button>
  <button class="btn btn-primary btn-sm" @click="saveNotifications" :disabled="saving">
- {{ saving ? 'Salvataggio...' : 'Salva Configurazione' }}
+ {{ saving ? t('comune.salvataggio') : t('impostazioni.notSalva') }}
  </button>
  </div>
  </div>
@@ -79,62 +78,62 @@
  <!-- SMTP Section -->
  <div class="form-section">
  <div class="section-title">
- <h4>Configurazione Server SMTP</h4>
+ <h4>{{ t('impostazioni.smtp') }}</h4>
  <label class="checkbox-label">
- <input type="checkbox" v-model="notifications.smtp_enabled"> Abilita Notifiche Email
+ <input type="checkbox" v-model="notifications.smtp_enabled"> {{ t('impostazioni.smtpAbilita') }}
  </label>
  </div>
  
  <div v-if="notifications.smtp_enabled" class="animate-fade">
  <div class="grid-2">
  <div class="form-group">
- <label>Server SMTP</label>
+ <label>{{ t('impostazioni.smtpServer') }}</label>
  <input type="text" v-model="notifications.smtp_host" class="form-input" placeholder="smtp.example.com">
  </div>
  <div class="form-group">
- <label>Porta</label>
+ <label>{{ t('comune.porta') }}</label>
  <input type="number" v-model.number="notifications.smtp_port" class="form-input" placeholder="587">
  </div>
  </div>
  
  <div class="grid-2">
  <div class="form-group">
- <label>Username SMTP</label>
+ <label>{{ t('impostazioni.smtpUtente') }}</label>
  <input type="text" v-model="notifications.smtp_user" class="form-input" placeholder="user@example.com">
  </div>
  <div class="form-group">
- <label>Password SMTP</label>
+ <label>{{ t('impostazioni.smtpPassword') }}</label>
  <input type="password" v-model="notifications.smtp_password" class="form-input" placeholder="••••••••">
  </div>
  </div>
 
  <div class="form-group">
  <label class="checkbox-label">
- <input type="checkbox" v-model="notifications.smtp_tls"> Usa TLS (STARTTLS)
+ <input type="checkbox" v-model="notifications.smtp_tls"> {{ t('impostazioni.smtpTls') }}
  </label>
  <div class="help-text">
- • Porta 25: disabilita TLS<br>
- • Porta 465: SSL automatico<br>
- • Porta 587: abilita TLS (STARTTLS)
+ {{ t('impostazioni.smtp25') }}<br>
+ {{ t('impostazioni.smtp465') }}<br>
+ {{ t('impostazioni.smtp587') }}
  </div>
  </div>
 
- <h4 class="mt-4">Mittente e Destinatari</h4>
+ <h4 class="mt-4">{{ t('impostazioni.mittDest') }}</h4>
  
  <div class="grid-2">
  <div class="form-group">
- <label>Email Mittente (From)</label>
+ <label>{{ t('impostazioni.mittente') }}</label>
  <input type="text" v-model="notifications.smtp_from" class="form-input" placeholder="noreply@example.com">
  </div>
  <div class="form-group">
- <label>Email Destinatari (To)</label>
+ <label>{{ t('impostazioni.destinatari') }}</label>
  <input type="text" v-model="notifications.smtp_to" class="form-input" placeholder="proxmox@domarc.it">
- <span class="help-text">Separare più indirizzi con virgola</span>
+ <span class="help-text">{{ t('impostazioni.destinatariNota') }}</span>
  </div>
  </div>
 
  <div class="form-group">
- <label>Prefisso Oggetto Email</label>
+ <label>{{ t('impostazioni.prefisso') }}</label>
  <input type="text" v-model="notifications.smtp_subject_prefix" class="form-input" placeholder="[DAPX]">
  </div>
 
@@ -145,19 +144,19 @@
 
  <!-- Triggers Section -->
  <div class="form-section">
- <h4 class="trigger-title"><Icon name="alert-triangle" :size="20" /> Quando Notificare</h4>
+ <h4 class="trigger-title"><Icon name="alert-triangle" :size="20" /> {{ t('impostazioni.quando') }}</h4>
  <div class="triggers-grid">
  <label class="trigger-option error">
  <input type="checkbox" v-model="notifications.notify_on_failure">
- <span><Icon name="x-circle" :size="14" class="text-danger" /> Notifica su errori</span>
+ <span><Icon name="x-circle" :size="14" class="text-danger" /> {{ t('impostazioni.suErrori') }}</span>
  </label>
  <label class="trigger-option warning">
  <input type="checkbox" v-model="notifications.notify_on_warning">
- <span><Icon name="alert-triangle" :size="14" /> Notifica su warning</span>
+ <span><Icon name="alert-triangle" :size="14" /> {{ t('impostazioni.suAvvisi') }}</span>
  </label>
  <label class="trigger-option success">
  <input type="checkbox" v-model="notifications.notify_on_success">
- <span><Icon name="check-circle" :size="14" class="text-success" /> Notifica su successi</span>
+ <span><Icon name="check-circle" :size="14" class="text-success" /> {{ t('impostazioni.suSuccessi') }}</span>
  </label>
  </div>
  </div>
@@ -167,13 +166,13 @@
  <!-- Daily Summary Placeholder -->
  <div class="form-section">
  <div style="display: flex; justify-content: space-between; align-items: center;">
- <h4><Icon name="mail" :size="20" /> Riepilogo Giornaliero</h4>
- <button class="btn btn-xs btn-secondary" @click="sendDailySummary">Invia ORA</button>
+ <h4><Icon name="mail" :size="20" /> {{ t('impostazioni.riepilogo') }}</h4>
+ <button class="btn btn-xs btn-secondary" @click="sendDailySummary">{{ t('impostazioni.riepilogoOra') }}</button>
  </div>
- <p class="text-secondary text-sm mb-2">Ricevi ogni giorno un riepilogo con lo stato di tutti i job.</p>
+ <p class="text-secondary text-sm mb-2">{{ t('impostazioni.riepilogoNota') }}</p>
  </div>
  </div>
- <div v-else class="loading-state">Caricamento impostazioni...</div>
+ <div v-else class="loading-state">{{ t('impostazioni.caricamento') }}</div>
  </div>
 
  <!-- USERS TAB -->
@@ -218,6 +217,9 @@ import UserProfile from './settings/UserProfile.vue';
 import Certificates from './settings/Certificates.vue';
 import SSHKeys from './settings/SSHKeys.vue';
 import SyslogRemoto from './settings/SyslogRemoto.vue';
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const toast = useToast()
 
@@ -244,7 +246,7 @@ onMounted(async () => {
  authConfig.value = authRes.data;
  if (isAdmin.value) await caricaRecupero();
  } catch (e) {
- toast.error('Errore caricamento impostazioni', errorMessage(e));
+ toast.error(t('impostazioni.erroreCarico'), errorMessage(e));
  }
 });
 
@@ -253,9 +255,9 @@ const saveNotifications = async () => {
  saving.value = true;
  try {
  await settingsService.updateNotificationConfig(notifications.value);
- toast.success('Impostazioni salvate');
+ toast.success(t('impostazioni.salvate'));
  } catch (e) {
- toast.error('Errore salvataggio');
+ toast.error(t('comune.erroreSalvataggio'));
  } finally {
  saving.value = false;
  }
@@ -273,10 +275,10 @@ const caricaRecupero = async () => {
 const salvaRecupero = async () => {
  try {
  await apiClient.put('/settings/system/scheduler_recupero_avvio', { value: recuperoAvvio.value ? 'true' : 'false' });
- toast.success(recuperoAvvio.value ? 'Recupero all\'avvio acceso' : 'Recupero all\'avvio spento');
+ toast.success(recuperoAvvio.value ? t('impostazioni.recuperoAcceso') : t('impostazioni.recuperoSpento'));
  } catch (e) {
  recuperoAvvio.value = !recuperoAvvio.value;
- toast.error('Errore salvataggio', errorMessage(e));
+ toast.error(t('comune.erroreSalvataggio'), errorMessage(e));
  }
 };
 
@@ -284,27 +286,27 @@ const saveAuth = async () => {
  if (!authConfig.value) return;
  try {
  await settingsService.updateAuthConfig(authConfig.value);
- toast.success('Impostazioni Auth salvate');
+ toast.success(t('impostazioni.authSalvate'));
  } catch (e) {
- toast.error('Errore salvataggio');
+ toast.error(t('comune.erroreSalvataggio'));
  }
 };
 
 const testNotification = async (channel: string) => {
  try {
  await settingsService.testNotification(channel);
- toast.success(`Test ${channel} inviato`);
+ toast.success(t('impostazioni.provaInviata', { canale: channel }));
  } catch (e: any) {
- toast.error('Errore test', errorMessage(e));
+ toast.error(t('impostazioni.erroreProva'), errorMessage(e));
  }
 }
 
 const sendDailySummary = async () => {
  try {
  await apiClient.post('/settings/notifications/send-daily-summary');
- toast.success("Riepilogo giornaliero inviato");
+ toast.success(t('impostazioni.riepilogoInviato'));
  } catch (e: any) {
- toast.error("Errore invio riepilogo", errorMessage(e));
+ toast.error(t('impostazioni.erroreRiepilogo'), errorMessage(e));
  }
 };
 </script>

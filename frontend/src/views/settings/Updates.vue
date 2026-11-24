@@ -2,36 +2,36 @@
  <AdminGate>
  <div class="updates-page">
  <PageHeader
- title="Aggiornamenti Sistema"
- subtitle="Gestisci gli aggiornamenti di DAPX-Unified"
+ :title="t('aggiornamenti.titolo')"
+ :subtitle="t('aggiornamenti.sottotitolo')"
  icon="package"
  />
 
  <!-- Stato Versione -->
  <div class="card version-card">
  <div class="card-header">
- <h3>Versione Installata</h3>
+ <h3>{{ t('aggiornamenti.installata') }}</h3>
  <button class="btn btn-secondary" @click="checkForUpdates" :disabled="checking">
- {{ checking ? 'Controllo...' : 'Verifica Aggiornamenti' }}
+ {{ checking ? t('aggiornamenti.controllo') : t('aggiornamenti.verifica') }}
  </button>
  </div>
  <div class="card-body">
  <div class="version-info">
  <div class="version-current">
- <span class="label">Versione attuale:</span>
+ <span class="label">{{ t('aggiornamenti.attuale') }}</span>
  <span class="version-number">{{ currentVersion || 'N/A' }}</span>
  </div>
  
  <div v-if="updateInfo" class="version-available" :class="{ 'has-update': updateInfo.update_available }">
- <span class="label">Ultima versione:</span>
+ <span class="label">{{ t('aggiornamenti.ultima') }}</span>
  <span class="version-number">{{ updateInfo.available_version || 'N/A' }}</span>
- <span v-if="updateInfo.update_available" class="badge badge-success">Aggiornamento disponibile!</span>
- <span v-else-if="updateInfo.local_ahead" class="badge badge-warning" title="Il codice installato e' piu' recente dell'ultima release pubblicata su GitHub: manca il tag/release del rilascio.">Installata piu' recente della pubblicata</span>
- <span v-else class="badge badge-secondary">Aggiornato</span>
+ <span v-if="updateInfo.update_available" class="badge badge-success">{{ t('aggiornamenti.disponibile') }}</span>
+ <span v-else-if="updateInfo.local_ahead" class="badge badge-warning" :title="t('aggiornamenti.piuRecenteAiuto')">{{ t('aggiornamenti.piuRecente') }}</span>
+ <span v-else class="badge badge-secondary">{{ t('aggiornamenti.aggiornato') }}</span>
  </div>
  
  <div v-if="updateInfo?.last_check" class="last-check">
- <span class="text-secondary">Ultimo controllo: {{ formatDate(updateInfo.last_check) }}</span>
+ <span class="text-secondary">{{ t('aggiornamenti.ultimoControllo', { quando: formatDate(updateInfo.last_check) }) }}</span>
  </div>
  </div>
  </div>
@@ -40,9 +40,9 @@
  <!-- Changelog -->
  <div v-if="updateInfo?.changelog" class="card changelog-card">
  <div class="card-header">
- <h3>Note di Rilascio</h3>
+ <h3>{{ t('aggiornamenti.note') }}</h3>
  <a v-if="updateInfo?.release_url" :href="updateInfo.release_url" target="_blank" class="btn btn-sm">
- <Icon name="link" :size="14" /> Vedi su GitHub
+ <Icon name="link" :size="14" /> {{ t('aggiornamenti.github') }}
  </a>
  </div>
  <div class="card-body">
@@ -56,13 +56,13 @@
  <!-- Storico CHANGELOG.md locale -->
  <div class="card history-card">
  <div class="card-header">
- <h3>Storico Modifiche (CHANGELOG)</h3>
+ <h3>{{ t('aggiornamenti.storico') }}</h3>
  <button class="btn btn-sm" @click="toggleHistory">
- {{ historyExpanded ? 'Nascondi' : 'Mostra' }}
+ {{ historyExpanded ? t('comune.nascondi') : t('comune.mostra') }}
  </button>
  </div>
  <div v-if="historyExpanded" class="card-body">
- <div v-if="historyLoading" class="loading-msg">Caricamento changelog…</div>
+ <div v-if="historyLoading" class="loading-msg">{{ t('aggiornamenti.storicoCarico') }}</div>
  <div v-else-if="historyError" class="error-msg">{{ historyError }}</div>
  <pre v-else class="changelog-content history-content">{{ historyContent }}</pre>
  </div>
@@ -71,15 +71,15 @@
  <!-- Azione Aggiornamento -->
  <div v-if="updateInfo?.update_available" class="card action-card">
  <div class="card-header">
- <h3>Esegui Aggiornamento</h3>
+ <h3>{{ t('aggiornamenti.esegui') }}</h3>
  </div>
  <div class="card-body">
  <div class="warning-box">
- <strong><Icon name="alert-triangle" :size="14" /> Attenzione:</strong>
+ <strong><Icon name="alert-triangle" :size="14" /> {{ t('vm.attenzione') }}</strong>
  <ul>
- <li>Il servizio verrà riavviato durante l'aggiornamento</li>
- <li>Verrà creato un backup automatico del database</li>
- <li>L'operazione potrebbe richiedere alcuni minuti</li>
+ <li>{{ t('aggiornamenti.avviso1') }}</li>
+ <li>{{ t('aggiornamenti.avviso2') }}</li>
+ <li>{{ t('aggiornamenti.avviso3') }}</li>
  </ul>
  </div>
  <button 
@@ -87,7 +87,7 @@
  @click="startUpdate" 
  :disabled="updateStatus?.in_progress"
  >
- {{ updateStatus?.in_progress ? '⏳ Aggiornamento in corso...' : '⬆️ Avvia Aggiornamento' }}
+ {{ updateStatus?.in_progress ? t('aggiornamenti.inCorso') : t('aggiornamenti.avvia') }}
  </button>
  </div>
  </div>
@@ -95,10 +95,10 @@
  <!-- Log Aggiornamento -->
  <div v-if="updateStatus && (updateStatus.in_progress || updateStatus.log.length > 0)" class="card log-card">
  <div class="card-header">
- <h3>Log Aggiornamento</h3>
- <span v-if="updateStatus.in_progress" class="badge badge-warning">In corso...</span>
- <span v-else-if="updateStatus.error" class="badge badge-danger">Errore</span>
- <span v-else-if="updateStatus.success" class="badge badge-success">Completato</span>
+ <h3>{{ t('aggiornamenti.log') }}</h3>
+ <span v-if="updateStatus.in_progress" class="badge badge-warning">{{ t('vm.inCorso') }}</span>
+ <span v-else-if="updateStatus.error" class="badge badge-danger">{{ t('comune.errore') }}</span>
+ <span v-else-if="updateStatus.success" class="badge badge-success">{{ t('comune.completato') }}</span>
  </div>
  <div class="card-body">
  <div class="log-output" ref="logOutput">
@@ -115,13 +115,13 @@
  <!-- Alternative: Script da terminale -->
  <div class="card terminal-card">
  <div class="card-header">
- <h3>Aggiornamento da Terminale</h3>
+ <h3>{{ t('aggiornamenti.terminale') }}</h3>
  </div>
  <div class="card-body">
- <p>In alternativa, puoi eseguire l'aggiornamento direttamente dal terminale:</p>
+ <p>{{ t('aggiornamenti.terminaleNota') }}</p>
  <div class="code-block">
  <code>/opt/dapx-unified/update.sh</code>
- <button class="btn-copy" @click="copyCommand" title="Copia"><Icon name="list" :size="14" /></button>
+ <button class="btn-copy" @click="copyCommand" :title="t('comune.copia')"><Icon name="list" :size="14" /></button>
  </div>
  </div>
  </div>
@@ -136,6 +136,9 @@ import Icon from '../../components/ui/Icon.vue';
 import PageHeader from '../../components/ui/PageHeader.vue';
 import updatesService from '../../services/updates';
 import type { UpdateCheckResult, UpdateStatus } from '../../services/updates';
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const currentVersion = ref<string>('');
 const updateInfo = ref<UpdateCheckResult | null>(null);
@@ -163,7 +166,7 @@ const loadChangelog = async () => {
  historyContent.value = res.data.content;
  historyLoaded.value = true;
  } catch (e: any) {
- historyError.value = e?.response?.data?.detail || 'Impossibile caricare CHANGELOG.md';
+ historyError.value = e?.response?.data?.detail || t('aggiornamenti.erroreStorico');
  } finally {
  historyLoading.value = false;
  }

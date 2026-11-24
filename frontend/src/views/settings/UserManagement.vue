@@ -1,9 +1,9 @@
 <template>
     <div class="user-management">
         <div class="header-actions">
-            <h3>Gestione Utenti</h3>
+            <h3>{{ t('utenti.titolo') }}</h3>
             <button class="btn btn-primary btn-sm" @click="openCreateModal">
-                + Nuovo Utente
+                {{ t('utenti.nuovoBtn') }}
             </button>
         </div>
 
@@ -11,12 +11,12 @@
             <table class="data-table">
                 <thead>
                     <tr>
-                        <th>Username</th>
-                        <th>Nome</th>
-                        <th>Email</th>
-                        <th>Ruolo</th>
-                        <th>Auth</th>
-                        <th>Azioni</th>
+                        <th>{{ t('comune.utente') }}</th>
+                        <th>{{ t('comune.nome') }}</th>
+                        <th>{{ t('comune.email') }}</th>
+                        <th>{{ t('comune.ruolo') }}</th>
+                        <th>{{ t('utenti.auth') }}</th>
+                        <th>{{ t('comune.azioni') }}</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -32,7 +32,7 @@
                         </td>
                         <td>
                              <div class="btn-group">
-                                <button class="btn btn-danger btn-xs" @click="deleteUser(user)" v-if="user.id !== currentUserId" title="Elimina">
+                                <button class="btn btn-danger btn-xs" @click="deleteUser(user)" v-if="user.id !== currentUserId" :title="t('comune.elimina')">
                                     <Icon name="trash" :size="14" />
                                 </button>
                             </div>
@@ -46,46 +46,46 @@
         <div v-if="showModal" class="modal-overlay">
             <div class="modal">
                 <div class="modal-header">
-                    <h3>Nuovo Utente</h3>
+                    <h3>{{ t('utenti.nuovo') }}</h3>
                     <button class="close-btn" @click="showModal = false">×</button>
                 </div>
                 <div class="modal-body">
                     <div class="form-group">
-                        <label>Username</label>
+                        <label>{{ t('comune.utente') }}</label>
                         <input v-model="form.username" type="text" class="form-input" required>
                     </div>
                     <div class="form-group">
-                        <label>Password</label>
+                        <label>{{ t('comune.password') }}</label>
                         <input v-model="form.password" type="password" class="form-input" required>
                     </div>
                     <div class="form-group">
-                        <label>Nome Completo</label>
+                        <label>{{ t('utenti.nomeCompleto') }}</label>
                         <input v-model="form.full_name" type="text" class="form-input">
                     </div>
                     <div class="form-group">
-                        <label>Email</label>
+                        <label>{{ t('comune.email') }}</label>
                         <input v-model="form.email" type="email" class="form-input">
                     </div>
                     <div class="form-group">
-                        <label>Ruolo</label>
+                        <label>{{ t('comune.ruolo') }}</label>
                         <select v-model="form.role" class="form-input">
-                            <option value="viewer">Viewer</option>
-                            <option value="operator">Operator</option>
-                            <option value="admin">Admin</option>
+                            <option value="viewer">{{ t('utenti.rViewer') }}</option>
+                            <option value="operator">{{ t('utenti.rOperator') }}</option>
+                            <option value="admin">{{ t('utenti.rAdmin') }}</option>
                         </select>
                     </div>
                     <div class="form-group">
-                         <label>Metodo Auth</label>
+                         <label>{{ t('utenti.metodo') }}</label>
                          <select v-model="form.auth_method" class="form-input">
-                             <option value="local">Locale</option>
+                             <option value="local">{{ t('utenti.locale') }}</option>
                              <option value="proxmox">Proxmox</option>
                          </select>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button class="btn btn-secondary" @click="showModal = false">Annulla</button>
+                    <button class="btn btn-secondary" @click="showModal = false">{{ t('comune.annulla') }}</button>
                     <button class="btn btn-primary" @click="submitUser" :disabled="saving">
-                        {{ saving ? 'Salvataggio...' : 'Crea Utente' }}
+                        {{ saving ? t('comune.salvataggio') : t('utenti.crea') }}
                     </button>
                 </div>
             </div>
@@ -99,6 +99,9 @@ import { ref, onMounted, reactive } from 'vue';
 import Icon from '../../components/ui/Icon.vue';
 import { confirmDangerous } from '../../stores/confirm';
 import authService from '../../services/auth';
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const toast = useToast()
 
@@ -152,7 +155,7 @@ const submitUser = async () => {
         showModal.value = false;
         loadUsers();
     } catch (e: any) {
-        toast.error('Errore creazione utente', errorMessage(e));
+        toast.error(t('utenti.erroreCrea'), errorMessage(e));
     } finally {
         saving.value = false;
     }
@@ -164,7 +167,7 @@ const deleteUser = async (user: any) => {
         await authService.deleteUser(user.id);
         loadUsers();
     } catch (e) {
-        toast.error('Errore eliminazione');
+        toast.error(t('comune.erroreEliminazione'));
     }
 };
 
