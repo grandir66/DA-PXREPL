@@ -1,18 +1,17 @@
 <template>
   <div class="pbs-inventory-page">
     <PageHeader
-      title="Inventario PBS"
-      subtitle="Backup VM/CT già presenti su Proxmox Backup Server (creati da Proxmox, da dapx o manualmente)"
+      :title="t('pbsInv.titolo')"
+      :subtitle="t('pbsInv.sottotitolo')"
       icon="database"
     />
 
     <div class="info-banner mb-6">
       <div class="icon"><Icon name="box" :size="20" /></div>
       <div class="content">
-        <strong>Esplora i backup sul PBS</strong>
+        <strong>{{ t('pbsInv.esplora') }}</strong>
         <p>
-          Seleziona una macchina per aprire la catena delle date di backup disponibili,
-          poi scegli la data e avvia il restore verso un nodo PVE.
+          {{ t('pbsInv.esploraNota') }}
         </p>
       </div>
     </div>
@@ -20,16 +19,16 @@
     <div class="card mb-6">
       <div class="card-body filters-grid">
         <div class="form-group">
-          <label>Nodo PBS</label>
+          <label>{{ t('pbs.nodoPbs') }}</label>
           <select v-model.number="filters.pbsNodeId" class="form-input" @change="onPbsChange">
-            <option :value="null" disabled>— Seleziona PBS —</option>
+            <option :value="null" disabled>{{ t('pbs.selPbs') }}</option>
             <option v-for="n in pbsNodes" :key="n.id" :value="n.id">
               {{ n.name }} ({{ n.hostname }})
             </option>
           </select>
         </div>
         <div class="form-group">
-          <label>Datastore</label>
+          <label>{{ t('pbsInv.datastore') }}</label>
           <input
             v-model="filters.datastore"
             class="form-input"
@@ -37,32 +36,32 @@
           />
         </div>
         <div class="form-group">
-          <label>Nodo PVE (per pvesh)</label>
+          <label>{{ t('pbs.nodoPve') }}</label>
           <select v-model.number="filters.pveNodeId" class="form-input">
-            <option :value="null">Auto</option>
+            <option :value="null">{{ t('pbs.auto') }}</option>
             <option v-for="n in pveNodes" :key="n.id" :value="n.id">
               {{ n.name }}
             </option>
           </select>
         </div>
         <div class="form-group">
-          <label>Storage PBS su PVE</label>
-          <input v-model="filters.pbsStorage" class="form-input" placeholder="es. PBS-BACK" />
+          <label>{{ t('pbs.storagePbs') }}</label>
+          <input v-model="filters.pbsStorage" class="form-input" :placeholder="t('pbs.segnStorage')" />
         </div>
         <div class="form-group">
-          <label>Filtra VMID</label>
+          <label>{{ t('pbs.filtraVmid') }}</label>
           <input
             v-model.number="filters.vmId"
             type="number"
             min="100"
             class="form-input"
-            placeholder="Tutte"
+            :placeholder="t('pbs.tutte')"
           />
         </div>
         <div class="form-group filter-actions">
           <label>&nbsp;</label>
           <button class="btn btn-primary" :disabled="!filters.pbsNodeId || loading" @click="loadBackups">
-            {{ loading ? 'Caricamento…' : 'Aggiorna elenco' }}
+            {{ loading ? t('comune.caricamento') : t('pbs.aggiornaElenco') }}
           </button>
         </div>
       </div>
@@ -71,36 +70,36 @@
     <div class="card">
       <div class="card-header flex justify-between items-center">
         <h3>
-          Backup trovati
+          {{ t('pbs.trovati') }}
           <span v-if="datastoreLabel" class="text-secondary text-sm font-normal">
             — datastore {{ datastoreLabel }}
           </span>
         </h3>
         <span class="badge badge-purple">
-          {{ filteredVmSummaries.length }} VM · {{ totalVersions }} date
+          {{ t('pbs.vmDate', { vm: filteredVmSummaries.length, date: totalVersions }) }}
         </span>
       </div>
 
       <div class="card-body">
         <div v-if="!filters.pbsNodeId" class="empty-state">
-          Seleziona un nodo PBS per visualizzare l'inventario.
+          {{ t('pbsInv.selNodo') }}
         </div>
-        <div v-else-if="loading" class="empty-state">Caricamento backup PBS…</div>
+        <div v-else-if="loading" class="empty-state">{{ t('pbsInv.carico') }}</div>
         <div v-else-if="error" class="alert alert-danger">{{ error }}</div>
         <div v-else-if="vmSummaries.length === 0" class="empty-state">
-          Nessun backup trovato. Verifica datastore, credenziali PBS e storage PBS sui nodi PVE.
+          {{ t('pbsInv.nessuno') }}
         </div>
         <template v-else>
           <div class="mb-4">
             <input
               v-model="search"
               class="form-input"
-              placeholder="Cerca per VMID o nome macchina…"
+              :placeholder="t('pbsInv.cerca')"
             />
           </div>
 
           <div v-if="filteredVmSummaries.length === 0" class="empty-state">
-            Nessuna macchina corrisponde alla ricerca.
+            {{ t('pbsInv.nessunaCorr') }}
           </div>
 
           <div v-else class="vm-groups">
@@ -128,14 +127,14 @@
                   </div>
                 </div>
                 <div v-if="!isVmExpanded(group.vmid)" class="vm-group-latest">
-                  <span class="text-secondary text-sm">Ultimo:</span>
+                  <span class="text-secondary text-sm">{{ t('pbs.ultimo') }}</span>
                   <span class="date-label">{{ formatBackupTime(group.latest_backup_time) }}</span>
                 </div>
               </button>
 
               <div v-if="isVmExpanded(group.vmid)" class="date-chain-wrap">
                 <div v-if="isVmLoading(group.vmid)" class="date-chain-loading">
-                  Caricamento date backup…
+                  {{ t('pbsInv.caricoDate') }}
                 </div>
                 <div v-else-if="vmVersionsError(group.vmid)" class="date-chain-error">
                   {{ vmVersionsError(group.vmid) }}
@@ -149,11 +148,11 @@
                   >
                     <div class="date-chain-when">
                       <span class="date-label">{{ formatBackupTime(ver.backup_time) }}</span>
-                      <span v-if="idx === 0" class="badge badge-success badge-xs">più recente</span>
+                      <span v-if="idx === 0" class="badge badge-success badge-xs">{{ t('pbs.piuRecente') }}</span>
                     </div>
                     <div class="date-chain-size">{{ formatSize(ver.size) }}</div>
                     <button class="btn btn-xs btn-primary" @click="openRestore(ver)">
-                      Restore
+                      {{ t('pbs.ripristina') }}
                     </button>
                   </li>
                 </ol>
@@ -166,26 +165,26 @@
 
     <ModalDialog
       v-model:visible="restoreVisible"
-      :title="`Restore da PBS — ${restoreBackup?.vm_name || restoreBackup?.vmid || ''}`"
+      :title="t('pbs.titoloRipristino', { nome: restoreBackup?.vm_name || restoreBackup?.vmid || '' })"
       width="720px"
     >
       <div v-if="restoreBackup" class="restore-form space-y-4">
         <div class="p-3 bg-dark-soft rounded text-sm">
-          <div><strong>Data backup:</strong> {{ formatBackupTime(restoreBackup.backup_time) }}</div>
+          <div><strong>{{ t('pbsInv.dataBackup') }}</strong> {{ formatBackupTime(restoreBackup.backup_time) }}</div>
           <div class="text-xs text-secondary break-all mt-1">{{ backupId(restoreBackup) }}</div>
         </div>
 
         <div class="form-group">
-          <label>Nodo PVE destinazione</label>
+          <label>{{ t('pbs.nodoDest') }}</label>
           <select v-model.number="restoreForm.destNodeId" class="form-input" @change="loadStorages">
-            <option :value="null" disabled>— Seleziona nodo —</option>
+            <option :value="null" disabled>{{ t('pbsInv.selNodoDest') }}</option>
             <option v-for="n in pveNodes" :key="n.id" :value="n.id">{{ n.name }}</option>
           </select>
         </div>
 
         <div class="grid-2 gap-4">
           <div class="form-group">
-            <label>VMID destinazione</label>
+            <label>{{ t('pbs.vmidDest') }}</label>
             <input
               v-model.number="restoreForm.destVmid"
               type="number"
@@ -195,9 +194,9 @@
             />
           </div>
           <div class="form-group">
-            <label>Storage destinazione</label>
+            <label>{{ t('pbsInv.storageDest') }}</label>
             <select v-model="restoreForm.destStorage" class="form-input">
-              <option value="">Default nodo</option>
+              <option value="">{{ t('pbsInv.defaultNodo') }}</option>
               <option v-for="s in targetStorages" :key="s.name" :value="s.name">
                 {{ s.name }} ({{ s.type }})
               </option>
@@ -206,18 +205,18 @@
         </div>
 
         <div class="alert alert-warning text-sm">
-          Il restore sovrascrive la VM se il VMID esiste già sul nodo destinazione.
+          {{ t('pbsInv.sovrascrive') }}
         </div>
       </div>
 
       <template #footer>
-        <button class="btn btn-secondary" @click="restoreVisible = false">Annulla</button>
+        <button class="btn btn-secondary" @click="restoreVisible = false">{{ t('comune.annulla') }}</button>
         <button
           class="btn btn-primary"
           :disabled="restoring || !restoreForm.destNodeId"
           @click="executeRestore"
         >
-          {{ restoring ? 'Restore in corso…' : 'Avvia restore' }}
+          {{ restoring ? t('pbs.ripristinoInCorso') : t('pbs.avviaRipristino') }}
         </button>
       </template>
     </ModalDialog>
@@ -236,6 +235,9 @@ import pbsInventoryService, {
 } from '../services/pbsInventory'
 import { useToast, errorMessage } from '../stores/toast'
 import { confirmDangerous } from '../stores/confirm'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const toast = useToast()
 
@@ -312,7 +314,7 @@ async function loadNodes() {
     pbsNodes.value = all.filter(n => n.node_type === 'pbs')
     pveNodes.value = all.filter(n => n.node_type !== 'pbs')
   } catch (e) {
-    toast.error('Errore caricamento nodi', errorMessage(e))
+    toast.error(t('pbsInv.erroreNodi'), errorMessage(e))
   }
 }
 
@@ -459,12 +461,12 @@ async function executeRestore() {
   if (!restoreBackup.value || !filters.pbsNodeId || !restoreForm.destNodeId) return
   const bid = backupId(restoreBackup.value)
   if (!bid) {
-    toast.error('Backup ID mancante')
+    toast.error(t('pbs.idMancante'))
     return
   }
   const when = formatBackupTime(restoreBackup.value.backup_time)
   if (!await confirmDangerous(
-    `Avviare il restore di ${restoreBackup.value.vm_name || bid} del ${when}?`
+    t('pbs.confRipristinoDel', { nome: restoreBackup.value.vm_name || bid, quando: when })
   )) return
 
   restoring.value = true
@@ -477,10 +479,10 @@ async function executeRestore() {
       dest_storage: restoreForm.destStorage || undefined,
       vm_type: (restoreBackup.value.vm_type === 'lxc' ? 'lxc' : 'qemu'),
     })
-    toast.success('Restore completato')
+    toast.success(t('pbs.ripristinoFatto'))
     restoreVisible.value = false
   } catch (e) {
-    toast.error('Restore fallito', errorMessage(e))
+    toast.error(t('pbs.ripristinoFallito'), errorMessage(e))
   } finally {
     restoring.value = false
   }

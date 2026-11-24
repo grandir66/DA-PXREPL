@@ -1,37 +1,37 @@
 <template>
  <div class="host-backup-page">
  <PageHeader
- title="Host Config Backup"
- subtitle="Backup configurazione host Proxmox PVE e PBS"
+ :title="t('hostBackup.titolo')"
+ :subtitle="t('hostBackup.sottotitolo')"
  icon="shield"
  />
 
  <div class="info-banner mb-6">
  <div class="icon"><Icon name="lightbulb" :size="20" /></div>
  <div class="content">
- <strong>Cos'è l'Host Config Backup?</strong>
- <p>Backup dei file di configurazione del sistema Proxmox (non delle VM). Include: /etc/pve, /etc/network, configurazione cluster, chiavi SSH, cron jobs.</p>
- <div class="mt-1 text-xs opacity-75">Utile per: Disaster recovery, migrazioni server, ripristino configurazione.</div>
+ <strong>{{ t('hostBackup.cose') }}</strong>
+ <p>{{ t('hostBackup.coseNota') }}</p>
+ <div class="mt-1 text-xs opacity-75">{{ t('hostBackup.utile') }}</div>
  </div>
  </div>
 
  <!-- Create Schedule Form -->
  <div class="card mb-6">
  <div class="card-header collapse-header" @click="showCreateForm = !showCreateForm">
- <h3>Crea Job Host Backup Schedulato</h3>
+ <h3>{{ t('hostBackup.creaTitolo') }}</h3>
  <span>{{ showCreateForm ? '▲' : '▼' }}</span>
  </div>
  
  <div class="card-body" v-show="showCreateForm">
  <div class="grid-2">
  <div class="form-group">
- <label>Nome Job</label>
- <input type="text" v-model="form.name" class="form-input" placeholder="Backup Config PVE">
+ <label>{{ t('hostBackup.nomeJob') }}</label>
+ <input type="text" v-model="form.name" class="form-input" :placeholder="t('hostBackup.segnNome')">
  </div>
  <div class="form-group">
- <label>Nodo</label>
+ <label>{{ t('comune.nodo') }}</label>
  <select v-model="form.node_id" class="form-input">
- <option :value="null" disabled>-- Seleziona nodo --</option>
+ <option :value="null" disabled>{{ t('hostBackup.selNodo') }}</option>
  <option v-for="node in nodes" :key="node.id" :value="node.id">
  {{ node.name }} ({{ node.node_type }})
  </option>
@@ -41,56 +41,56 @@
 
  <div class="grid-3">
  <div class="form-group">
- <label>Schedule</label>
+ <label>{{ t('hostBackup.pianificazione') }}</label>
  <!-- I valori sono cron: la parola «daily» che c'era prima lo scheduler
       la scartava a ogni avvio, e il backup non partiva mai (2026-09-13). -->
  <select v-model="form.schedule" class="form-input">
- <option :value="null">⏸️ Manuale (disattivato)</option>
- <option value="0 1 * * *">Giornaliero (01:00)</option>
- <option value="0 1 * * 0">Settimanale (domenica 01:00)</option>
+ <option :value="null">{{ t('hostBackup.manuale') }}</option>
+ <option value="0 1 * * *">{{ t('hostBackup.giorno') }}</option>
+ <option value="0 1 * * 0">{{ t('hostBackup.settimana') }}</option>
  </select>
  </div>
  <div class="form-group">
- <label>Retention (mantieni ultimi)</label>
+ <label>{{ t('hostBackup.conserva') }}</label>
  <input type="number" v-model.number="form.keep_last" class="form-input" min="1" max="100">
  </div>
  <div class="form-group">
- <label>Percorso Destinazione</label>
+ <label>{{ t('hostBackup.percorso') }}</label>
  <input type="text" v-model="form.dest_path" class="form-input" placeholder="/var/backups/proxmox-config">
  </div>
  </div>
 
  <div class="grid-2 mt-4">
  <label class="checkbox-label">
- <input type="checkbox" v-model="form.compress"> <Icon name="box" :size="14" /> Comprimi (gzip)
+ <input type="checkbox" v-model="form.compress"> <Icon name="box" :size="14" /> {{ t('hostBackup.comprimi') }}
  </label>
  <div class="flex-col gap-2">
  <label class="checkbox-label">
- <input type="checkbox" v-model="form.encrypt"> <Icon name="lock" :size="14" /> Cripta (AES-256)
+ <input type="checkbox" v-model="form.encrypt"> <Icon name="lock" :size="14" /> {{ t('hostBackup.cifra') }}
  </label>
- <input v-if="form.encrypt" type="password" v-model="form.encrypt_password" class="form-input mt-1" placeholder="Password crittografia">
+ <input v-if="form.encrypt" type="password" v-model="form.encrypt_password" class="form-input mt-1" :placeholder="t('hostBackup.segnPassword')">
  </div>
  </div>
 
  <div class="grid-2 mt-4">
  <div class="form-group">
- <label>Notifiche Email</label>
+ <label>{{ t('hostBackup.notifiche') }}</label>
  <select v-model="form.notify_mode" class="form-input">
- <option value="daily">Solo nel riepilogo giornaliero (predefinito)</option>
- <option value="failure">Riepilogo + mail subito se fallisce</option>
- <option value="always">Mail a ogni esecuzione</option>
- <option value="never">Nessuna notifica, escluso dal riepilogo</option>
+ <option value="daily">{{ t('hostBackup.nDaily') }}</option>
+ <option value="failure">{{ t('hostBackup.nFailure') }}</option>
+ <option value="always">{{ t('hostBackup.nAlways') }}</option>
+ <option value="never">{{ t('hostBackup.nNever') }}</option>
  </select>
  </div>
  <div class="form-group" v-if="form.notify_mode !== 'never' && form.notify_mode !== 'daily'">
- <label>Soggetto Email</label>
+ <label>{{ t('hostBackup.oggetto') }}</label>
  <input type="text" v-model="form.notify_subject" class="form-input" placeholder="[HOST BACKUP] config-{node_name}">
  </div>
  </div>
 
  <div class="mt-4 text-right">
  <button class="btn btn-primary" @click="createJob" :disabled="creating">
- {{ creating ? 'Creazione...' : '+ Crea Job' }}
+ {{ creating ? t('hostBackup.creazione') : t('hostBackup.crea') }}
  </button>
  </div>
  </div>
@@ -99,21 +99,21 @@
  <!-- Scheduled Jobs List -->
  <div class="card mb-6">
  <div class="card-header">
- <h3>Job Host Backup Configurati</h3>
- <button class="btn btn-sm btn-secondary" @click="loadJobs">Aggiorna</button>
+ <h3>{{ t('hostBackup.configurati') }}</h3>
+ <button class="btn btn-sm btn-secondary" @click="loadJobs">{{ t('comune.aggiorna') }}</button>
  </div>
  <div class="card-body p-0">
  <div class="table-container">
  <table class="data-table" v-if="jobs.length > 0">
  <thead>
  <tr>
- <th>Nome</th>
- <th>Nodo</th>
- <th>Schedule</th>
- <th>Retention</th>
- <th>Ultimo Run</th>
- <th>Stato</th>
- <th>Azioni</th>
+ <th>{{ t('comune.nome') }}</th>
+ <th>{{ t('comune.nodo') }}</th>
+ <th>{{ t('hostBackup.pianificazione') }}</th>
+ <th>{{ t('hostBackup.colConserva') }}</th>
+ <th>{{ t('hostBackup.ultima') }}</th>
+ <th>{{ t('comune.stato') }}</th>
+ <th>{{ t('comune.azioni') }}</th>
  </tr>
  </thead>
  <tbody>
@@ -125,13 +125,13 @@
  <td class="text-xs">{{ formatDate(job.last_run) }}</td>
  <td>
  <span class="badge" :class="getStatusClass(job.last_status)">
- {{ job.last_status || 'Mai eseguito' }}
+ {{ job.last_status || t('hostBackup.mai') }}
  </span>
  </td>
  <td>
  <div class="btn-group">
  <button class="btn btn-xs btn-primary" @click="runJob(job)" :disabled="job.running">
- <Icon name="play" :size="14" />️ Run
+ <Icon name="play" :size="14" />{{ t('hostBackup.esegui') }}
  </button>
  <button class="btn btn-xs btn-danger" @click="deleteJob(job)">
  <Icon name="trash" :size="14" />
@@ -142,7 +142,7 @@
  </tbody>
  </table>
  <div v-else class="empty-state">
- Nessun job configurato. Crea un nuovo job per iniziare.
+ {{ t('hostBackup.nessunJob') }}
  </div>
  </div>
  </div>
@@ -151,21 +151,21 @@
  <!-- Manual Backup Section -->
  <div class="card">
  <div class="card-header">
- <h3>Backup Manuale Rapido</h3>
+ <h3>{{ t('hostBackup.rapido') }}</h3>
  </div>
  <div class="card-body">
  <div style="display: flex; gap: 12px; align-items: flex-end;">
  <div class="form-group" style="flex: 1;">
- <label>Nodo</label>
+ <label>{{ t('comune.nodo') }}</label>
  <select v-model="manualNodeId" class="form-input">
- <option :value="null" disabled>-- Seleziona nodo --</option>
+ <option :value="null" disabled>{{ t('hostBackup.selNodo') }}</option>
  <option v-for="node in nodes" :key="node.id" :value="node.id">
  {{ node.name }}
  </option>
  </select>
  </div>
  <button class="btn btn-success" @click="runManualBackup" :disabled="!manualNodeId || runningManual">
- {{ runningManual ? 'Esecuzione...' : 'Backup Ora' }}
+ {{ runningManual ? t('hostBackup.esecuzione') : t('hostBackup.ora') }}
  </button>
  </div>
  </div>
@@ -174,15 +174,15 @@
  <!-- Backup Files List -->
  <div class="card mb-6">
  <div class="card-header">
- <h3>Backup Esistenti</h3>
+ <h3>{{ t('hostBackup.esistenti') }}</h3>
  <div style="display: flex; gap: 12px; align-items: center;">
  <select v-model="backupListNodeId" class="form-input" style="width: 200px;" @change="loadBackups">
- <option :value="null">-- Nodo --</option>
+ <option :value="null">{{ t('hostBackup.nodoSel') }}</option>
  <option v-for="node in nodes" :key="node.id" :value="node.id">
  {{ node.name }}
  </option>
  </select>
- <button class="btn btn-sm btn-secondary" @click="loadBackups" :disabled="!backupListNodeId">Aggiorna</button>
+ <button class="btn btn-sm btn-secondary" @click="loadBackups" :disabled="!backupListNodeId">{{ t('comune.aggiorna') }}</button>
  </div>
  </div>
  <div class="card-body p-0">
@@ -190,10 +190,10 @@
  <table class="data-table" v-if="backups.length > 0">
  <thead>
  <tr>
- <th>File</th>
- <th>Dimensione</th>
- <th>Data Creazione</th>
- <th>Azioni</th>
+ <th>{{ t('hostBackup.file') }}</th>
+ <th>{{ t('comune.dimensione') }}</th>
+ <th>{{ t('hostBackup.dataCreazione') }}</th>
+ <th>{{ t('comune.azioni') }}</th>
  </tr>
  </thead>
  <tbody>
@@ -203,10 +203,10 @@
  <td class="text-sm">{{ formatDate(backup.created_at) }}</td>
  <td>
  <div class="btn-group">
- <button class="btn btn-xs btn-secondary" @click="downloadBackup(backup)" title="Download">
- <Icon name="download" :size="14" /> Download
+ <button class="btn btn-xs btn-secondary" @click="downloadBackup(backup)" :title="t('hostBackup.scarica')">
+ <Icon name="download" :size="14" /> {{ t('hostBackup.scarica') }}
  </button>
- <button class="btn btn-xs btn-danger" @click="deleteBackup(backup)" title="Elimina">
+ <button class="btn btn-xs btn-danger" @click="deleteBackup(backup)" :title="t('comune.elimina')">
  <Icon name="trash" :size="14" />
  </button>
  </div>
@@ -215,13 +215,13 @@
  </tbody>
  </table>
  <div v-else-if="backupListNodeId && !loadingBackups" class="empty-state">
- Nessun backup trovato per questo nodo.
+ {{ t('hostBackup.nessunBackup') }}
  </div>
  <div v-else-if="loadingBackups" class="empty-state">
- ⏳ Caricamento...
+ {{ t('hostBackup.carico') }}
  </div>
  <div v-else class="empty-state">
- Seleziona un nodo per visualizzare i backup.
+ {{ t('hostBackup.selPerVedere') }}
  </div>
  </div>
  </div>
@@ -237,6 +237,9 @@ import { confirmDangerous } from '../stores/confirm';
 import PageHeader from '../components/ui/PageHeader.vue';
 import apiClient from '../services/api';
 import nodesService from '../services/nodes';
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const toast = useToast()
 
@@ -289,27 +292,27 @@ const loadJobs = async () => {
 };
 
 const createJob = async () => {
- if (!form.node_id) { toast.warning('Seleziona un nodo'); return; }
+ if (!form.node_id) { toast.warning(t('hostBackup.serveNodo')); return; }
  creating.value = true;
  try {
  await apiClient.post('/host-backup/jobs', form);
- toast.success("Job creato con successo");
+ toast.success(t('hostBackup.creato'));
  loadJobs();
  showCreateForm.value = false;
  } catch (e: any) {
- toast.error('Errore creazione', errorMessage(e));
+ toast.error(t('hostBackup.erroreCrea'), errorMessage(e));
  } finally {
  creating.value = false;
  }
 };
 
 const deleteJob = async (job: any) => {
- if (!await confirmDangerous(`Eliminare job ${job.name}?`)) return;
+ if (!await confirmDangerous(t('repliche.eliminare', { nome: job.name }))) return;
  try {
  await apiClient.delete(`/host-backup/jobs/${job.id}`);
  loadJobs();
  } catch (e) {
- toast.error("Errore eliminazione");
+ toast.error(t('comune.erroreEliminazione'));
  }
 }
 
@@ -317,10 +320,10 @@ const runJob = async (job: any) => {
  try {
  job.running = true;
  await apiClient.post(`/host-backup/jobs/${job.id}/run`);
- toast.success('Backup completato', job.name);
+ toast.success(t('hostBackup.fatto'), job.name);
  loadJobs();
  } catch (e: any) {
- toast.error('Errore esecuzione', errorMessage(e));
+ toast.error(t('hostBackup.erroreEsegui'), errorMessage(e));
  } finally {
  job.running = false;
  }
@@ -335,23 +338,22 @@ const runManualBackup = async () => {
  dest_path: "/var/backups/proxmox-config",
  compress: true
  });
- toast.success('Backup manuale completato');
+ toast.success(t('hostBackup.fattoMano'));
  loadJobs(); // Refresh if it impacts any list or just to be safe
  } catch (e: any) {
- toast.error('Errore backup manuale', errorMessage(e));
+ toast.error(t('hostBackup.erroreMano'), errorMessage(e));
  } finally {
  runningManual.value = false;
  }
 };
 
 const etichettaSchedule = (cron: string | null) => {
- if (!cron) return 'Manuale';
+ if (!cron) return t('hostBackup.pManuale');
  const m = cron.trim().match(/^(\d+) (\d+) \* \* (\*|[0-6])$/);
  if (!m) return cron;
  const ora = `${(m[2] ?? '').padStart(2, '0')}:${(m[1] ?? '').padStart(2, '0')}`;
- if (m[3] === '*') return `Giornaliero (${ora})`;
- const giorni = ['domenica', 'lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì', 'sabato'];
- return `Settimanale (${giorni[Number(m[3])]} ${ora})`;
+ if (m[3] === '*') return t('hostBackup.pGiorno', { ora });
+ return t('hostBackup.pSettimana', { giorno: t(`giorni.lunghi.${Number(m[3])}`), ora });
 };
 
 const formatDate = (d: string) => {
@@ -383,14 +385,14 @@ const loadBackups = async () => {
 };
 
 const deleteBackup = async (backup: any) => {
- if (!await confirmDangerous(`Eliminare backup ${backup.filename}?`)) return;
+ if (!await confirmDangerous(t('hostBackup.confElimina', { file: backup.filename }))) return;
  try {
  await apiClient.delete(`/host-backup/nodes/${backupListNodeId.value}/backups`, {
   params: { backup_file: backup.filename },
  });
  loadBackups();
  } catch (e: any) {
- toast.error('Errore eliminazione', errorMessage(e));
+ toast.error(t('comune.erroreEliminazione'), errorMessage(e));
  }
 };
 
@@ -411,7 +413,7 @@ const downloadBackup = async (backup: any) => {
  link.remove();
  window.URL.revokeObjectURL(url);
  } catch (e: any) {
- toast.error('Errore download', errorMessage(e));
+ toast.error(t('hostBackup.erroreScarica'), errorMessage(e));
  }
 };
 </script>

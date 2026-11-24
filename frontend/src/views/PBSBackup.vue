@@ -1,44 +1,39 @@
 <template>
   <div class="pbs-hub">
     <PageHeader
-      title="PBS Backup"
-      subtitle="Protezione VM su Proxmox Backup Server — job schedulati, inventario e restore"
+      :title="t('menu.pbsBackup')"
+      :subtitle="t('pbsBackup.sottotitolo')"
       icon="database"
     />
 
     <section class="pbs-stats">
       <div class="pbs-stat">
-        <span class="pbs-stat-label">Job backup</span>
+        <span class="pbs-stat-label">{{ t('pbsBackup.jobBackup') }}</span>
         <span class="pbs-stat-val">{{ stats.total }}</span>
       </div>
       <div class="pbs-stat">
-        <span class="pbs-stat-label">Attivi</span>
+        <span class="pbs-stat-label">{{ t('comune.attivi') }}</span>
         <span class="pbs-stat-val text-success">{{ stats.active }}</span>
       </div>
       <div class="pbs-stat">
-        <span class="pbs-stat-label">Schedulati</span>
+        <span class="pbs-stat-label">{{ t('pbsBackup.pianificati') }}</span>
         <span class="pbs-stat-val">{{ stats.scheduled }}</span>
       </div>
       <div class="pbs-stat">
-        <span class="pbs-stat-label">In esecuzione</span>
+        <span class="pbs-stat-label">{{ t('pbsBackup.inCorso') }}</span>
         <span class="pbs-stat-val text-warning">{{ stats.running }}</span>
       </div>
       <div class="pbs-stat">
-        <span class="pbs-stat-label">Falliti (ultimo run)</span>
+        <span class="pbs-stat-label">{{ t('pbsBackup.falliti') }}</span>
         <span class="pbs-stat-val text-danger">{{ stats.failed }}</span>
       </div>
     </section>
 
     <nav class="pbs-tabs">
       <button
-        v-for="t in tabs"
-        :key="t.id"
-        class="pbs-tab"
-        :class="{ active: activeTab === t.id }"
-        @click="activeTab = t.id"
-      >
-        {{ t.label }}
-        <span v-if="t.count != null" class="pbs-tab-count">{{ t.count }}</span>
+        v-for="tab in tabs" :key="tab.id" class="pbs-tab" :class="{ active: activeTab === tab.id }" @click="activeTab = tab.id">
+        {{ tab.label }}
+        <span v-if="tab.count != null" class="pbs-tab-count">{{ tab.count }}</span>
       </button>
     </nav>
 
@@ -47,25 +42,23 @@
         <div class="info-banner mb-4">
           <div class="icon"><Icon name="shield" :size="20" /></div>
           <div class="content">
-            <strong>Backup vs replica</strong>
+            <strong>{{ t('pbsBackup.vs') }}</strong>
             <p>
-              Qui gestisci <strong>backup su PBS</strong> (retention, schedule, alert).
-              Per <strong>replicare VM verso un altro nodo</strong> quando non c'è ZFS usa
-              <router-link :to="{ name: 'replication', query: { tab: 'recovery_pbs' } }">Repliche → Replica via PBS</router-link>.
+              <i18n-t keypath="pbsBackup.vsNota" tag="span"><template #link><router-link :to="{ name: 'replication', query: { tab: 'recovery_pbs' } }">{{ t('pbs.linkRepliche') }}</router-link></template></i18n-t>
             </p>
           </div>
         </div>
         <div class="pbs-quick-actions">
-          <button class="btn btn-primary" @click="openCreateJob">+ Nuovo backup PBS</button>
-          <button class="btn btn-secondary" @click="activeTab = 'inventory'">Inventario & restore</button>
-          <router-link :to="{ name: 'settings' }" class="btn btn-secondary">Configura notifiche SMTP</router-link>
+          <button class="btn btn-primary" @click="openCreateJob">{{ t('pbsBackup.nuovo') }}</button>
+          <button class="btn btn-secondary" @click="activeTab = 'inventory'">{{ t('pbsBackup.inventario') }}</button>
+          <router-link :to="{ name: 'settings' }" class="btn btn-secondary">{{ t('pbsBackup.smtp') }}</router-link>
         </div>
         <div v-if="failedJobs.length" class="alert alert-danger mt-4">
-          <strong>{{ failedJobs.length }} job con ultimo run fallito</strong>
+          <strong>{{ t('pbsBackup.nFalliti', { n: failedJobs.length }) }}</strong>
           <ul class="mt-2 mb-0">
             <li v-for="j in failedJobs.slice(0, 5)" :key="j.id">
               {{ j.name }} (VM {{ j.vm_id }})
-              <button class="btn btn-xs btn-secondary ml-2" @click="onEdit(j)">Apri</button>
+              <button class="btn btn-xs btn-secondary ml-2" @click="onEdit(j)">{{ t('pbsBackup.apri') }}</button>
             </li>
           </ul>
         </div>
@@ -73,8 +66,8 @@
 
       <div v-else-if="activeTab === 'jobs'">
         <div class="flex justify-between items-center mb-4">
-          <p class="muted mb-0">Job di backup VM verso PBS (senza restore automatico).</p>
-          <button class="btn btn-primary" @click="openCreateJob">+ Nuovo job</button>
+          <p class="muted mb-0">{{ t('pbsBackup.jobNota') }}</p>
+          <button class="btn btn-primary" @click="openCreateJob">{{ t('pbsBackup.nuovoJob') }}</button>
         </div>
         <JobsList
           :jobs="backupJobs"
@@ -91,15 +84,15 @@
       <PBSInventoryPanel v-else-if="activeTab === 'inventory'" />
 
       <div v-else-if="activeTab === 'logs'">
-        <p class="muted mb-4">Log backup PBS, restore e replica (ultimi 50).</p>
-        <div v-if="loadingLogs" class="empty-state">Caricamento log…</div>
+        <p class="muted mb-4">{{ t('pbsBackup.logNota') }}</p>
+        <div v-if="loadingLogs" class="empty-state">{{ t('pbsBackup.logCarico') }}</div>
         <table v-else class="data-table">
           <thead>
             <tr>
-              <th>Data</th>
-              <th>Tipo</th>
-              <th>Stato</th>
-              <th>Messaggio</th>
+              <th>{{ t('comune.data') }}</th>
+              <th>{{ t('comune.tipo') }}</th>
+              <th>{{ t('comune.stato') }}</th>
+              <th>{{ t('comune.messaggio') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -113,7 +106,7 @@
             </tr>
           </tbody>
         </table>
-        <p v-if="!loadingLogs && logs.length === 0" class="empty-state">Nessun log PBS recente.</p>
+        <p v-if="!loadingLogs && logs.length === 0" class="empty-state">{{ t('pbsBackup.logNessuno') }}</p>
       </div>
     </main>
 
@@ -139,6 +132,9 @@ import logsService, { type JobLog } from '../services/logs'
 import { useReplicationStore, type UnifiedJob } from '../stores/replication'
 import { confirmDangerous } from '../stores/confirm'
 import { useToast, errorMessage } from '../stores/toast'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const route = useRoute()
 const router = useRouter()
@@ -156,10 +152,10 @@ const modalVisible = ref(false)
 const editingJob = ref<UnifiedJob | null>(null)
 
 const tabs = computed(() => [
-  { id: 'overview' as TabId, label: 'Panoramica', count: null },
-  { id: 'jobs' as TabId, label: 'Job backup', count: stats.value.total },
-  { id: 'inventory' as TabId, label: 'Inventario & restore', count: null },
-  { id: 'logs' as TabId, label: 'Alert & log', count: null },
+  { id: 'overview' as TabId, label: t('pbsBackup.tPanoramica'), count: null },
+  { id: 'jobs' as TabId, label: t('pbsBackup.jobBackup'), count: stats.value.total },
+  { id: 'inventory' as TabId, label: t('pbsBackup.inventario'), count: null },
+  { id: 'logs' as TabId, label: t('pbsBackup.tLog'), count: null },
 ])
 
 const backupJobs = computed<UnifiedJob[]>(() =>
@@ -258,31 +254,31 @@ function onEdit(j: UnifiedJob) {
 async function onRun(j: UnifiedJob) {
   try {
     await backupJobsService.runJob(String(j.id))
-    toast.success('Backup avviato')
+    toast.success(t('pbsBackup.avviato'))
     setTimeout(reloadJobs, 800)
   } catch (e) {
-    toast.error('Errore avvio', errorMessage(e))
+    toast.error(t('pbsBackup.erroreAvvio'), errorMessage(e))
   }
 }
 
 async function onToggleActive(j: UnifiedJob) {
   const newActive = j.is_active === false
-  if (!await confirmDangerous(`${newActive ? 'Attivare' : 'Disattivare'} "${j.name}"?`)) return
+  if (!await confirmDangerous(newActive ? t('repliche.attivare', { nome: j.name }) : t('repliche.disattivare', { nome: j.name }))) return
   try {
     await backupJobsService.updateJob(String(j.id), { is_active: newActive })
     await reloadJobs()
   } catch (e) {
-    toast.error('Errore', errorMessage(e))
+    toast.error(t('comune.errore'), errorMessage(e))
   }
 }
 
 async function onDelete(j: UnifiedJob) {
-  if (!await confirmDangerous(`Eliminare "${j.name}"?`)) return
+  if (!await confirmDangerous(t('repliche.eliminare', { nome: j.name }))) return
   try {
     await backupJobsService.deleteJob(String(j.id))
     await reloadJobs()
   } catch (e) {
-    toast.error('Errore eliminazione', errorMessage(e))
+    toast.error(t('comune.erroreEliminazione'), errorMessage(e))
   }
 }
 
