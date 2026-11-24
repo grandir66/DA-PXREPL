@@ -8,33 +8,31 @@
           @change="patch({ register_vm: ($event.target as HTMLInputElement).checked })"
         />
         <span class="vm-reg-switch-label">
-          Registra la VM sul nodo destinazione dopo la replica
+          {{ t('registrazione.registra') }}
         </span>
       </label>
       <p class="vm-reg-help">
-        Se abilitato, dopo ogni replica la VM viene creata/aggiornata sul nodo
-        destinazione con le impostazioni qui sotto. Lascia <em>Registra VM</em>
-        attivo a meno di esigenze specifiche.
+        <i18n-t keypath="registrazione.aiuto" tag="span"><template #voce><em>{{ t('registrazione.voce') }}</em></template></i18n-t>
       </p>
     </div>
 
     <fieldset class="vm-reg-grid" :disabled="!(modelValue?.register_vm ?? true)">
       <div class="field">
-        <label>VMID destinazione</label>
+        <label>{{ t('registrazione.vmid') }}</label>
         <input
           type="number"
           class="form-input"
           :value="modelValue?.dest_vm_id ?? ''"
           @input="patch({ dest_vm_id: parseIntOrNull(($event.target as HTMLInputElement).value) })"
-          :placeholder="String(sourceVmid ?? '— stesso del sorgente —')"
+          :placeholder="String(sourceVmid ?? t('registrazione.stessoOrigine'))"
           min="100"
           max="999999999"
         />
-        <small>Lascia vuoto per usare lo stesso VMID del sorgente.</small>
+        <small>{{ t('registrazione.vmidNota') }}</small>
       </div>
 
       <div class="field">
-        <label>Suffisso nome VM</label>
+        <label>{{ t('registrazione.suffisso') }}</label>
         <input
           type="text"
           class="form-input"
@@ -43,11 +41,11 @@
           placeholder="-replica"
           maxlength="50"
         />
-        <small>Aggiunto al nome della VM sul nodo destinazione (es. <code>app01</code> → <code>app01-replica</code>).</small>
+        <small><i18n-t keypath="registrazione.suffissoNota" tag="span"><template #da><code>app01</code></template><template #a><code>app01-replica</code></template></i18n-t></small>
       </div>
 
       <div class="field">
-        <label>Nome VM destinazione (override)</label>
+        <label>{{ t('registrazione.nome') }}</label>
         <input
           type="text"
           class="form-input"
@@ -56,11 +54,11 @@
           :placeholder="sourceVmName ? `${sourceVmName}${modelValue?.dest_vm_name_suffix || ''}` : 'auto'"
           maxlength="100"
         />
-        <small>Se compilato, sovrascrive completamente il nome (ignora il suffisso).</small>
+        <small>{{ t('registrazione.nomeNota') }}</small>
       </div>
 
       <div class="field field-full" v-if="!hideStorage">
-        <label>Storage destinazione (per i dischi)</label>
+        <label>{{ t('registrazione.storage') }}</label>
         <StoragePicker
           :model-value="modelValue?.dest_storage ?? null"
           :node-id="destNodeId"
@@ -72,7 +70,7 @@
       </div>
 
       <div class="field field-full">
-        <label>Rete: bridge e VLAN</label>
+        <label>{{ t('registrazione.rete') }}</label>
         <BridgeVlanPicker
           :model-value="bridgeVlan"
           :node-id="destNodeId"
@@ -87,9 +85,9 @@
             :checked="modelValue?.force_cpu_host ?? true"
             @change="patch({ force_cpu_host: ($event.target as HTMLInputElement).checked })"
           />
-          <span>Forza CPU type a <code>host</code> sulla destinazione</span>
+          <i18n-t keypath="registrazione.cpu" tag="span"><template #host><code>host</code></template></i18n-t>
         </label>
-        <small>Massima compatibilità in caso di hardware diverso. Disabilita solo se hai un motivo preciso.</small>
+        <small>{{ t('registrazione.cpuNota') }}</small>
       </div>
 
       <div class="field field-checkbox" v-if="showStartVm">
@@ -99,7 +97,7 @@
             :checked="modelValue?.start_vm ?? false"
             @change="patch({ start_vm: ($event.target as HTMLInputElement).checked })"
           />
-          <span>Avvia la VM dopo il restore (consigliato OFF)</span>
+          <span>{{ t('registrazione.avvia') }}</span>
         </label>
       </div>
 
@@ -110,7 +108,7 @@
             :checked="modelValue?.overwrite_existing ?? true"
             @change="patch({ overwrite_existing: ($event.target as HTMLInputElement).checked })"
           />
-          <span>Sovrascrivi VM esistente con lo stesso VMID</span>
+          <span>{{ t('registrazione.sovrascrivi') }}</span>
         </label>
       </div>
     </fieldset>
@@ -121,6 +119,9 @@
 import { computed } from 'vue'
 import StoragePicker from './StoragePicker.vue'
 import BridgeVlanPicker, { type BridgeVlanValue } from './BridgeVlanPicker.vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 export interface VMRegistration {
   register_vm: boolean

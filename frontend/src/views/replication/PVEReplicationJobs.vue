@@ -1,20 +1,20 @@
 <template>
   <div class="pve-replication-jobs">
     <div v-if="summary && summary.total > 0" class="pvesr-banner mb-4">
-      <strong>{{ summary.total }} repliche Proxmox (pvesr)</strong> rilevate sul cluster.
+      <strong>{{ t('pvesr.rilevate', { n: summary.total }) }}</strong>
       <span v-if="summary.unlinked > 0" class="ml-2">
-        {{ summary.unlinked }} non collegate a job dapx.
+        {{ t('pvesr.nonCollegate', { n: summary.unlinked }) }}
       </span>
       <span v-if="summary.failed > 0" class="text-danger ml-2">
-        {{ summary.failed }} con errori.
+        {{ t('pvesr.conErrori', { n: summary.failed }) }}
       </span>
     </div>
 
-    <div v-if="loading" class="loading-state">Caricamento repliche Proxmox…</div>
+    <div v-if="loading" class="loading-state">{{ t('pvesr.caricamento') }}</div>
     <div v-else-if="jobs.length === 0" class="empty-state">
-      Nessuna replica nativa Proxmox (<code>pvesr</code>) configurata sul cluster.
+      <i18n-t keypath="pvesr.vuoto" tag="span"><template #pvesr><code>pvesr</code></template></i18n-t>
       <p class="muted mt-2">
-        Le repliche ZFS create in Proxmox UI compaiono qui. Per replica gestita da dapx usa Syncoid o Replica via PBS.
+        {{ t('pvesr.vuotoNota') }}
       </p>
     </div>
     <div v-else class="table-container">
@@ -22,11 +22,11 @@
         <thead>
           <tr>
             <th>VM</th>
-            <th>Sorgente → Dest</th>
-            <th>Schedule</th>
-            <th>Stato pvesr</th>
-            <th>In dapx</th>
-            <th>Azioni</th>
+            <th>{{ t('pvesr.percorso') }}</th>
+            <th>{{ t('pvesr.pianificazione') }}</th>
+            <th>{{ t('pvesr.stato') }}</th>
+            <th>{{ t('pvesr.inDapx') }}</th>
+            <th>{{ t('comune.azioni') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -45,7 +45,7 @@
             </td>
             <td>
               <code>{{ job.schedule }}</code>
-              <div v-if="job.next_sync" class="next-sync">Prox: {{ formatDate(job.next_sync) }}</div>
+              <div v-if="job.next_sync" class="next-sync">{{ t('pvesr.prossima', { quando: formatDate(job.next_sync) }) }}</div>
             </td>
             <td>
               <span :class="['status-badge', getStatusClass(job)]">{{ getStatusLabel(job) }}</span>
@@ -53,8 +53,8 @@
               <div v-if="job.last_sync" class="next-sync">{{ formatDateTime(job.last_sync) }}</div>
             </td>
             <td>
-              <span v-if="job.dapx_link === 'none'" class="badge badge-outline">Solo Proxmox</span>
-              <span v-else-if="job.dapx_link === 'mixed'" class="badge badge-warning">Multiplo</span>
+              <span v-if="job.dapx_link === 'none'" class="badge badge-outline">{{ t('pvesr.soloProxmox') }}</span>
+              <span v-else-if="job.dapx_link === 'mixed'" class="badge badge-warning">{{ t('pvesr.multiplo') }}</span>
               <span v-else class="badge badge-success">{{ dapxLinkLabel(job.dapx_link) }}</span>
               <ul v-if="job.dapx_jobs?.length" class="dapx-job-list">
                 <li v-for="dj in job.dapx_jobs" :key="`${dj.kind}-${dj.id}`">{{ dj.name }}</li>
@@ -63,7 +63,7 @@
             <td class="actions-cell">
               <button
                 class="btn btn-xs btn-secondary"
-                title="Esegui ora (pvesr)"
+                :title="t('pvesr.esegui')"
                 :disabled="runningJobs.has(job.id)"
                 @click="runJob(job.id)"
               >
@@ -72,12 +72,12 @@
               <button
                 v-if="job.dapx_link === 'none'"
                 class="btn btn-xs btn-primary"
-                title="Apri wizard dapx con dati precompilati"
+                :title="t('pvesr.importaAiuto')"
                 @click="emitImport(job)"
               >
-                Importa in dapx
+                {{ t('pvesr.importa') }}
               </button>
-              <button class="btn-icon text-danger" title="Elimina da Proxmox" @click="confirmDelete(job.id)">
+              <button class="btn-icon text-danger" :title="t('pvesr.elimina')" @click="confirmDelete(job.id)">
                 ✕
               </button>
             </td>
@@ -85,8 +85,7 @@
         </tbody>
       </table>
       <p class="import-note muted mt-4">
-        <strong>Importa in dapx</strong> apre il wizard Syncoid con VM e nodi precompilati.
-        La replica resta attiva su Proxmox finché non disabiliti il job pvesr — evita doppie repliche.
+        <strong>{{ t('pvesr.importa') }}</strong> {{ t('pvesr.importaNota') }}
       </p>
     </div>
   </div>
@@ -101,6 +100,9 @@ import {
   type PVEReplicationJob,
   type PVEReplicationSummary,
 } from '../../services/pveReplication'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const emit = defineEmits<{
   import: [job: PVEReplicationJob]
@@ -122,7 +124,7 @@ const loadJobs = async () => {
     jobs.value = list
     summary.value = sum
   } catch (e) {
-    toast.error('Errore caricamento pvesr', errorMessage(e))
+    toast.error(t('pvesr.erroreCarico'), errorMessage(e))
   } finally {
     loading.value = false
   }
@@ -132,22 +134,22 @@ const runJob = async (id: string) => {
   runningJobs.value.add(id)
   try {
     await pveReplicationService.runJob(id)
-    toast.success('Replica pvesr avviata')
+    toast.success(t('pvesr.avviata'))
     await loadJobs()
   } catch (e) {
-    toast.error('Errore replica', errorMessage(e))
+    toast.error(t('pvesr.erroreReplica'), errorMessage(e))
   } finally {
     runningJobs.value.delete(id)
   }
 }
 
 const confirmDelete = async (id: string) => {
-  if (!await confirmDangerous(`Eliminare il job pvesr ${id} da Proxmox?`)) return
+  if (!await confirmDangerous(t('pvesr.confElimina', { id }))) return
   try {
     await pveReplicationService.deleteJob(id)
     await loadJobs()
   } catch (e) {
-    toast.error('Errore eliminazione', errorMessage(e))
+    toast.error(t('comune.erroreEliminazione'), errorMessage(e))
   }
 }
 
@@ -158,7 +160,7 @@ const emitImport = (job: PVEReplicationJob) => {
 const dapxLinkLabel = (link: string) => {
   if (link === 'syncoid') return 'Syncoid'
   if (link === 'pve_native') return 'PVE dump'
-  if (link === 'recovery_pbs') return 'Replica PBS'
+  if (link === 'recovery_pbs') return t('pvesr.viaPbs')
   return link
 }
 
@@ -169,9 +171,9 @@ const getStatusClass = (job: PVEReplicationJob) => {
 }
 
 const getStatusLabel = (job: PVEReplicationJob) => {
-  if (!job.enabled) return 'Disabilitato'
-  if (job.error || (job.fail_count && job.fail_count > 0)) return 'Errore'
-  return 'Attivo'
+  if (!job.enabled) return t('pvesr.disattivato')
+  if (job.error || (job.fail_count && job.fail_count > 0)) return t('comune.errore')
+  return t('pvesr.attivo')
 }
 
 const formatDate = (dateStr: string) => {

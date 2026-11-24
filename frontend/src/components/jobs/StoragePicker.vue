@@ -7,16 +7,16 @@
         class="btn btn-secondary btn-sm"
         :disabled="loading || !nodeId"
         @click="reload"
-        :title="'Ricarica storage da ' + (nodeName || 'nodo')"
+        :title="t('storage.ricarica', { nodo: nodeName || '' })"
       >
-        <span v-if="loading">Aggiorno…</span>
-        <span v-else>Aggiorna</span>
+        <span v-if="loading">{{ t('comune.aggiornoInCorso') }}</span>
+        <span v-else>{{ t('comune.aggiorna') }}</span>
       </button>
     </div>
 
-    <div v-if="!nodeId" class="sp-empty">Seleziona prima un nodo.</div>
+    <div v-if="!nodeId" class="sp-empty">{{ t('storage.primaNodo') }}</div>
 
-    <div v-else-if="loading" class="sp-empty">Caricamento storage…</div>
+    <div v-else-if="loading" class="sp-empty">{{ t('storage.caricamento') }}</div>
 
     <div v-else-if="error" class="sp-error">{{ error }}</div>
 
@@ -26,24 +26,24 @@
       :value="modelValue || ''"
       @change="onSelectChange"
     >
-      <option value="">— seleziona storage —</option>
+      <option value="">{{ t('storage.seleziona') }}</option>
       <option v-for="s in filtered" :key="s.storage" :value="s.storage">
-        {{ s.storage }} ({{ s.type || '?' }}{{ s.avail != null ? ` · disp. ${humanBytes(s.avail)}` : '' }})
+        {{ s.storage }} ({{ s.type || '?' }}{{ s.avail != null ? t('storage.disponibili', { q: humanBytes(s.avail) }) : '' }})
       </option>
     </select>
 
     <div v-else-if="filtered.length === 0" class="sp-empty">
-      Nessuno storage{{ type !== 'any' ? ` di tipo ${type}` : '' }} disponibile sul nodo.
+      {{ type !== 'any' ? t('storage.nessunoTipo', { tipo: type }) : t('storage.nessuno') }}
     </div>
 
     <div v-if="allowFreeText && nodeId && !loading" class="sp-free">
-      <label class="sp-label-sm">o digita manualmente</label>
+      <label class="sp-label-sm">{{ t('storage.oScrivi') }}</label>
       <input
         type="text"
         class="form-input"
         :value="modelValue || ''"
         @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
-        placeholder="nome-storage"
+        :placeholder="t('storage.segnaposto')"
       />
     </div>
   </div>
@@ -52,6 +52,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import nodesService from '../../services/nodes'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 interface StorageEntry {
   storage: string

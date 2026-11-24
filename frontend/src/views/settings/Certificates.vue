@@ -3,44 +3,44 @@
  <!-- Server Configuration Section -->
  <div class="card-section mb-6 settings-header-card">
  <div class="header-row">
- <h3 class="flex items-center gap-2">Configurazione Server</h3>
+ <h3 class="flex items-center gap-2">{{ t('certificati.server') }}</h3>
  <label class="checkbox-label">
- <input type="checkbox" v-model="serverConfig.ssl_enabled"> Abilita HTTPS
+ <input type="checkbox" v-model="serverConfig.ssl_enabled"> {{ t('certificati.https') }}
  </label>
  </div>
  
  <div class="mt-4">
  <div class="form-group" style="max-width: 200px;">
- <label>Porta Web Server</label>
+ <label>{{ t('certificati.porta') }}</label>
  <input type="number" v-model.number="serverConfig.port" class="form-input">
- <div class="text-xs text-secondary mt-1">Porta attuale: {{ initialPort }}</div>
+ <div class="text-xs text-secondary mt-1">{{ t('certificati.portaAttuale', { porta: initialPort }) }}</div>
  </div>
 
  <div class="actions-row mt-4">
  <button class="btn btn-primary" @click="saveServerConfig" :disabled="working">
- Salva Configurazione
+ {{ t('certificati.salva') }}
  </button>
  <button v-if="restartRequired" class="btn btn-warning" disabled>
- Riavvio richiesto per applicare le modifiche
+ {{ t('certificati.riavvio') }}
  </button>
  </div>
  </div>
  </div>
 
  <div class="header mb-4">
- <h3>Stato SSL/HTTPS</h3>
+ <h3>{{ t('certificati.stato') }}</h3>
  <div class="status-indicators">
  <div class="indicator">
- HTTPS: <span :class="status?.ssl_enabled ? 'text-success' : 'text-danger'"><Icon :name="status?.ssl_enabled ? 'check-circle' : 'x-circle'" :size="14" /> {{ status?.ssl_enabled ? 'Attivo' : 'Disabilitato' }}</span>
+ HTTPS: <span :class="status?.ssl_enabled ? 'text-success' : 'text-danger'"><Icon :name="status?.ssl_enabled ? 'check-circle' : 'x-circle'" :size="14" /> {{ status?.ssl_enabled ? t('certificati.attivo') : t('certificati.disabilitato') }}</span>
  </div>
  <div class="indicator">
- Certificato: <span :class="status?.cert_exists ? 'text-success' : 'text-danger'"><Icon :name="status?.cert_exists ? 'check-circle' : 'x-circle'" :size="14" /> {{ status?.cert_exists ? 'Presente' : 'Assente' }}</span>
+ {{ t('certificati.certificato') }} <span :class="status?.cert_exists ? 'text-success' : 'text-danger'"><Icon :name="status?.cert_exists ? 'check-circle' : 'x-circle'" :size="14" /> {{ status?.cert_exists ? t('comune.presente') : t('comune.assente') }}</span>
  </div>
  <div class="indicator" v-if="status?.cert_info">
- Validità: <span :class="status.cert_info.valid ? 'text-success' : 'text-danger'"><Icon :name="status.cert_info.valid ? 'check-circle' : 'x-circle'" :size="14" /> {{ status.cert_info.valid ? 'Valido' : 'Scaduto/Invalido' }}</span>
+ {{ t('certificati.validita') }} <span :class="status.cert_info.valid ? 'text-success' : 'text-danger'"><Icon :name="status.cert_info.valid ? 'check-circle' : 'x-circle'" :size="14" /> {{ status.cert_info.valid ? t('certificati.valido') : t('certificati.scaduto') }}</span>
  </div>
  <div class="indicator" v-if="status?.cert_info">
- Scadenza: <span>{{ status.cert_info.days_remaining }} giorni</span>
+ {{ t('certificati.scadenza') }} <span>{{ t('certificati.giorni', { n: status.cert_info.days_remaining }) }}</span>
  </div>
  </div>
  </div>
@@ -49,46 +49,46 @@
  <div class="actions-container">
  <!-- Generate Tab -->
  <div class="action-card">
- <h4 class="text-primary"><Icon name="wrench" :size="20" /> Genera Certificato Auto-firmato</h4>
- <p class="text-secondary text-sm mb-4">Genera automaticamente un certificato SSL auto-firmato. Utile per ambienti di sviluppo o reti interne.</p>
+ <h4 class="text-primary"><Icon name="wrench" :size="20" /> {{ t('certificati.autoTitolo') }}</h4>
+ <p class="text-secondary text-sm mb-4">{{ t('certificati.autoNota') }}</p>
  
  <div class="grid-2">
  <div class="form-group">
  <label>Hostname</label>
- <input v-model="genForm.hostname" type="text" class="form-input" placeholder="es. server.local">
+ <input v-model="genForm.hostname" type="text" class="form-input" :placeholder="t('certificati.segnHost')">
  </div>
  <div class="form-group">
- <label>Validità (giorni)</label>
+ <label>{{ t('certificati.validitaGiorni') }}</label>
  <input v-model.number="genForm.days_valid" type="number" class="form-input">
  </div>
  </div>
 
  <div class="form-group mt-2">
- <label>IP Aggiuntivi (opzionale, separati da virgola)</label>
- <input v-model="genForm.ip_addresses" type="text" class="form-input" placeholder="es. 192.168.1.10, 10.0.0.5">
+ <label>{{ t('certificati.ipExtra') }}</label>
+ <input v-model="genForm.ip_addresses" type="text" class="form-input" :placeholder="t('certificati.segnIp')">
  </div>
  
  <button class="btn btn-primary mt-4" @click="generateCert" :disabled="working">
- {{ working ? 'Generazione...' : 'Genera Certificato' }}
+ {{ working ? t('certificati.generazione') : t('certificati.genera') }}
  </button>
  </div>
 
  <!-- Upload Tab -->
  <div class="action-card mt-6">
- <h4 class="text-info"><Icon name="upload" :size="20" /> Carica Certificato Personalizzato</h4>
- <p class="text-secondary text-sm mb-4">Carica un certificato SSL esistente (es. da Let's Encrypt o CA aziendale). Formato PEM richiesto.</p>
+ <h4 class="text-info"><Icon name="upload" :size="20" /> {{ t('certificati.caricaTitolo') }}</h4>
+ <p class="text-secondary text-sm mb-4">{{ t('certificati.caricaNota') }}</p>
  
  <div class="form-group">
- <label>Certificato (PEM)</label>
+ <label>{{ t('certificati.certPem') }}</label>
  <textarea v-model="uploadForm.certificate" class="form-input code-input" placeholder="-----BEGIN CERTIFICATE-----..."></textarea>
  </div>
  <div class="form-group">
- <label>Chiave Privata (PEM)</label>
+ <label>{{ t('certificati.chiavePem') }}</label>
  <textarea v-model="uploadForm.private_key" class="form-input code-input" placeholder="-----BEGIN PRIVATE KEY-----..."></textarea>
  </div>
  
  <button class="btn btn-info mt-2" @click="uploadCert" :disabled="working">
- <Icon v-if="!working" name="upload" :size="14" /> {{ working ? 'Caricamento...' : 'Carica Certificato' }}
+ <Icon v-if="!working" name="upload" :size="14" /> {{ working ? t('comune.caricamento') : t('certificati.carica') }}
  </button>
  </div>
  </div>
@@ -101,6 +101,9 @@ import { ref, reactive, onMounted } from 'vue';
 import { confirmDangerous } from '../../stores/confirm';
 import settingsService from '../../services/settings';
 import Icon from '../../components/ui/Icon.vue';
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const toast = useToast()
 
@@ -151,17 +154,17 @@ const saveServerConfig = async () => {
  working.value = true;
  try {
  await settingsService.updateServerConfig(serverConfig);
- toast.success("Configurazione salvata", "Riavvio richiesto per applicare le modifiche");
+ toast.success(t('certificati.salvata'), t('certificati.riavvio'));
  loadServerConfig(); // Update restart required status
  } catch (e: any) {
- toast.error("Errore salvataggio", errorMessage(e));
+ toast.error(t('comune.erroreSalvataggio'), errorMessage(e));
  } finally {
  working.value = false;
  }
 }
 
 const generateCert = async () => {
- if (!await confirmDangerous("Generare un nuovo certificato sovrascriverà quello esistente. Continuare?")) return;
+ if (!await confirmDangerous(t('certificati.confGenera'))) return;
  
  working.value = true;
  try {
@@ -170,11 +173,11 @@ const generateCert = async () => {
  ip_addresses: genForm.ip_addresses.split(',').map(ip => ip.trim()).filter(ip => ip)
  };
  await settingsService.generateCert(payload);
- toast.success("Certificato generato");
+ toast.success(t('certificati.generato'));
  loadStatus();
  loadServerConfig(); // Should update ssl ready status
  } catch (e: any) {
- toast.error("Errore generazione", errorMessage(e));
+ toast.error(t('certificati.erroreGenera'), errorMessage(e));
  } finally {
  working.value = false;
  }
@@ -183,20 +186,20 @@ const generateCert = async () => {
 // ... existing code for upload and delete ...
 const uploadCert = async () => {
  if (!uploadForm.certificate || !uploadForm.private_key) {
- toast.warning("Inserire certificato e chiave privata");
+ toast.warning(t('certificati.servono'));
  return;
  }
  
  working.value = true;
  try {
  await settingsService.uploadCert(uploadForm);
- toast.success("Certificato caricato");
+ toast.success(t('certificati.caricato'));
  uploadForm.certificate = '';
  uploadForm.private_key = '';
  loadStatus();
  loadServerConfig();
  } catch (e: any) {
- toast.error("Errore caricamento", errorMessage(e));
+ toast.error(t('certificati.erroreCarica'), errorMessage(e));
  } finally {
  working.value = false;
  }

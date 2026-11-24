@@ -8,7 +8,7 @@
         @change="onBridgeChange(($event.target as HTMLSelectElement).value)"
         :disabled="loading || !nodeId"
       >
-        <option value="">— seleziona —</option>
+        <option value="">{{ t('comune.seleziona') }}</option>
         <option v-for="b in bridges" :key="b.name" :value="b.name">
           {{ b.name }}{{ b.vlan_aware ? ' · vlan-aware' : '' }}
         </option>
@@ -18,14 +18,14 @@
         class="btn btn-secondary btn-sm bv-refresh"
         @click="reload"
         :disabled="loading || !nodeId"
-        title="Aggiorna lista bridge"
+        :title="t('bridge.aggiorna')"
       >
         ↻
       </button>
     </div>
 
     <div class="bv-row">
-      <label class="bv-label">VLAN tag</label>
+      <label class="bv-label">{{ t('bridge.vlan') }}</label>
       <input
         type="number"
         min="1"
@@ -34,10 +34,10 @@
         :value="modelValue?.vlan ?? ''"
         @input="onVlanChange(($event.target as HTMLInputElement).value)"
         :disabled="!isVlanAware"
-        :placeholder="isVlanAware ? 'opzionale' : 'bridge non vlan-aware'"
+        :placeholder="isVlanAware ? t('comune.facoltativo') : t('bridge.nonVlan')"
       />
       <div class="bv-vlan-hint" v-if="observedVlans.length">
-        <span class="bv-hint">Già usate:</span>
+        <span class="bv-hint">{{ t('bridge.usate') }}</span>
         <button
           v-for="v in observedVlans"
           :key="v"
@@ -57,6 +57,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import apiClient from '../../services/api'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 interface BridgeInfo {
   name: string

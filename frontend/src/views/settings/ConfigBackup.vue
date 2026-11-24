@@ -1,17 +1,17 @@
 <template>
  <div class="config-backup-page">
  <PageHeader
- title="Backup & Migrazione Configurazione"
- subtitle="Esporta/importa configurazione completa per backup o migrazione tra macchine"
+ :title="t('backupConfig.titolo')"
+ :subtitle="t('backupConfig.sottotitolo')"
  icon="download"
  />
 
  <!-- System Info -->
  <div class="card info-card">
  <div class="card-header">
- <h3>Stato Sistema</h3>
+ <h3>{{ t('backupConfig.stato') }}</h3>
  <button class="btn btn-secondary btn-sm" @click="loadSystemInfo" :disabled="loading">
- Aggiorna
+ {{ t('comune.aggiorna') }}
  </button>
  </div>
  <div class="card-body">
@@ -26,41 +26,41 @@
  <div class="info-item">
  <span class="icon"><Icon name="box" :size="14" /></span>
  <div class="details">
- <span class="label">Versione</span>
+ <span class="label">{{ t('comune.versione') }}</span>
  <span class="value">{{ systemInfo.version }}</span>
  </div>
  </div>
  <div class="info-item" :class="{ 'has-data': systemInfo.database.exists }">
  <span class="icon"><Icon name="archive" :size="14" /></span>
  <div class="details">
- <span class="label">Database</span>
- <span class="value">{{ systemInfo.database.exists ? formatSize(systemInfo.database.size) : 'Non trovato' }}</span>
+ <span class="label">{{ t('backupConfig.database') }}</span>
+ <span class="value">{{ systemInfo.database.exists ? formatSize(systemInfo.database.size) : t('backupConfig.nonTrovato') }}</span>
  </div>
  </div>
  <div class="info-item" :class="{ 'has-data': systemInfo.ssh_keys.exists }">
  <span class="icon"><Icon name="key" :size="14" /></span>
  <div class="details">
- <span class="label">Chiavi SSH</span>
- <span class="value">{{ systemInfo.ssh_keys.files.length }} chiave/i</span>
+ <span class="label">{{ t('backupConfig.chiavi') }}</span>
+ <span class="value">{{ t('backupConfig.nChiavi', { n: systemInfo.ssh_keys.files.length }) }}</span>
  </div>
  </div>
  <div class="info-item" :class="{ 'has-data': systemInfo.certificates.exists }">
  <span class="icon"><Icon name="file-text" :size="14" /></span>
  <div class="details">
- <span class="label">Certificati</span>
- <span class="value">{{ systemInfo.certificates.files.length }} file</span>
+ <span class="label">{{ t('backupConfig.certificati') }}</span>
+ <span class="value">{{ t('backupConfig.nFile', { n: systemInfo.certificates.files.length }) }}</span>
  </div>
  </div>
  <div class="info-item" :class="{ 'has-data': systemInfo.config.exists }">
  <span class="icon"><Icon name="settings" :size="14" /></span>
  <div class="details">
- <span class="label">Configurazione</span>
- <span class="value">{{ systemInfo.config.exists ? 'Presente' : 'Non trovata' }}</span>
+ <span class="label">{{ t('backupConfig.config') }}</span>
+ <span class="value">{{ systemInfo.config.exists ? t('comune.presente') : t('backupConfig.nonTrovata') }}</span>
  </div>
  </div>
  </div>
  <div v-else class="text-center p-4">
- <span class="text-secondary">Caricamento...</span>
+ <span class="text-secondary">{{ t('comune.caricamento') }}</span>
  </div>
  </div>
  </div>
@@ -68,33 +68,33 @@
  <!-- Export Section -->
  <div class="card export-card">
  <div class="card-header">
- <h3>Esporta Configurazione</h3>
+ <h3>{{ t('backupConfig.esporta') }}</h3>
  </div>
  <div class="card-body">
- <p class="mb-4">Crea un backup completo da scaricare e importare su un'altra installazione.</p>
+ <p class="mb-4">{{ t('backupConfig.esportaNota') }}</p>
  
  <div class="options-grid">
  <label class="option-item">
  <input type="checkbox" v-model="exportOptions.database" />
- <span class="option-label"><Icon name="archive" :size="14" /> Database (nodi, job, utenti)</span>
+ <span class="option-label"><Icon name="archive" :size="14" /> {{ t('backupConfig.eDatabase') }}</span>
  </label>
  <label class="option-item">
  <input type="checkbox" v-model="exportOptions.ssh_keys" />
- <span class="option-label"><Icon name="key" :size="14" /> Chiavi SSH</span>
+ <span class="option-label"><Icon name="key" :size="14" /> {{ t('backupConfig.chiavi') }}</span>
  </label>
  <label class="option-item">
  <input type="checkbox" v-model="exportOptions.certificates" />
- <span class="option-label"><Icon name="file-text" :size="14" /> Certificati SSL</span>
+ <span class="option-label"><Icon name="file-text" :size="14" /> {{ t('backupConfig.eCertificati') }}</span>
  </label>
  <label class="option-item">
  <input type="checkbox" v-model="exportOptions.config" />
- <span class="option-label"><Icon name="settings" :size="14" /> File configurazione</span>
+ <span class="option-label"><Icon name="settings" :size="14" /> {{ t('backupConfig.eConfig') }}</span>
  </label>
  </div>
 
  <div class="actions mt-4">
  <button class="btn btn-success" @click="createBackup" :disabled="exporting">
- {{ exporting ? '⏳ Creazione backup...' : 'Crea Backup' }}
+ {{ exporting ? t('backupConfig.creazione') : t('backupConfig.crea') }}
  </button>
  </div>
  </div>
@@ -103,10 +103,10 @@
  <!-- Import Section -->
  <div class="card import-card">
  <div class="card-header">
- <h3>Importa Configurazione</h3>
+ <h3>{{ t('backupConfig.importa') }}</h3>
  </div>
  <div class="card-body">
- <p class="mb-4">Carica un file di backup per ripristinare la configurazione.</p>
+ <p class="mb-4">{{ t('backupConfig.importaNota') }}</p>
  
  <div class="upload-area" 
  @drop.prevent="handleDrop" 
@@ -116,7 +116,7 @@
  <input type="file" ref="fileInput" @change="handleFileSelect" accept=".tar.gz,.dapx-backup.tar.gz" hidden />
  <div class="upload-content" @click="fileInput?.click()">
  <span class="upload-icon"><Icon name="folder" :size="14" /></span>
- <span class="upload-text">Trascina qui il file di backup o clicca per selezionare</span>
+ <span class="upload-text">{{ t('backupConfig.trascina') }}</span>
  <span class="upload-hint">.dapx-backup.tar.gz</span>
  </div>
  </div>
@@ -131,34 +131,34 @@
  <div v-if="selectedFile" class="options-grid mt-4">
  <label class="option-item">
  <input type="checkbox" v-model="importOptions.database" />
- <span class="option-label"><Icon name="archive" :size="14" /> Ripristina Database</span>
+ <span class="option-label"><Icon name="archive" :size="14" /> {{ t('backupConfig.rDatabase') }}</span>
  </label>
  <label class="option-item">
  <input type="checkbox" v-model="importOptions.ssh_keys" />
- <span class="option-label"><Icon name="key" :size="14" /> Ripristina Chiavi SSH</span>
+ <span class="option-label"><Icon name="key" :size="14" /> {{ t('backupConfig.rChiavi') }}</span>
  </label>
  <label class="option-item">
  <input type="checkbox" v-model="importOptions.certificates" />
- <span class="option-label"><Icon name="file-text" :size="14" /> Ripristina Certificati</span>
+ <span class="option-label"><Icon name="file-text" :size="14" /> {{ t('backupConfig.rCertificati') }}</span>
  </label>
  <label class="option-item">
  <input type="checkbox" v-model="importOptions.config" />
- <span class="option-label"><Icon name="settings" :size="14" /> Ripristina Configurazione</span>
+ <span class="option-label"><Icon name="settings" :size="14" /> {{ t('backupConfig.rConfig') }}</span>
  </label>
  </div>
 
  <div v-if="selectedFile" class="warning-box mt-4">
- <strong><Icon name="alert-triangle" :size="14" /> Attenzione:</strong>
+ <strong><Icon name="alert-triangle" :size="14" /> {{ t('vm.attenzione') }}</strong>
  <ul>
- <li>I dati esistenti verranno sovrascritti</li>
- <li>Verrà creato un backup automatico prima del ripristino</li>
- <li>Potrebbe essere necessario riavviare il servizio</li>
+ <li>{{ t('backupConfig.avviso1') }}</li>
+ <li>{{ t('backupConfig.avviso2') }}</li>
+ <li>{{ t('backupConfig.avviso3') }}</li>
  </ul>
  </div>
 
  <div v-if="selectedFile" class="actions mt-4">
  <button class="btn btn-warning" @click="restoreBackup" :disabled="importing">
- {{ importing ? '⏳ Ripristino in corso...' : 'Ripristina Backup' }}
+ {{ importing ? t('backupConfig.ripristino') : t('backupConfig.ripristina') }}
  </button>
  </div>
  </div>
@@ -167,20 +167,20 @@
  <!-- Restore Result -->
  <div v-if="restoreResult" class="card result-card" :class="restoreResult.success ? 'success' : 'error'">
  <div class="card-header">
- <h3><Icon :name="restoreResult.success ? 'check-circle' : 'x-circle'" :size="14" :class="restoreResult.success ? 'text-success' : 'text-danger'" /> {{ restoreResult.success ? 'Ripristino Completato' : 'Errore Ripristino' }}</h3>
+ <h3><Icon :name="restoreResult.success ? 'check-circle' : 'x-circle'" :size="14" :class="restoreResult.success ? 'text-success' : 'text-danger'" /> {{ restoreResult.success ? t('backupConfig.fatto') : t('backupConfig.erroreTitolo') }}</h3>
  </div>
  <div class="card-body">
  <p>{{ restoreResult.message }}</p>
  
  <div v-if="restoreResult.restored_items.length" class="restored-items">
- <strong>Elementi ripristinati:</strong>
+ <strong>{{ t('backupConfig.elementi') }}</strong>
  <ul>
  <li v-for="item in restoreResult.restored_items" :key="item">✓ {{ item }}</li>
  </ul>
  </div>
  
  <div v-if="restoreResult.warnings.length" class="warnings">
- <strong>Avvisi:</strong>
+ <strong>{{ t('backupConfig.avvisi') }}</strong>
  <ul>
  <li v-for="warning in restoreResult.warnings" :key="warning"><Icon name="alert-triangle" :size="14" /> {{ warning }}</li>
  </ul>
@@ -191,22 +191,22 @@
  <!-- Available Backups -->
  <div class="card backups-card">
  <div class="card-header">
- <h3>Backup Disponibili</h3>
- <button class="btn btn-secondary btn-sm" @click="loadBackups">Aggiorna</button>
+ <h3>{{ t('backupConfig.disponibili') }}</h3>
+ <button class="btn btn-secondary btn-sm" @click="loadBackups">{{ t('comune.aggiorna') }}</button>
  </div>
  <div class="card-body">
  <div v-if="backups.length === 0" class="text-center p-4">
- <span class="text-secondary">Nessun backup disponibile</span>
+ <span class="text-secondary">{{ t('backupConfig.nessuno') }}</span>
  </div>
  <table v-else class="table">
  <thead>
  <tr>
- <th>File</th>
- <th>Data</th>
- <th>Dimensione</th>
- <th>Origine</th>
- <th>Contenuto</th>
- <th>Azioni</th>
+ <th>{{ t('backupConfig.file') }}</th>
+ <th>{{ t('comune.data') }}</th>
+ <th>{{ t('comune.dimensione') }}</th>
+ <th>{{ t('backupConfig.origine') }}</th>
+ <th>{{ t('backupConfig.contenuto') }}</th>
+ <th>{{ t('comune.azioni') }}</th>
  </tr>
  </thead>
  <tbody>
@@ -216,10 +216,10 @@
  <td>{{ formatSize(backup.size) }}</td>
  <td>{{ backup.source_hostname }} (v{{ backup.version }})</td>
  <td>
- <span v-if="backup.includes_database" class="badge" title="Database"><Icon name="archive" :size="14" /></span>
+ <span v-if="backup.includes_database" class="badge" :title="t('backupConfig.database')"><Icon name="archive" :size="14" /></span>
  <span v-if="backup.includes_ssh_keys" class="badge" title="SSH"><Icon name="key" :size="14" /></span>
- <span v-if="backup.includes_certificates" class="badge" title="Certificati"><Icon name="file-text" :size="14" /></span>
- <span v-if="backup.includes_config" class="badge" title="Config"><Icon name="settings" :size="14" /></span>
+ <span v-if="backup.includes_certificates" class="badge" :title="t('backupConfig.certificati')"><Icon name="file-text" :size="14" /></span>
+ <span v-if="backup.includes_config" class="badge" :title="t('backupConfig.config')"><Icon name="settings" :size="14" /></span>
  </td>
  <td>
  <button class="btn btn-sm btn-primary" @click="downloadBackup(backup.filename)">⬇️</button>
@@ -241,6 +241,9 @@ import { confirmDangerous } from '../../stores/confirm';
 import PageHeader from '../../components/ui/PageHeader.vue';
 import configBackupService from '../../services/configBackup';
 import type { BackupInfo, BackupSystemInfo, RestoreResult } from '../../services/configBackup';
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const toast = useToast()
 
@@ -301,7 +304,7 @@ const createBackup = async () => {
  });
  
  if (res.data.success) {
- toast.success("Backup creato", `${res.data.filename} — ${formatSize(res.data.size)}`);
+ toast.success(t('backupConfig.creato'), `${res.data.filename} — ${formatSize(res.data.size)}`);
  // Refresh lista
  loadBackups();
  // Scarica automaticamente
@@ -309,7 +312,7 @@ const createBackup = async () => {
  }
  } catch (error) {
  console.error('Errore creazione backup:', error);
- toast.error('Errore creazione backup');
+ toast.error(t('backupConfig.erroreCrea'));
  } finally {
  exporting.value = false;
  }
@@ -332,7 +335,7 @@ const downloadBackup = async (filename: string) => {
  document.body.removeChild(link);
  } catch (error) {
  console.error('Errore download backup:', error);
- toast.error('Errore download backup');
+ toast.error(t('backupConfig.erroreScarica'));
  }
 };
 
@@ -355,7 +358,7 @@ const handleDrop = (event: DragEvent) => {
 const restoreBackup = async () => {
  if (!selectedFile.value) return;
  
- if (!await confirmDangerous('Sei sicuro di voler ripristinare questo backup? I dati esistenti verranno sovrascritti.')) {
+ if (!await confirmDangerous(t('backupConfig.confRipristina'))) {
  return;
  }
  
@@ -378,7 +381,7 @@ const restoreBackup = async () => {
  } catch (error: any) {
  restoreResult.value = {
  success: false,
- message: error.response?.data?.detail || 'Errore durante il ripristino',
+ message: error.response?.data?.detail || t('backupConfig.erroreRipristino'),
  restored_items: [],
  warnings: []
  };
@@ -395,7 +398,7 @@ const deleteBackup = async (filename: string) => {
  loadBackups();
  } catch (error) {
  console.error('Errore eliminazione backup:', error);
- toast.error('Errore eliminazione backup');
+ toast.error(t('backupConfig.erroreElimina'));
  }
 };
 

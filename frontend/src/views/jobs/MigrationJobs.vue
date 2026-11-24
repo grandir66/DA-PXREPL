@@ -1,13 +1,13 @@
 <template>
   <div class="migration-jobs-page">
-    <PageHeader title="Migrazioni" subtitle="Spostamento e copia VM tra i nodi" icon="arrow-right-left">
+    <PageHeader :title="t('menu.migrazioni')" :subtitle="t('migrazioni.sottotitolo')" icon="arrow-right-left">
       <template #actions>
         <button class="btn btn-secondary btn-sm" @click="loadJobs" :disabled="loading">
           <span v-if="loading" class="spinner-sm"></span>
-          <span v-else>Aggiorna</span>
+          <span v-else>{{ t('comune.aggiorna') }}</span>
         </button>
         <button class="btn btn-primary btn-sm" @click="openCreateModal">
-          + Nuova Migrazione
+          {{ t('migrazioni.nuovaBtn') }}
         </button>
       </template>
     </PageHeader>
@@ -17,13 +17,13 @@
         <table class="data-table">
           <thead>
             <tr>
-              <th>Nome</th>
+              <th>{{ t('comune.nome') }}</th>
               <th>VM</th>
-              <th>Path (Source → Dest)</th>
-              <th>Tipo</th>
-              <th>Schedule</th>
-              <th>Stato</th>
-              <th>Azioni</th>
+              <th>{{ t('migrazioni.percorso') }}</th>
+              <th>{{ t('comune.tipo') }}</th>
+              <th>{{ t('migrazioni.pianificazione') }}</th>
+              <th>{{ t('comune.stato') }}</th>
+              <th>{{ t('comune.azioni') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -37,7 +37,7 @@
                 {{ job.source_node_name || job.source_node_id }}
                 <span>→</span>
                 {{ job.dest_node_name || job.dest_node_id }}
-                <div v-if="job.dest_vm_id" class="text-xs text-secondary">New ID: {{ job.dest_vm_id }}</div>
+                <div v-if="job.dest_vm_id" class="text-xs text-secondary">{{ t('migrazioni.nuovoId', { id: job.dest_vm_id }) }}</div>
               </td>
               <td>
                 <span class="badge" :class="job.migration_type === 'move' ? 'badge-warning' : 'badge-primary'">
@@ -50,16 +50,16 @@
               </td>
               <td>
                 <span class="badge" :class="getStatusClass(job.last_status)">
-                  {{ job.last_status || 'Never' }}
+                  {{ job.last_status || t('comune.mai') }}
                 </span>
                 <div v-if="job.last_run" class="text-xs text-secondary mt-1">{{ formatDate(job.last_run) }}</div>
               </td>
               <td>
                 <div class="btn-group">
                   <button class="btn btn-primary btn-xs" @click="runJob(job)" :disabled="job.last_status === 'running'">
-                    <Icon name="play" :size="14" /> Run
+                    <Icon name="play" :size="14" /> {{ t('migrazioni.esegui') }}
                   </button>
-                  <button class="btn btn-secondary btn-xs" @click="toggleJob(job)" :title="job.is_active ? 'Disattiva' : 'Attiva'">
+                  <button class="btn btn-secondary btn-xs" @click="toggleJob(job)" :title="job.is_active ? t('comune.disattiva') : t('comune.attiva')">
                     {{ job.is_active ? '⏸' : '▶' }}
                   </button>
                   <button class="btn btn-danger btn-xs" @click="deleteJob(job)"><Icon name="trash" :size="14" /></button>
@@ -67,7 +67,7 @@
               </td>
             </tr>
             <tr v-if="jobs.length === 0 && !loading">
-              <td colspan="7" class="empty-state-cell">Nessun job di migrazione configurato</td>
+              <td colspan="7" class="empty-state-cell">{{ t('migrazioni.nessuno') }}</td>
             </tr>
           </tbody>
         </table>
@@ -76,27 +76,27 @@
 
     <ModalDialog
       :visible="showCreateModal"
-      title="Nuova migrazione"
+      :title="t('migrazioni.nuova')"
       width="640px"
       @update:visible="showCreateModal = $event"
       @close="showCreateModal = false"
     >
       <div class="form-group">
-        <label>Nome job</label>
-        <input v-model="form.name" class="form-input" placeholder="es. Migrazione VM 100 → nodo2" />
+        <label>{{ t('migrazioni.nomeJob') }}</label>
+        <input v-model="form.name" class="form-input" :placeholder="t('migrazioni.segnNome')" />
       </div>
       <div class="grid-2">
         <div class="form-group">
-          <label>Nodo sorgente</label>
+          <label>{{ t('migrazioni.nodoOrigine') }}</label>
           <select v-model.number="form.source_node_id" class="form-input" @change="onSourceChange">
-            <option :value="0" disabled>Seleziona…</option>
+            <option :value="0" disabled>{{ t('comune.selezionaPunti') }}</option>
             <option v-for="n in pveNodes" :key="n.id" :value="n.id">{{ n.name }}</option>
           </select>
         </div>
         <div class="form-group">
-          <label>Nodo destinazione</label>
+          <label>{{ t('migrazioni.nodoDest') }}</label>
           <select v-model.number="form.dest_node_id" class="form-input">
-            <option :value="0" disabled>Seleziona…</option>
+            <option :value="0" disabled>{{ t('comune.selezionaPunti') }}</option>
             <option v-for="n in pveNodes" :key="n.id" :value="n.id">{{ n.name }}</option>
           </select>
         </div>
@@ -105,34 +105,34 @@
         <div class="form-group">
           <label>VM</label>
           <select v-model.number="form.vm_id" class="form-input" :disabled="!form.source_node_id || vmsLoading">
-            <option :value="0" disabled>{{ vmsLoading ? 'Caricamento…' : 'Seleziona VM…' }}</option>
+            <option :value="0" disabled>{{ vmsLoading ? t('comune.caricamento') : t('migrazioni.selVm') }}</option>
             <option v-for="vm in sourceVms" :key="vm.vmid" :value="vm.vmid">
               {{ vm.type }} {{ vm.vmid }} — {{ vm.name }}
             </option>
           </select>
         </div>
         <div class="form-group">
-          <label>Tipo migrazione</label>
+          <label>{{ t('migrazioni.tipo') }}</label>
           <select v-model="form.migration_type" class="form-input">
-            <option value="copy">copy (mantiene sorgente)</option>
-            <option value="move">move (rimuove da sorgente)</option>
+            <option value="copy">{{ t('migrazioni.copy') }}</option>
+            <option value="move">{{ t('migrazioni.move') }}</option>
           </select>
         </div>
       </div>
       <div class="grid-2">
         <div class="form-group">
-          <label>VMID destinazione (opzionale)</label>
-          <input v-model.number="form.dest_vm_id" type="number" class="form-input" placeholder="Auto" min="100" />
+          <label>{{ t('migrazioni.vmidDest') }}</label>
+          <input v-model.number="form.dest_vm_id" type="number" class="form-input" :placeholder="t('migrazioni.auto')" min="100" />
         </div>
         <div class="form-group">
-          <label>Schedule cron (opzionale)</label>
-          <input v-model="form.schedule" class="form-input" placeholder="es. 0 2 * * *" />
+          <label>{{ t('migrazioni.cron') }}</label>
+          <input v-model="form.schedule" class="form-input" :placeholder="t('migrazioni.segnCron')" />
         </div>
       </div>
       <template #footer>
-        <button class="btn btn-secondary btn-sm" @click="showCreateModal = false">Annulla</button>
+        <button class="btn btn-secondary btn-sm" @click="showCreateModal = false">{{ t('comune.annulla') }}</button>
         <button class="btn btn-primary btn-sm" @click="submitCreate" :disabled="saving || !canSubmit">
-          {{ saving ? 'Salvataggio…' : 'Crea job' }}
+          {{ saving ? t('comune.salvataggio') : t('migrazioni.crea') }}
         </button>
       </template>
     </ModalDialog>
@@ -149,6 +149,9 @@ import ModalDialog from '../../components/ModalDialog.vue'
 import migrationJobsService, { type MigrationJob } from '../../services/migrationJobs'
 import nodesService, { type Node } from '../../services/nodes'
 import vmsService, { type VM } from '../../services/vms'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const toast = useToast()
 
@@ -194,7 +197,7 @@ async function loadNodes() {
     const res = await nodesService.getNodes()
     pveNodes.value = (res.data || []).filter(n => n.node_type === 'pve' || !n.node_type)
   } catch (e) {
-    toast.error('Errore caricamento nodi', errorMessage(e))
+    toast.error(t('migrazioni.erroreNodi'), errorMessage(e))
   }
 }
 
@@ -212,7 +215,7 @@ async function onSourceChange() {
       type: v.type || 'qemu',
     }))
   } catch (e) {
-    toast.error('Errore caricamento VM', errorMessage(e))
+    toast.error(t('migrazioni.erroreVm'), errorMessage(e))
   } finally {
     vmsLoading.value = false
   }
@@ -248,11 +251,11 @@ async function submitCreate() {
     if (form.value.dest_vm_id) payload.dest_vm_id = form.value.dest_vm_id
     if (form.value.schedule?.trim()) payload.schedule = form.value.schedule.trim()
     await migrationJobsService.createJob(payload)
-    toast.success('Job di migrazione creato')
+    toast.success(t('migrazioni.creato'))
     showCreateModal.value = false
     await loadJobs()
   } catch (e) {
-    toast.error('Errore creazione job', errorMessage(e))
+    toast.error(t('migrazioni.erroreCrea'), errorMessage(e))
   } finally {
     saving.value = false
   }
@@ -264,24 +267,24 @@ async function loadJobs() {
     const res = await migrationJobsService.getJobs()
     jobs.value = res.data
   } catch (e) {
-    toast.error('Errore caricamento migrazioni', errorMessage(e))
+    toast.error(t('migrazioni.erroreCarico'), errorMessage(e))
   } finally {
     loading.value = false
   }
 }
 
 async function runJob(job: MigrationJob) {
-  if (!await confirmDangerous(`Avviare migrazione ${job.name}?`)) return
+  if (!await confirmDangerous(t('migrazioni.confAvvia', { nome: job.name }))) return
   try {
     const res = await migrationJobsService.runJob(job.id)
     if (res.data.requires_confirmation) {
-      if (await confirmDangerous(res.data.message, undefined, 'Forza')) {
+      if (await confirmDangerous(res.data.message, undefined, t('migrazioni.forza'))) {
         await migrationJobsService.runJob(job.id, true)
       }
     }
     loadJobs()
   } catch (e) {
-    toast.error('Errore avvio migrazione', errorMessage(e))
+    toast.error(t('migrazioni.erroreAvvio'), errorMessage(e))
   }
 }
 
@@ -289,19 +292,19 @@ async function toggleJob(job: MigrationJob) {
   try {
     await migrationJobsService.toggleJob(job.id)
     job.is_active = !job.is_active
-    toast.success(job.is_active ? 'Job attivato' : 'Job disattivato')
+    toast.success(job.is_active ? t('migrazioni.attivato') : t('migrazioni.disattivato'))
   } catch (e) {
-    toast.error('Errore modifica stato job', errorMessage(e))
+    toast.error(t('migrazioni.erroreStato'), errorMessage(e))
   }
 }
 
 async function deleteJob(job: MigrationJob) {
-  if (!await confirmDelete(job.name, 'job di migrazione')) return
+  if (!await confirmDelete(job.name, t('migrazioni.ilJob'))) return
   try {
     await migrationJobsService.deleteJob(job.id)
     loadJobs()
   } catch (e) {
-    toast.error('Errore eliminazione job', errorMessage(e))
+    toast.error(t('migrazioni.erroreElimina'), errorMessage(e))
   }
 }
 
