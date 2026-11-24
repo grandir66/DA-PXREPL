@@ -1,5 +1,15 @@
 # TASKS — DA-PXREPL
 
+## 2026-11-24 — Richieste di Riccardo per le prossime versioni (da progettare, niente codice ancora)
+
+Riccardo, 24/11: «inviare i log completi e parlati ad un syslog, in particolare a Wazuh»; «risolvere l'opzione di registrazione della VM replicata evitando che il flag di partenza automatica sia attivo»; «risolvere il problema degli uuid duplicati»; «prevedere di ripristinare l'originale dalla replica con l'id e nome originale … il caso di DTS per 3CX che ora lavora con la copia replicata e vorrei ritornare alla copia originale ricostruendo la sequenza»; «aggiungiamo ovviamente il controllo esterno su Zabbix».
+
+- [ ] **Log a syslog/Wazuh**: oggi non c'è niente (`logging_config.py` ha solo console, file e un `JSONFormatter`). Da decidere: indirizzo e porta per sito, UDP o TCP, quali eventi «parlati» (job partito/riuscito/fallito, accessi, modifiche, DR)
+- [ ] **Avvio automatico della replica**: dalla 3.22.0 la registrazione scrive `onboot 0` (`replica_identity.py`). Misurato il 24/11: nessuna replica con `onboot: 1` né a DTS (12 repliche) né su PX-NAS (10). Capire da Riccardo dove l'ha visto attivo
+- [ ] **UUID duplicati**: a Domarc le 9 repliche su PX-NAS, registrate prima della 3.22.0, hanno ancora lo stesso uuid della sorgente (401, 402, 406, 423, 432, 444, 455, 664, 699). Manca un'azione «riallinea identità» per le repliche già registrate. A DTS l'unica coppia è 103/9103, cioè il caso 3CX qui sotto
+- [ ] **Ritorno dalla replica all'originale (failback)**: oggi c'è solo «Attiva DR» (`routers/vms.py`), niente strada di ritorno. Caso DTS: 9103 «3CX-V20-replica» accesa su DTS-PX-04 con l'uuid originale, 103 «3CX-V20» spenta su DTS-PX-UP; è anche il motivo del job 2 che fallisce dal 12/11. Sequenza da progettare: fermo della replica, sincronizzazione inversa 9103→103, riaccensione della 103 con id, nome e uuid originali, replica rimessa nel verso giusto
+- [ ] **Controllo esterno su Zabbix** (DA-Zabbix): item su `/api/health` (`status`, `jobs.ultima_corsa_riuscita`, `jobs.repliche_fallite`) per Domarc e DTS
+
 ## 2026-11-24 — Verifica delle due installazioni (Domarc 3.21.3, DTS 3.24.4)
 
 Riccardo: «analizza il progetto e verifichiamo le due implementazioni, una in Domarc e una in DTS, per valutarne errori e miglioramenti». Sola lettura sul live, 24/11 ore 14:05 (diagnostica via `pct exec`, DB aperto in sola lettura).
