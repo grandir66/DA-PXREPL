@@ -522,6 +522,16 @@ class SyncJob(Base):
     source_vmgenid = Column(String(36), nullable=True)
     replica_smbios_uuid = Column(String(36), nullable=True)
 
+    # Ritorno all'originale (3.27.0, caso 3CX di DTS del 24/11/2026): a ogni
+    # corsa si fotografa la conf dell'originale (nome, bridge, onboot, tag,
+    # uuid), perche' al momento del ritorno puo' non esistere piu'. Lo stato
+    # del ritorno sta qui e non in memoria: il servizio puo' riavviarsi a meta'.
+    # ritorno_stato: nessuno | preparazione | pronto | scambio | completato | fallito
+    source_config_snapshot = Column(Text, nullable=True)
+    source_config_at = Column(DateTime, nullable=True)
+    ritorno_stato = Column(String(30), nullable=True)
+    ritorno_dettaglio = Column(Text, nullable=True)
+
     # Il job segue la VM (3.23.0): `source_node_id` viene aggiornato quando
     # la VM risulta migrata su un altro nodo censito. Dopo una migrazione
     # LIVE la destinazione non ha snapshot in comune con la sorgente e

@@ -133,6 +133,12 @@ def update_schema():
             _ensure_column(conn, "sync_jobs", "source_vmgenid", "VARCHAR(36)")
             _ensure_column(conn, "sync_jobs", "replica_smbios_uuid", "VARCHAR(36)")
 
+            # Ritorno all'originale (3.27.0): fotografia della conf e stato.
+            _ensure_column(conn, "sync_jobs", "source_config_snapshot", "TEXT")
+            _ensure_column(conn, "sync_jobs", "source_config_at", "DATETIME")
+            _ensure_column(conn, "sync_jobs", "ritorno_stato", "VARCHAR(30)")
+            _ensure_column(conn, "sync_jobs", "ritorno_dettaglio", "TEXT")
+
             # Il job segue la VM (3.23.0).
             _ensure_column(conn, "sync_jobs", "resync_dopo_migrazione", "BOOLEAN")
             _ensure_column(conn, "sync_jobs", "richiede_replica_completa", "BOOLEAN")

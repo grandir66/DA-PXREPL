@@ -247,6 +247,8 @@ async def _try_register_vm_after_sync(job_id: int, log_entry_id: int) -> None:
             db.commit()
             return
 
+        salva_fotografia_originale(db, job, config_result.stdout)
+
         dest_zfs_pool = _dest_zfs_pool_for_job(job)
         try:
             dest_bridges = await proxmox_service.get_node_bridges(
@@ -344,6 +346,43 @@ def salva_identita_replica(db, job, config_sorgente: str, source_hostname: str, 
             g.replica_smbios_uuid = ident.get("replica_smbios_uuid")
     except Exception as e:  # pragma: no cover - difensivo
         logger.warning(f"Identita' replica non salvata per job {getattr(job, 'id', '?')}: {e}")
+
+
+# Stati in cui un ritorno all'originale e' aperto: la replica sta (o puo'
+# stare) al posto dell'originale, e una corsa normale originale -> replica
+# le riporterebbe il disco indietro (`zfs receive -F`).
+RITORNO_APERTO = ("preparazione", "pronto", "scambio", "fallito")
+
+
+def salva_fotografia_originale(db, job, config_sorgente: str) -> bool:
+    """Salva la conf dell'originale su tutti i job del gruppo. True se scritta.
+
+    Non scrive se la conf porta il segno `dapx-replica` (e' una replica
+    promossa: coprirebbe la fotografia buona) ne' mentre un ritorno e' aperto.
+    Non alza mai: e' un di piu' rispetto alla corsa.
+    """
+    try:
+        from database import SyncJob
+        from services.replica_identity import SALE_REPLICA, rimuovi_sezioni_snapshot
+
+        if (job.vm_type or "qemu") != "qemu":
+            return False
+        if (getattr(job, "ritorno_stato", None) or "") in RITORNO_APERTO:
+            return False
+        principale = rimuovi_sezioni_snapshot(config_sorgente or "")
+        if not principale.strip() or SALE_REPLICA in principale:
+            return False
+        gemelli = [job]
+        if job.vm_group_id:
+            gemelli = db.query(SyncJob).filter(SyncJob.vm_group_id == job.vm_group_id).all() or [job]
+        adesso = datetime.utcnow()
+        for g in gemelli:
+            g.source_config_snapshot = principale
+            g.source_config_at = adesso
+        return True
+    except Exception as e:  # pragma: no cover - difensivo
+        logger.warning(f"Fotografia della conf non salvata per job {getattr(job, 'id', '?')}: {e}")
+        return False
 
 
 def repair_terminal_job_log(log, job) -> bool:
@@ -657,6 +696,16 @@ async def execute_sync_job_task(
             job_type = "sync_pve_native"
         else:
             job_type = "sync"
+
+        if (getattr(job, "ritorno_stato", None) or "") in RITORNO_APERTO:
+            await _fallisci_prima_di_partire(
+                db_session, job, source_node, dest_node, job_type,
+                f"Ritorno all'originale aperto (stato: {job.ritorno_stato}): la replica "
+                "sta al posto dell'originale, una corsa normale le riporterebbe il disco indietro. "
+                "Completare il ritorno dalla pagina della VM replica.",
+                tentativo, triggered_by_user_id,
+            )
+            return False
 
         # Il job segue la VM (3.23.0): dove sta ADESSO nel cluster? Se è
         # migrata su un nodo censito col dataset, si parte da lì e il job
