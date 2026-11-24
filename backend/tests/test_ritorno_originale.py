@@ -134,6 +134,33 @@ def test_durante_un_ritorno_la_fotografia_non_si_tocca(db, nodi):
     assert "bridge=vmbr_vm" in a.source_config_snapshot
 
 
+def test_fotografia_letta_dal_nodo_anche_a_vm_gia_registrata(db, nodi):
+    """Prova a Domarc del 24/11/2026: agganciata alla registrazione, la
+    fotografia restava quella della prima corsa. Ora e' un passo a se'."""
+    from services.sync_job_execution import fotografa_originale
+
+    a = _job(db, nodi)
+    conf = {"testo": CONF_103}
+
+    async def execute(hostname, command, **kw):
+        assert hostname == "px-up.dts" and "qemu-server/103.conf" in command
+        return SSHResult(success=True, stdout=conf["testo"], stderr="", exit_code=0)
+
+    with patch("services.ssh_service.ssh_service.execute", AsyncMock(side_effect=execute)):
+        assert asyncio.run(fotografa_originale(db, a, nodi[0])) is True
+        conf["testo"] = CONF_103.replace("vmbr_vm", "vmbr_nuovo")
+        assert asyncio.run(fotografa_originale(db, a, nodi[0])) is True
+    assert "bridge=vmbr_nuovo" in a.source_config_snapshot
+
+
+def test_corsa_riuscita_chiama_la_fotografia():
+    import inspect
+    from services import sync_job_execution
+
+    corpo = inspect.getsource(sync_job_execution.execute_sync_job_task)
+    assert "await fotografa_originale(db_session, job_record, source_node)" in corpo
+
+
 def test_colonne_aggiunte_a_un_database_vecchio():
     """`update_db_schema` deve aggiungere le quattro colonne a `sync_jobs`."""
     import inspect

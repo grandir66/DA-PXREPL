@@ -385,6 +385,32 @@ def salva_fotografia_originale(db, job, config_sorgente: str) -> bool:
         return False
 
 
+async def fotografa_originale(db, job, source_node) -> bool:
+    """Legge la conf dell'originale dal suo nodo e la salva sul gruppo.
+
+    Passo a se', dopo una corsa riuscita: agganciata alla registrazione della
+    VM non girava mai per le VM gia' registrate (prova a Domarc del
+    24/11/2026: fotografia ferma alla prima corsa). Non alza mai.
+    """
+    try:
+        from services.ssh_service import ssh_service
+
+        if not job.vm_id or (job.vm_type or "qemu") != "qemu":
+            return False
+        esito = await ssh_service.execute(
+            hostname=source_node.hostname,
+            command=f"cat /etc/pve/qemu-server/{int(job.vm_id)}.conf 2>/dev/null",
+            port=source_node.ssh_port, username=source_node.ssh_user,
+            key_path=source_node.ssh_key_path, timeout=20,
+        )
+        if not esito.success or not (esito.stdout or "").strip():
+            return False
+        return salva_fotografia_originale(db, job, esito.stdout)
+    except Exception as e:  # pragma: no cover - difensivo
+        logger.warning(f"Fotografia della conf non letta per job {getattr(job, 'id', '?')}: {e}")
+        return False
+
+
 def repair_terminal_job_log(log, job) -> bool:
     """Allinea status del log se completed_at è valorizzato ma lo status è ancora aperto."""
     status = (log.status or "").lower()
@@ -1051,6 +1077,8 @@ async def execute_sync_job_task(
             log_entry.message = (log_entry.message or "") + " Sincronizzazione completata"
             if posizione.spostata:
                 log_entry.message += f" | {posizione.messaggio}"
+            if sync_method == SyncMethod.SYNCOID.value:
+                await fotografa_originale(db_session, job_record, source_node)
             await _try_register_vm_after_sync(job_id, log_entry.id)
             
             # Log retention info
