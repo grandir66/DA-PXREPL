@@ -755,7 +755,9 @@ async def activate_dr(
         cmd += f" --vmgenid {shlex.quote(source_vmgenid)}"
         vmgenid_ripristinato = True
     quando = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-    descr = valore_config(config_txt, "description") or ""
+    # In chiaro e su una riga: riscritta codificata, `qm set` la ricodifica.
+    from services.replica_identity import descrizione_in_chiaro
+    descr = descrizione_in_chiaro(valore_config(config_txt, "description")).replace("\n", " | ")
     descr_nuova = f"{descr} | DR ATTIVATO {quando} da {user.username}" if descr else f"DR ATTIVATO {quando} da {user.username}"
     cmd += f" --description {shlex.quote(descr_nuova)}"
 

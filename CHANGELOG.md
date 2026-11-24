@@ -33,6 +33,13 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
   valgono quei valori. Con un ritorno aperto la replica normale di quella VM non
   parte: riporterebbe indietro il disco della replica che sta lavorando.
 
+### Correzioni
+
+- **«Attiva DR» ricodificava la descrizione della replica** a ogni attivazione
+  (`%3A` diventava `%253A`): alla seconda volta l'identità non si leggeva più e la
+  scheda «Identità replica» spariva. Trovato nella prova del ritorno a Domarc il
+  24/11. Ora la descrizione si legge e si riscrive in chiaro.
+
 ## [3.26.0] - 2026-11-24
 
 Migliorie dopo la verifica delle due installazioni del 24/11.

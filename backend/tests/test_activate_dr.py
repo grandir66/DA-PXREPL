@@ -236,3 +236,20 @@ def test_full_details_vm_normale_non_e_replica(client, admin_user, admin_token, 
             headers={"Authorization": f"Bearer {admin_token}"},
         )
     assert r.json()["replica_identity"] == {"is_replica": False}
+
+
+def test_attiva_dr_non_ricodifica_la_descrizione(client, operator_token, nodi, job):
+    """Prova a Domarc del 24/11/2026: `qm config` stampa `%3A`, e riscritto
+    cosi' diventava `%253A`; alla seconda attivazione l'identita' non si leggeva."""
+    from services.replica_identity import estrai_identita_da_descrizione
+
+    _, dst = nodi
+    codificata = CONFIG_REPLICA.replace("originale: uuid", "originale%253A uuid").replace("vmgenid originale: ", "vmgenid originale%3A ")
+    assert estrai_identita_da_descrizione(codificata.split("description: ")[1].splitlines()[0])["source_smbios_uuid"] == UUID_ORIG
+    finto, comandi = _ssh(codificata)
+    with patch("routers.vms.ssh_service.execute", finto), \
+         patch("services.proxmox_service.ssh_service.execute", finto):
+        r = _post(client, operator_token, dst.id, {"confirm": "ATTIVA"})
+    assert r.status_code == 200, r.text
+    qm_set = [c for _, c in comandi if c.startswith("qm set")][0]
+    assert "%" not in qm_set and f"smbios1 originale: uuid={UUID_ORIG}" in qm_set

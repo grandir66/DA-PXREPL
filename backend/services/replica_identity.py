@@ -120,6 +120,24 @@ def descrizione_replica(
     return testo.encode("ascii", "ignore").decode("ascii").replace("%", "").replace("\n", " ")
 
 
+def descrizione_in_chiaro(description: Optional[str]) -> str:
+    """La description come testo: `qm config` la stampa codificata (`%3A`).
+
+    Riscriverla cosi' com'e' con `qm set` la codifica un'altra volta
+    (`%253A`): alla seconda «Attiva DR» l'identita' non si leggeva piu'
+    (prova a Domarc del 24/11/2026). Qui si decodifica finche' serve.
+    """
+    from urllib.parse import unquote
+
+    testo = description or ""
+    for _ in range(4):
+        nuovo = unquote(testo)
+        if nuovo == testo:
+            break
+        testo = nuovo
+    return testo
+
+
 def estrai_identita_da_descrizione(description: Optional[str]) -> Dict[str, object]:
     """Legge gli originali dalla description di una replica (forma nuova o a mano).
 
@@ -128,7 +146,7 @@ def estrai_identita_da_descrizione(description: Optional[str]) -> Dict[str, obje
     """
     if not description:
         return {}
-    testo = description.replace("%0A", " ").replace("%3A", ":")
+    testo = descrizione_in_chiaro(description).replace("\n", " ")
     out: Dict[str, object] = {}
     m = _RE_SMBIOS_ORIG.search(testo)
     if m:
