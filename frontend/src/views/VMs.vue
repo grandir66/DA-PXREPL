@@ -953,7 +953,7 @@ const ritornoVisibile = computed(() => {
  const r = ritorno.value;
  if (!r) return false;
  const ident = vmInfoData.value?.replica_identity;
- return r.stato !== 'nessuno' || !!ident?.dr_attivo || (!!ident?.is_replica && vmInfoData.value?.status === 'running');
+ return r.stato !== 'nessuno' || !!ident?.dr_attivo || vmInfoData.value?.status === 'running';
 });
 const ritornoPuoPreparare = computed(() => {
  const r = ritorno.value;
@@ -986,8 +986,8 @@ const fermaRitornoTimer = () => {
 const caricaRitorno = async () => {
  fermaRitornoTimer();
  const vm = selectedVM.value;
- const ident = vmInfoData.value?.replica_identity;
- if (!vm || vm.type !== 'qemu' || !(ident?.is_replica || ident?.da_riallineare)) { ritorno.value = null; return; }
+ // Si chiede per ogni VM qemu: chi non è la replica di un job risponde 404 senza toccare i nodi.
+ if (!vm || vm.type !== 'qemu') { ritorno.value = null; return; }
  try {
  const res = await vmsService.getRitorno(vm.node_id!, vm.vmid);
  if (selectedVM.value !== vm) return;
