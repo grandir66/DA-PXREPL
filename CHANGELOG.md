@@ -5,9 +5,20 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.28.0] - 2026-11-25
+
+Interfaccia in italiano e in inglese.
+
+### Aggiunte
+
+- **Selettore di lingua** in fondo al menu laterale: italiano (predefinito) o inglese. La
+  scelta vale per il browser in cui la fai. I messaggi che scrive il backend (errori, esiti,
+  riepilogo della pianificazione) e le e-mail restano in italiano: arrivano in una versione
+  successiva.
+
 ### Modifiche
 
-- **Interfaccia in due lingue, seconda parte** (selettore ancora nascosto): tradotte
+- **Interfaccia in due lingue, seconda parte**: tradotte
   tutte le viste raggiungibili dal menu: Dashboard, Repliche, job, registri, Nodi, Macchine
   virtuali (con «Ritorno all'originale», «Riallinea identità» e «Attiva DR»), impostazioni,
   snapshot VM, PBS, backup host, repliche file dati, migrazioni, Sanoid e Cluster. La vista

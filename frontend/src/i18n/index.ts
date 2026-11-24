@@ -11,7 +11,6 @@ export type Lingua = (typeof LINGUE)[number]
 export const LINGUA_PREDEFINITA: Lingua = 'it'
 
 const CHIAVE = 'dapx.lang'
-const CHIAVE_ANTEPRIMA = 'dapx.lang.anteprima'
 
 /** Locale BCP 47 per date e numeri. */
 export const LOCALE_FORMATI: Record<Lingua, string> = { it: 'it-IT', en: 'en-GB' }
@@ -29,15 +28,10 @@ function linguaSalvata(): Lingua {
   return (LINGUE as readonly string[]).includes(v ?? '') ? (v as Lingua) : LINGUA_PREDEFINITA
 }
 
-/**
- * Il selettore resta nascosto finché le viste non sono tradotte: si vede in
- * sviluppo, oppure con `localStorage['dapx.lang.anteprima'] = '1'`.
- */
-export const SELETTORE_VISIBILE: boolean = import.meta.env.DEV || leggi(CHIAVE_ANTEPRIMA) === '1'
+/** Il selettore di lingua è visibile a tutti dalla 3.28.0 (tutte le viste del menu sono tradotte). */
+export const SELETTORE_VISIBILE = true
 
-// Senza selettore la lingua è sempre la predefinita, anche se nel browser è
-// rimasta una scelta fatta in anteprima.
-const iniziale: Lingua = SELETTORE_VISIBILE ? linguaSalvata() : LINGUA_PREDEFINITA
+const iniziale: Lingua = linguaSalvata()
 
 export const i18n = createI18n({
   legacy: false,
