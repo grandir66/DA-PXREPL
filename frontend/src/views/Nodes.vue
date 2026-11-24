@@ -92,7 +92,7 @@
  </td>
  <td>
  <div v-if="node.node_type === 'pve'">
- <span v-if="node.sanoid_installed" class="badge badge-success" title="Sanoid Installato">
+ <span v-if="node.sanoid_installed" class="badge badge-success" :title="t('nodi.sanoidInstallato')">
  <Icon name="check-circle" :size="14" class="text-success" /> {{ node.sanoid_version || 'OK' }}
  <button class="btn-icon-sm" @click.stop="updateSanoid(node)" :title="t('nodi.aggiornaSanoid')">⬆️</button>
  </span>

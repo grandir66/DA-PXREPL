@@ -1,15 +1,15 @@
 <template>
  <div class="vms-page">
- <PageHeader title="Virtual Machines" subtitle="Gestione risorse, lifecycle, snapshot e backup" icon="monitor">
+ <PageHeader :title="t('vm.titolo')" :subtitle="t('vm.sottotitolo')" icon="monitor">
  <template #actions>
  <button class="btn btn-secondary btn-sm" @click="loadVMs(false)" :disabled="loading">
  <Icon name="refresh" :size="14" :class="{ spin: loading }" />
- {{ loading ? 'Aggiorno…' : 'Aggiorna' }}
+ {{ loading ? t('comune.aggiornoInCorso') : t('comune.aggiorna') }}
  </button>
- <button class="btn btn-primary btn-sm" @click="loadVMs(true)" :disabled="loading" title="Forza refresh dati real-time (più lento)">
- Live
+ <button class="btn btn-primary btn-sm" @click="loadVMs(true)" :disabled="loading" :title="t('vm.dalVivoAiuto')">
+ {{ t('vm.dalVivo') }}
  </button>
- <input type="text" v-model="search" placeholder="Cerca VM o ID…" class="form-input search-input">
+ <input type="text" v-model="search" :placeholder="t('vm.cerca')" class="form-input search-input">
  </template>
  </PageHeader>
 
@@ -17,15 +17,15 @@
  <div class="grid-3 mb-4">
  <div class="card stat-mini">
  <div class="stat-value">{{ vms.length }}</div>
- <div class="stat-label">Totali</div>
+ <div class="stat-label">{{ t('vm.totali') }}</div>
  </div>
  <div class="card stat-mini">
  <div class="stat-value text-success">{{ runningCount }}</div>
- <div class="stat-label">Running</div>
+ <div class="stat-label">{{ t('vm.accese') }}</div>
  </div>
  <div class="card stat-mini">
  <div class="stat-value text-secondary">{{ vms.length - runningCount }}</div>
- <div class="stat-label">Stopped</div>
+ <div class="stat-label">{{ t('vm.spente') }}</div>
  </div>
  </div>
 
@@ -38,16 +38,16 @@
  ID <span v-if="sortKey === 'vmid'">{{ sortDesc ? '↓' : '↑' }}</span>
  </th>
  <th @click="sortBy('name')" class="cursor-pointer hover:text-accent select-none">
- Nome <span v-if="sortKey === 'name'">{{ sortDesc ? '↓' : '↑' }}</span>
+ {{ t('comune.nome') }} <span v-if="sortKey === 'name'">{{ sortDesc ? '↓' : '↑' }}</span>
  </th>
  <th width="120" style="min-width: 120px;" @click="sortBy('node')" class="cursor-pointer hover:text-accent select-none">
  Host <span v-if="sortKey === 'node'">{{ sortDesc ? '↓' : '↑' }}</span>
  </th>
  <th width="100" @click="sortBy('status')" class="cursor-pointer hover:text-accent select-none">
- Stato <span v-if="sortKey === 'status'">{{ sortDesc ? '↓' : '↑' }}</span>
+ {{ t('comune.stato') }} <span v-if="sortKey === 'status'">{{ sortDesc ? '↓' : '↑' }}</span>
  </th>
- <th width="180">Allocazioni</th>
- <th width="420" class="text-right">Azioni</th>
+ <th width="180">{{ t('vm.allocazioni') }}</th>
+ <th width="420" class="text-right">{{ t('comune.azioni') }}</th>
  </tr>
  </thead>
  <tbody>
@@ -67,7 +67,7 @@
  </div>
  </td>
  <td>
- <router-link :to="'/nodes?openInfo=' + vm.node" class="badge badge-outline text-sm no-underline hover:bg-accent hover:text-white transition-colors" title="Vai al nodo">
+ <router-link :to="'/nodes?openInfo=' + vm.node" class="badge badge-outline text-sm no-underline hover:bg-accent hover:text-white transition-colors" :title="t('vm.vaiNodo')">
  {{ vm.node }}
  </router-link>
  </td>
@@ -76,26 +76,26 @@
  <span class="status-dot"></span>
  {{ vm.status === 'running' ? 'ON' : 'OFF' }}
  </span>
- <div v-if="vm.loading" class="text-xs text-accent mt-1">Processing...</div>
+ <div v-if="vm.loading" class="text-xs text-accent mt-1">{{ t('stato.running') }}…</div>
  </td>
  <td class="resource-cell">
  <!-- Allocated Resources (Text) -->
  <div class="text-xs space-y-1">
- <span class="font-mono text-primary font-bold mr-2">{{ vm.maxcpu || 1 }} Core</span>
+ <span class="font-mono text-primary font-bold mr-2">{{ t('nodi.core', { n: vm.maxcpu || 1 }) }}</span>
  <span class="font-mono text-primary font-bold mr-2">{{ formatSize(vm.maxmem || 0) }} RAM</span>
  <span class="font-mono text-primary" v-if="vm.maxdisk">{{ formatSize(vm.maxdisk || 0) }} HD</span>
  </div>
  </td>
  <td class="text-right">
  <div class="flex justify-end gap-2">
- <button class="btn btn-sm btn-outline" @click="openVMInfoModal(vm)" title="Dettagli VM">
- Info
+ <button class="btn btn-sm btn-outline" @click="openVMInfoModal(vm)" :title="t('vm.dettagliVm')">
+ {{ t('nodi.info') }}
  </button>
  <button class="btn btn-sm btn-cyan" @click="openBackupModal(vm)" title="Backup PBS">
  Backup PBS
  </button>
- <button class="btn btn-sm btn-primary" @click="openReplicationWizard(vm)" title="Configura Replica">
- Replica
+ <button class="btn btn-sm btn-primary" @click="openReplicationWizard(vm)" :title="t('vm.configuraReplica')">
+ {{ t('vm.replica') }}
  </button>
  <button class="btn btn-sm btn-dark" @click="openSnapshotModal(vm)" title="Snapshot">
  Snapshot
@@ -105,21 +105,21 @@
  class="btn btn-success btn-xs btn-icon" 
  @click="manageState(vm, 'start')"
  :disabled="vm.loading"
- title="Start VM">
+ :title="t('vm.avviaVm')">
  <Icon name="play" :size="14" />
  </button>
  <button v-else 
  class="btn btn-danger btn-xs btn-icon" 
  @click="manageState(vm, 'shutdown')"
  :disabled="vm.loading"
- title="Shutdown VM">
+ :title="t('vm.spegniVm')">
  <Icon name="stop" :size="14" />
  </button>
  </div>
  </td>
  </tr>
  <tr v-if="filteredVMs.length === 0 && !loading">
- <td colspan="6" class="empty-state-cell text-center py-8 text-secondary">Nessuna VM trovata</td>
+ <td colspan="6" class="empty-state-cell text-center py-8 text-secondary">{{ t('vm.nessuna') }}</td>
  </tr>
  </tbody>
  </table>
@@ -127,46 +127,46 @@
  </div>
 
  <!-- Snapshot Modal -->
- <ModalDialog v-model:visible="showSnapshotModal" :title="`Snapshot Manager - ${selectedVM?.name}`" width="900px">
+ <ModalDialog v-model:visible="showSnapshotModal" :title="t('vm.snapTitolo', { nome: selectedVM?.name })" width="900px">
  <div class="tabs mb-4">
- <button class="tab-btn" :class="{ active: snapshotTab === 'proxmox' }" @click="snapshotTab = 'proxmox'">Proxmox Snapshots</button>
- <button class="tab-btn" :class="{ active: snapshotTab === 'sanoid' }" @click="openSanoidSection()">Sanoid Config</button>
+ <button class="tab-btn" :class="{ active: snapshotTab === 'proxmox' }" @click="snapshotTab = 'proxmox'">{{ t('vm.snapProxmox') }}</button>
+ <button class="tab-btn" :class="{ active: snapshotTab === 'sanoid' }" @click="openSanoidSection()">{{ t('vm.snapSanoid') }}</button>
  </div>
 
  <!-- Proxmox Snapshots Tab -->
  <div v-if="snapshotTab === 'proxmox'">
  <div class="action-bar mb-4 bg-dark-soft p-3 rounded flex justify-between items-center">
- <span class="text-sm text-secondary">Snapshot standard Proxmox VE (con RAM opzionale)</span>
- <button class="btn btn-primary btn-sm" @click="showCreatePveSnapshot = true" v-if="!showCreatePveSnapshot">+ Create Snapshot</button>
+ <span class="text-sm text-secondary">{{ t('vm.snapStandard') }}</span>
+ <button class="btn btn-primary btn-sm" @click="showCreatePveSnapshot = true" v-if="!showCreatePveSnapshot">{{ t('vm.snapCrea') }}</button>
  </div>
 
  <!-- Create Form -->
  <div v-if="showCreatePveSnapshot" class="card p-4 mb-4 border-accent">
- <h4 class="mb-3">Nuovo Proxmox Snapshot</h4>
+ <h4 class="mb-3">{{ t('vm.snapNuovo') }}</h4>
  <div class="grid-2 gap-4 mb-3">
- <input v-model="newSnapName" placeholder="Nome snapshot" class="form-input">
+ <input v-model="newSnapName" :placeholder="t('vm.snapNome')" class="form-input">
  <div class="flex items-center">
  <label class="flex items-center gap-2 cursor-pointer">
  <input type="checkbox" v-model="newSnapRam"> 
- <span>Include RAM</span>
+ <span>{{ t('vm.snapRam') }}</span>
  </label>
  </div>
  </div>
- <input v-model="newSnapDesc" placeholder="Descrizione (opzionale)" class="form-input mb-3">
+ <input v-model="newSnapDesc" :placeholder="t('vm.snapDescr')" class="form-input mb-3">
  <div class="flex gap-2 justify-end">
- <button class="btn btn-secondary btn-sm" @click="showCreatePveSnapshot = false">Annulla</button>
- <button class="btn btn-primary btn-sm" @click="createPveSnapshot">Crea Snapshot</button>
+ <button class="btn btn-secondary btn-sm" @click="showCreatePveSnapshot = false">{{ t('comune.annulla') }}</button>
+ <button class="btn btn-primary btn-sm" @click="createPveSnapshot">{{ t('vm.snapCreaBtn') }}</button>
  </div>
  </div>
 
  <!-- PVE Snapshots List -->
  <div class="snapshot-list">
- <div v-if="snapshotsLoading" class="text-center p-4">Caricamento...</div>
- <div v-else-if="allSnapshots.length === 0" class="text-center text-secondary p-4">Nessuno snapshot trovato.</div>
+ <div v-if="snapshotsLoading" class="text-center p-4">{{ t('comune.caricamento') }}</div>
+ <div v-else-if="allSnapshots.length === 0" class="text-center text-secondary p-4">{{ t('vm.snapNessuno') }}</div>
  <div v-else>
  <!-- PVE Snapshots Section -->
  <div v-if="snapshots.length > 0" class="mb-4">
- <h5 class="text-sm font-bold text-secondary mb-2"><Icon name="camera" :size="20" /> Proxmox VM Snapshots</h5>
+ <h5 class="text-sm font-bold text-secondary mb-2"><Icon name="camera" :size="20" /> {{ t('vm.snapVmProxmox') }}</h5>
  <div v-for="snap in snapshots" :key="'pve-' + snap.name" class="snapshot-item card flex justify-between items-center p-3 mb-2">
  <div>
  <div class="font-bold flex items-center gap-2">
@@ -177,29 +177,29 @@
  <div class="text-xs text-secondary mt-1">{{ snap.description }}</div>
  </div>
  <div class="btn-group">
- <button class="btn btn-warning btn-xs" @click="rollbackPveSnapshot(snap.name)">Rollback</button>
- <button class="btn btn-danger btn-xs" @click="deletePveSnapshot(snap.name)">Delete</button>
+ <button class="btn btn-warning btn-xs" @click="rollbackPveSnapshot(snap.name)">{{ t('vm.rollback') }}</button>
+ <button class="btn btn-danger btn-xs" @click="deletePveSnapshot(snap.name)">{{ t('comune.elimina') }}</button>
  </div>
  </div>
  </div>
  
  <!-- ZFS/Sanoid Snapshots Section -->
  <div v-if="groupedZfsSnapshots.length > 0">
- <h5 class="text-sm font-bold text-secondary mb-2"><Icon name="zap" :size="20" /> ZFS/Sanoid Snapshots</h5>
+ <h5 class="text-sm font-bold text-secondary mb-2"><Icon name="zap" :size="20" /> {{ t('vm.snapZfs') }}</h5>
  <div v-for="snap in groupedZfsSnapshots" :key="'zfs-' + snap.name" class="snapshot-item card flex justify-between items-center p-3 mb-2">
  <div>
  <div class="font-bold flex items-center gap-2">
  {{ snap.name }}
  <span class="badge badge-info text-xs">ZFS</span>
- <span class="badge badge-outline text-xs" title="Dischi coinvolti">{{ snap.datasetsCount }} disks</span>
+ <span class="badge badge-outline text-xs" :title="t('vm.dischiCoinvolti')">{{ t('vm.nDischi', { n: snap.datasetsCount }) }}</span>
  <span class="badge text-xs" :class="getPolicyBadge(snap.name).class">{{ getPolicyBadge(snap.name).text }}</span>
  </div>
- <div class="text-xs text-secondary">{{ snap.creation || 'N/A' }}</div>
+ <div class="text-xs text-secondary">{{ snap.creation || t('comune.nd') }}</div>
  </div>
  <div class="btn-group">
- <button class="btn btn-cyan btn-xs" @click="startZfsCloneWizard(snap)">Clone</button>
- <button class="btn btn-warning btn-xs" @click="rollbackZfs(snap)">Rollback</button>
- <button class="btn btn-danger btn-xs" @click="deleteZfsSnapshot(snap)">Delete</button>
+ <button class="btn btn-cyan btn-xs" @click="startZfsCloneWizard(snap)">{{ t('vm.clona') }}</button>
+ <button class="btn btn-warning btn-xs" @click="rollbackZfs(snap)">{{ t('vm.rollback') }}</button>
+ <button class="btn btn-danger btn-xs" @click="deleteZfsSnapshot(snap)">{{ t('comune.elimina') }}</button>
  </div>
  </div>
  </div>
@@ -211,7 +211,7 @@
 
  <!-- Sanoid Config Tab -->
  <div v-if="snapshotTab === 'sanoid'">
- <div v-if="sanoidLoading" class="text-center p-8">Reading configuration...</div>
+ <div v-if="sanoidLoading" class="text-center p-8">{{ t('vm.sanLettura') }}</div>
  <div v-else class="sanoid-form">
  <div class="flex items-center gap-3 mb-6 p-4 bg-dark-soft rounded">
  <label class="switch">
@@ -219,37 +219,37 @@
  <span class="slider round"></span>
  </label>
  <div>
- <div class="font-bold">Abilita Sanoid per questa VM</div>
- <div class="text-xs text-secondary">Gestione automatica snapshot su tutti i dischi</div>
+ <div class="font-bold">{{ t('vm.sanAbilita') }}</div>
+ <div class="text-xs text-secondary">{{ t('vm.sanAbilitaSotto') }}</div>
  </div>
  </div>
 
  <div v-if="sanoidConfig.enable" class="grid-2 gap-6">
  <div class="card p-4">
- <h4 class="mb-3">Policy Template</h4>
+ <h4 class="mb-3">{{ t('vm.sanModello') }}</h4>
  <select v-model="sanoidConfig.template" class="form-select w-full mb-3">
- <option value="production">Production (Freq High)</option>
- <option value="backup">Backup (Long Term)</option>
- <option value="test">Test (Short Term)</option>
+ <option value="production">{{ t('vm.sanProd') }}</option>
+ <option value="backup">{{ t('vm.sanBackup') }}</option>
+ <option value="test">{{ t('vm.sanTest') }}</option>
  </select>
  <div class="flex gap-4">
  <label class="flex items-center gap-2">
- <input type="checkbox" v-model="sanoidConfig.autosnap"> Auto Snapshot
+ <input type="checkbox" v-model="sanoidConfig.autosnap"> {{ t('vm.sanAutosnap') }}
  </label>
  <label class="flex items-center gap-2">
- <input type="checkbox" v-model="sanoidConfig.autoprune"> Auto Prune
+ <input type="checkbox" v-model="sanoidConfig.autoprune"> {{ t('vm.sanAutoprune') }}
  </label>
  </div>
  </div>
 
  <div class="card p-4">
- <h4 class="mb-3">Retention Policy (Override)</h4>
+ <h4 class="mb-3">{{ t('vm.sanConserv') }}</h4>
  <div class="grid-2 gap-2 text-sm">
- <label>Hourly <input type="number" v-model="sanoidConfig.hourly" class="form-input-sm"></label>
- <label>Daily <input type="number" v-model="sanoidConfig.daily" class="form-input-sm"></label>
- <label>Weekly <input type="number" v-model="sanoidConfig.weekly" class="form-input-sm"></label>
- <label>Monthly <input type="number" v-model="sanoidConfig.monthly" class="form-input-sm"></label>
- <label>Yearly <input type="number" v-model="sanoidConfig.yearly" class="form-input-sm"></label>
+ <label>{{ t('vm.san_orari') }} <input type="number" v-model="sanoidConfig.hourly" class="form-input-sm"></label>
+ <label>{{ t('vm.san_giornalieri') }} <input type="number" v-model="sanoidConfig.daily" class="form-input-sm"></label>
+ <label>{{ t('vm.san_settimanali') }} <input type="number" v-model="sanoidConfig.weekly" class="form-input-sm"></label>
+ <label>{{ t('vm.san_mensili') }} <input type="number" v-model="sanoidConfig.monthly" class="form-input-sm"></label>
+ <label>{{ t('vm.san_annuali') }} <input type="number" v-model="sanoidConfig.yearly" class="form-input-sm"></label>
  </div>
  </div>
  </div>
@@ -259,47 +259,46 @@
  <template #footer>
  <div v-if="snapshotTab === 'sanoid'" class="w-full flex justify-between">
  <button class="btn btn-cyan" @click="triggerSanoidSnapshot" :disabled="sanoidTriggering">
- {{ sanoidTriggering ? 'Creating...' : 'Snapshot Adesso' }}
+ {{ sanoidTriggering ? t('vm.sanCreazione') : t('vm.sanAdesso') }}
  </button>
  <button class="btn btn-primary" @click="saveSanoidConfig" :disabled="sanoidSaving">
- {{ sanoidSaving ? 'Saving...' : 'Salva Configurazione' }}
+ {{ sanoidSaving ? t('comune.salvataggio') : t('vm.sanSalva') }}
  </button>
  </div>
  <div v-if="snapshotTab === 'sanoid'" class="w-full text-center mt-2">
  <p class="text-xs text-secondary">
- <Icon name="info" :size="14" /> <strong>Nota:</strong> Gli snapshot automatici sono gestiti da <code>cron</code> e <code>sanoid</code> a livello di sistema.<br>
- Le policy configurate qui vengono applicate alle prossime esecuzioni pianificate (es. ogni 15 minuti/ora).
+ <Icon name="info" :size="14" /> <i18n-t keypath="vm.sanNota" tag="span"><template #nota><strong>{{ t('vm.nota') }}</strong></template><template #cron><code>cron</code></template><template #sanoid><code>sanoid</code></template></i18n-t>
  </p>
  </div>
  <div v-else class="w-full flex justify-end">
- <button class="btn btn-secondary" @click="showSnapshotModal = false">Chiudi</button>
+ <button class="btn btn-secondary" @click="showSnapshotModal = false">{{ t('comune.chiudi') }}</button>
  </div>
  </template>
  </ModalDialog>
 
  <!-- Backup Modal -->
- <ModalDialog v-model:visible="showBackupModal" :title="`Backup & Restore - ${selectedVM?.name}`" width="900px">
+ <ModalDialog v-model:visible="showBackupModal" :title="t('vm.bkTitolo', { nome: selectedVM?.name })" width="900px">
  <div v-if="!restoreMode">
  <!-- List View -->
  <div class="mb-4 flex justify-between items-center">
- <div class="text-sm text-secondary">Backup PBS disponibili per questa VM.</div>
+ <div class="text-sm text-secondary">{{ t('vm.bkDisponibili') }}</div>
  <div>
  <!-- Future: Backup Now button -->
  </div>
  </div>
  
- <div v-if="backupsLoading" class="text-center p-8">Caricamento backup...</div>
+ <div v-if="backupsLoading" class="text-center p-8">{{ t('vm.bkCaricamento') }}</div>
  <div v-else-if="backups.length === 0" class="text-center p-8 text-secondary border border-dashed border-gray-700 rounded">
- Nessun backup trovato. Verifica la configurazione PBS.
+ {{ t('vm.bkNessuno') }}
  </div>
  <div v-else class="backup-list">
  <table class="w-full text-sm">
  <thead>
  <tr class="text-left text-secondary border-b border-gray-700">
- <th class="p-2">Time</th>
- <th class="p-2">Size</th>
+ <th class="p-2">{{ t('vm.bkQuando') }}</th>
+ <th class="p-2">{{ t('vm.bkDimensione') }}</th>
  <th class="p-2">Storage</th>
- <th class="p-2 text-right">Action</th>
+ <th class="p-2 text-right">{{ t('comune.azioni') }}</th>
  </tr>
  </thead>
  <tbody>
@@ -311,7 +310,7 @@
  <td class="p-2">{{ formatSize(bak.size) }}</td>
  <td class="p-2"><span class="badge badge-outline text-xs">{{ bak.storage_id }}</span></td>
  <td class="p-2 text-right">
- <button class="btn btn-primary btn-xs" @click="startRestoreWizard(bak)">Restore...</button>
+ <button class="btn btn-primary btn-xs" @click="startRestoreWizard(bak)">{{ t('vm.bkRipristina') }}</button>
  </td>
  </tr>
  </tbody>
@@ -322,32 +321,32 @@
  <div v-else class="restore-wizard">
  <!-- Restore Wizard -->
  <div class="mb-4 pb-2 border-b border-gray-700 flex justify-between items-center">
- <h3>{{ zfsCloneMode ? 'ZFS Clone Wizard' : 'Restore Wizard' }}</h3>
- <button class="btn-xs btn-secondary" @click="restoreMode = false; zfsCloneMode = false; showBackupModal = zfsCloneMode ? false : true">Back</button>
+ <h3>{{ zfsCloneMode ? t('vm.wizClone') : t('vm.wizRipristino') }}</h3>
+ <button class="btn-xs btn-secondary" @click="restoreMode = false; zfsCloneMode = false; showBackupModal = zfsCloneMode ? false : true">{{ t('comune.indietro') }}</button>
  </div>
  
  <div class="grid-2 gap-8">
  <div class="wizard-info">
- <h4>{{ zfsCloneMode ? 'Source Snapshot' : 'Source Backup' }}</h4>
+ <h4>{{ zfsCloneMode ? t('vm.wizSnapOrigine') : t('vm.wizBkOrigine') }}</h4>
  <div class="p-3 bg-dark-soft rounded mb-4 text-sm space-y-2">
  <div><strong>VM:</strong> {{ selectedVM?.name }} ({{ selectedVM?.vmid }})</div>
  <div v-if="!zfsCloneMode"><strong>Backup:</strong> {{ formatDate(restoreSelection?.['backup-time'] || 0) }}</div>
  <div v-else><strong>Snapshot:</strong> {{ zfsCloneSelection?.name }}</div>
  <div class="text-xs break-all text-secondary">{{ !zfsCloneMode ? restoreSelection?.volid : zfsCloneSelection?.dataset }}</div>
- <div v-if="zfsCloneMode" class="text-xs text-secondary">{{ zfsCloneSelection?.datasetsCount || 1 }} datasets included</div>
+ <div v-if="zfsCloneMode" class="text-xs text-secondary">{{ t('vm.nDataset', { n: zfsCloneSelection?.datasetsCount || 1 }) }}</div>
  </div>
  
  <div class="alert alert-warning" v-if="!restoreOptions.newVmid">
- <Icon name="alert-triangle" :size="14" /> <strong>Attenzione:</strong> Il ripristino sovrascriverà i dati esistenti se si usa lo stesso VMID.
+ <Icon name="alert-triangle" :size="14" /> <strong>{{ t('vm.attenzione') }}</strong> {{ t('vm.wizSovrascrive') }}
  </div>
  <div class="alert alert-info" v-else>
- <Icon name="info" :size="14" /> Verrà creata una nuova VM con ID <strong>{{ restoreOptions.newVmid }}</strong>.
+ <Icon name="info" :size="14" /> <i18n-t keypath="vm.wizNuovaVm" tag="span"><template #id><strong>{{ restoreOptions.newVmid }}</strong></template></i18n-t>
  </div>
  </div>
  
  <div class="wizard-form space-y-4">
  <div>
- <label class="block text-sm text-secondary mb-1">Target Node</label>
+ <label class="block text-sm text-secondary mb-1">{{ t('vm.wizNodo') }}</label>
  <select v-model="restoreOptions.targetNodeId" class="form-select w-full" @change="loadTargetStorages">
  <option v-for="node in availableNodes" :key="node.id" :value="node.id">
  {{ node.name }} ({{ node.hostname }})
@@ -356,31 +355,31 @@
  </div>
 
  <div>
- <label class="block text-sm text-secondary mb-1">Target Storage</label>
+ <label class="block text-sm text-secondary mb-1">{{ t('vm.wizStorage') }}</label>
  <select v-model="restoreOptions.storage" class="form-select w-full">
- <option value="">(Default dal backup)</option>
+ <option value="">{{ t('vm.wizStorageDefault') }}</option>
  <option v-for="st in targetStorages" :key="st.name" :value="st.name">
- {{ st.name }} ({{ st.type }}) - {{ st.avail_gb || '?' }} GB free
+ {{ st.name }} ({{ st.type }}) - {{ t('vm.gbLiberi', { n: st.avail_gb || '?' }) }}
  </option>
  </select>
  </div>
  
  <div>
- <label class="block text-sm text-secondary mb-1">New VMID (Clone) - Optional</label>
+ <label class="block text-sm text-secondary mb-1">{{ t('vm.wizNuovoVmid') }}</label>
  <input v-model.number="restoreOptions.newVmid" type="number" class="form-input" :placeholder="String(selectedVM?.vmid)">
- <div class="text-xs text-secondary mt-1">Lascia vuoto per sovrascrivere la VM esistente.</div>
+ <div class="text-xs text-secondary mt-1">{{ t('vm.wizNuovoVmidNota') }}</div>
  </div>
 
  <div>
- <label class="block text-sm text-secondary mb-1">VM Name - Optional</label>
+ <label class="block text-sm text-secondary mb-1">{{ t('vm.wizNome') }}</label>
  <input v-model="restoreOptions.newName" type="text" class="form-input" :placeholder="selectedVM?.name">
- <div class="text-xs text-secondary mt-1">Nuovo nome per la VM (solo se cambi VMID).</div>
+ <div class="text-xs text-secondary mt-1">{{ t('vm.wizNomeNota') }}</div>
  </div>
  
  <div class="pt-2">
  <label class="flex items-center gap-2 cursor-pointer">
  <input type="checkbox" v-model="restoreOptions.start"> 
- <span>Start VM after restore</span>
+ <span>{{ t('vm.wizAvvia') }}</span>
  </label>
  </div>
  </div>
@@ -391,38 +390,37 @@
  <div v-if="restoreMode || zfsCloneMode"> 
  <!-- Footer for Wizard -->
  <div class="flex justify-end gap-2">
- <button class="btn btn-secondary" @click="restoreMode = false; zfsCloneMode = false; showBackupModal = zfsCloneMode ? false : true">Annulla</button>
- <button v-if="!zfsCloneMode" class="btn btn-danger" @click="executeRestore">Start Restore</button>
- <button v-else class="btn btn-cyan" @click="confirmZfsClone">Start ZFS Clone</button>
+ <button class="btn btn-secondary" @click="restoreMode = false; zfsCloneMode = false; showBackupModal = zfsCloneMode ? false : true">{{ t('comune.annulla') }}</button>
+ <button v-if="!zfsCloneMode" class="btn btn-danger" @click="executeRestore">{{ t('vm.wizAvviaRipristino') }}</button>
+ <button v-else class="btn btn-cyan" @click="confirmZfsClone">{{ t('vm.wizAvviaClone') }}</button>
  </div>
  </div>
  <div v-else class="flex justify-end">
- <button class="btn btn-secondary" @click="showBackupModal = false">Chiudi</button>
+ <button class="btn btn-secondary" @click="showBackupModal = false">{{ t('comune.chiudi') }}</button>
  </div>
  </template>
  </ModalDialog>
 
  <!-- ZFS Clone Modal (Dedicated) -->
- <ModalDialog :visible="showZfsCloneModal" @close="showZfsCloneModal = false" title="Clone da Snapshot ZFS" width="600px">
+ <ModalDialog :visible="showZfsCloneModal" @close="showZfsCloneModal = false" :title="t('vm.wizClone')" width="600px">
  <div class="zfs-clone-wizard">
  <div class="alert alert-warning mb-4">
- <Icon name="alert-triangle" :size="14" /> <strong>Attenzione:</strong> Questa operazione creerà una <b>nuova VM</b> clonando i dischi dallo snapshot selezionato.
- La VM originale non verrà modificata.
+ <Icon name="alert-triangle" :size="14" /> <strong>{{ t('vm.attenzione') }}</strong> {{ t('vm.cloneAvviso') }}
  </div>
  
  <div class="p-4 bg-dark-soft rounded mb-4 space-y-2">
- <div><strong>VM Origine:</strong> {{ selectedVM?.name }} ({{ selectedVM?.vmid }})</div>
+ <div><strong>{{ t('vm.vmOrigine') }}</strong> {{ selectedVM?.name }} ({{ selectedVM?.vmid }})</div>
  <div><strong>Snapshot:</strong> {{ zfsCloneSelection?.name }}</div>
- <div class="text-xs text-secondary">{{ zfsCloneSelection?.datasetsCount || 1 }} dataset(s)</div>
+ <div class="text-xs text-secondary">{{ t('vm.nDataset', { n: zfsCloneSelection?.datasetsCount || 1 }) }}</div>
  </div>
 
  <div class="space-y-4">
  <div>
- <label class="block text-sm text-secondary mb-1">Nuovo VMID <span class="text-danger">*</span></label>
- <input v-model.number="zfsCloneOptions.newVmid" type="number" class="form-input" placeholder="Es: 999">
+ <label class="block text-sm text-secondary mb-1">{{ t('vm.nuovoVmid') }} <span class="text-danger">*</span></label>
+ <input v-model.number="zfsCloneOptions.newVmid" type="number" class="form-input" :placeholder="t('vm.es999')">
  </div>
  <div>
- <label class="block text-sm text-secondary mb-1">Nome Nuova VM</label>
+ <label class="block text-sm text-secondary mb-1">{{ t('vm.nomeNuovaVm') }}</label>
  <input v-model="zfsCloneOptions.newName" type="text" class="form-input" :placeholder="selectedVM?.name + '-clone'">
  </div>
  </div>
@@ -430,136 +428,136 @@
  
  <template #footer>
  <div class="flex justify-between w-full">
- <button class="btn btn-secondary" @click="showZfsCloneModal = false">Annulla</button>
+ <button class="btn btn-secondary" @click="showZfsCloneModal = false">{{ t('comune.annulla') }}</button>
  <button class="btn btn-primary" @click="confirmZfsClone" :disabled="!zfsCloneOptions.newVmid">
- Crea Clone
+ {{ t('vm.creaClone') }}
  </button>
  </div>
  </template>
  </ModalDialog>
 
  <!-- VM Info Modal -->
- <ModalDialog v-model:visible="showVMInfoModal" :title="`Dettagli VM: ${vmInfoData?.name || selectedVM?.name}`" width="800px">
+ <ModalDialog v-model:visible="showVMInfoModal" :title="t('vm.detTitolo', { nome: vmInfoData?.name || selectedVM?.name })" width="800px">
  <div v-if="vmInfoLoading" class="text-center p-8">
  <div class="spinner-lg mb-4"></div>
- <p>Caricamento dettagli VM...</p>
+ <p>{{ t('vm.detCaricamento') }}</p>
  </div>
  <div v-else-if="vmInfoData" class="vm-details-grid">
  <!-- Basic Info -->
  <div class="detail-card">
- <h4><Icon name="monitor" :size="20" /> Info Base</h4>
+ <h4><Icon name="monitor" :size="20" /> {{ t('vm.detBase') }}</h4>
  <table class="simple-table">
  <tr><td>VMID:</td><td><strong class="text-accent">{{ vmInfoData.vmid }}</strong></td></tr>
- <tr><td>Nome:</td><td>{{ vmInfoData.config?.name || selectedVM?.name }}</td></tr>
- <tr><td>Tipo:</td><td><span class="badge" :class="vmInfoData.type === 'lxc' ? 'badge-warning' : 'badge-info'">{{ vmInfoData.type === 'lxc' ? 'Container' : 'QEMU VM' }}</span></td></tr>
- <tr><td>Stato:</td><td><span class="badge" :class="selectedVM?.status === 'running' ? 'badge-success' : 'badge-secondary'">{{ selectedVM?.status }}</span></td></tr>
- <tr><td>Nodo:</td><td>{{ selectedVM?.node }}</td></tr>
+ <tr><td>{{ t('vm.detNome') }}</td><td>{{ vmInfoData.config?.name || selectedVM?.name }}</td></tr>
+ <tr><td>{{ t('vm.detTipo') }}</td><td><span class="badge" :class="vmInfoData.type === 'lxc' ? 'badge-warning' : 'badge-info'">{{ vmInfoData.type === 'lxc' ? t('vm.container') : t('vm.vmQemu') }}</span></td></tr>
+ <tr><td>{{ t('comune.statoDuePunti') }}</td><td><span class="badge" :class="selectedVM?.status === 'running' ? 'badge-success' : 'badge-secondary'">{{ selectedVM?.status }}</span></td></tr>
+ <tr><td>{{ t('vm.detNodo') }}</td><td>{{ selectedVM?.node }}</td></tr>
  </table>
  </div>
 
  <!-- Resources -->
  <div class="detail-card">
- <h4><Icon name="settings" :size="20" /> Risorse Allocate</h4>
+ <h4><Icon name="settings" :size="20" /> {{ t('vm.detRisorse') }}</h4>
  <table class="simple-table">
- <tr><td>CPU Cores:</td><td><strong>{{ vmInfoData.config?.cores || vmInfoData.config?.cpulimit || 1 }}</strong></td></tr>
- <tr v-if="vmInfoData.config?.sockets"><td>Sockets:</td><td>{{ vmInfoData.config.sockets }}</td></tr>
- <tr><td>Memoria:</td><td><strong>{{ vmInfoData.config?.memory || vmInfoData.config?.swap || 0 }} MB</strong></td></tr>
+ <tr><td>{{ t('vm.detCore') }}</td><td><strong>{{ vmInfoData.config?.cores || vmInfoData.config?.cpulimit || 1 }}</strong></td></tr>
+ <tr v-if="vmInfoData.config?.sockets"><td>{{ t('vm.detSocket') }}</td><td>{{ vmInfoData.config.sockets }}</td></tr>
+ <tr><td>{{ t('vm.detMemoria') }}</td><td><strong>{{ vmInfoData.config?.memory || vmInfoData.config?.swap || 0 }} MB</strong></td></tr>
  <tr v-if="vmInfoData.config?.balloon"><td>Balloon:</td><td>{{ vmInfoData.config.balloon }} MB</td></tr>
- <tr v-if="vmInfoData.config?.cpu"><td>CPU Type:</td><td class="text-xs">{{ vmInfoData.config.cpu }}</td></tr>
+ <tr v-if="vmInfoData.config?.cpu"><td>{{ t('vm.detTipoCpu') }}</td><td class="text-xs">{{ vmInfoData.config.cpu }}</td></tr>
  </table>
  </div>
 
  <!-- Disks -->
  <div class="detail-card full-width">
- <h4><Icon name="hard-drive" :size="20" /> Dischi</h4>
+ <h4><Icon name="hard-drive" :size="20" /> {{ t('vm.detDischi') }}</h4>
  <div class="disk-list">
  <div v-for="(value, key) in getDiskEntries(vmInfoData.config)" :key="key" class="disk-item">
  <span class="font-bold">{{ key }}:</span>
  <span class="text-sm text-secondary ml-2">{{ value }}</span>
  </div>
  <div v-if="Object.keys(getDiskEntries(vmInfoData.config)).length === 0" class="text-secondary text-sm">
- Nessun disco trovato
+ {{ t('vm.detNessunDisco') }}
  </div>
  </div>
  </div>
 
  <!-- Network -->
  <div class="detail-card full-width">
- <h4><Icon name="globe" :size="20" /> Network</h4>
+ <h4><Icon name="globe" :size="20" /> {{ t('vm.detRete') }}</h4>
  <div class="network-list">
  <div v-for="(value, key) in getNetworkEntries(vmInfoData.config)" :key="key" class="network-item">
  <span class="font-bold">{{ key }}:</span>
  <span class="text-sm text-secondary ml-2">{{ value }}</span>
  </div>
  <div v-if="selectedVM?.net0_ip" class="mt-2">
- <span class="text-xs text-secondary">IP Rilevato:</span>
+ <span class="text-xs text-secondary">{{ t('vm.detIp') }}</span>
  <span class="font-mono text-accent ml-2">{{ selectedVM.net0_ip }}</span>
  </div>
  <div v-if="Object.keys(getNetworkEntries(vmInfoData.config)).length === 0" class="text-secondary text-sm">
- Nessuna interfaccia di rete
+ {{ t('vm.detNessunaRete') }}
  </div>
  </div>
  </div>
 
  <!-- Boot & Options -->
  <div class="detail-card">
- <h4><Icon name="wrench" :size="20" /> Opzioni</h4>
+ <h4><Icon name="wrench" :size="20" /> {{ t('vm.detOpzioni') }}</h4>
  <table class="simple-table">
- <tr v-if="vmInfoData.config?.boot"><td>Boot Order:</td><td class="text-xs">{{ vmInfoData.config.boot }}</td></tr>
- <tr v-if="vmInfoData.config?.onboot !== undefined"><td>Start on Boot:</td><td><Icon :name="vmInfoData.config.onboot ? 'check-circle' : 'x-circle'" :size="14" :class="vmInfoData.config.onboot ? 'text-success' : 'text-danger'" /> {{ vmInfoData.config.onboot ? 'Yes' : 'No' }}</td></tr>
- <tr v-if="vmInfoData.config?.ostype"><td>OS Type:</td><td>{{ vmInfoData.config.ostype }}</td></tr>
- <tr v-if="vmInfoData.config?.machine"><td>Machine:</td><td class="text-xs">{{ vmInfoData.config.machine }}</td></tr>
+ <tr v-if="vmInfoData.config?.boot"><td>{{ t('vm.detBoot') }}</td><td class="text-xs">{{ vmInfoData.config.boot }}</td></tr>
+ <tr v-if="vmInfoData.config?.onboot !== undefined"><td>{{ t('vm.detAvvioAuto') }}</td><td><Icon :name="vmInfoData.config.onboot ? 'check-circle' : 'x-circle'" :size="14" :class="vmInfoData.config.onboot ? 'text-success' : 'text-danger'" /> {{ vmInfoData.config.onboot ? t('vm.si') : t('vm.no') }}</td></tr>
+ <tr v-if="vmInfoData.config?.ostype"><td>{{ t('vm.detOs') }}</td><td>{{ vmInfoData.config.ostype }}</td></tr>
+ <tr v-if="vmInfoData.config?.machine"><td>{{ t('vm.detMacchina') }}</td><td class="text-xs">{{ vmInfoData.config.machine }}</td></tr>
  <tr v-if="vmInfoData.config?.bios"><td>BIOS:</td><td>{{ vmInfoData.config.bios }}</td></tr>
  </table>
  </div>
 
  <!-- Identita' replica (solo per VM registrate da DA-PXREPL) -->
  <div v-if="vmInfoData.replica_identity?.is_replica" class="detail-card full-width">
- <h4><Icon name="shield" :size="20" /> Identità replica</h4>
+ <h4><Icon name="shield" :size="20" /> {{ t('vm.idTitolo') }}</h4>
  <table class="simple-table">
- <tr v-if="vmInfoData.replica_identity.source_vmid"><td>Sorgente:</td><td>VM <strong>{{ vmInfoData.replica_identity.source_vmid }}</strong><span v-if="vmInfoData.replica_identity.source_hostname"> su {{ vmInfoData.replica_identity.source_hostname }}</span></td></tr>
- <tr><td>UUID attuale:</td><td class="text-xs font-mono">{{ vmInfoData.replica_identity.current_smbios_uuid || '—' }}</td></tr>
- <tr><td>UUID originale:</td><td class="text-xs font-mono">{{ vmInfoData.replica_identity.source_smbios_uuid }}</td></tr>
- <tr><td>Stato:</td><td>
- <span v-if="vmInfoData.replica_identity.dr_attivo" class="badge badge-warning">DR attivato: porta l'uuid della sorgente</span>
- <span v-else class="badge badge-success">Replica: uuid derivato, la sorgente resta unica per Veeam</span>
+ <tr v-if="vmInfoData.replica_identity.source_vmid"><td>{{ t('vm.idOrigine') }}</td><td>VM <strong>{{ vmInfoData.replica_identity.source_vmid }}</strong><span v-if="vmInfoData.replica_identity.source_hostname"> {{ t('vm.suHost', { host: vmInfoData.replica_identity.source_hostname }) }}</span></td></tr>
+ <tr><td>{{ t('vm.idUuidAttuale') }}</td><td class="text-xs font-mono">{{ vmInfoData.replica_identity.current_smbios_uuid || '—' }}</td></tr>
+ <tr><td>{{ t('vm.idUuidOriginale') }}</td><td class="text-xs font-mono">{{ vmInfoData.replica_identity.source_smbios_uuid }}</td></tr>
+ <tr><td>{{ t('comune.statoDuePunti') }}</td><td>
+ <span v-if="vmInfoData.replica_identity.dr_attivo" class="badge badge-warning">{{ t('vm.idDrAttivo') }}</span>
+ <span v-else class="badge badge-success">{{ t('vm.idReplica') }}</span>
  </td></tr>
  </table>
  <div class="mt-3 flex items-center gap-3">
- <button class="btn btn-sm btn-warning" :disabled="vmInfoData.replica_identity.dr_attivo || vmInfoData.status === 'running'" @click="openActivateDR" title="Ripristina l'uuid della sorgente su questa replica (non la avvia)">
- <Icon name="alert-triangle" :size="14" /> Attiva DR…
+ <button class="btn btn-sm btn-warning" :disabled="vmInfoData.replica_identity.dr_attivo || vmInfoData.status === 'running'" @click="openActivateDR" :title="t('vm.idDrAiuto')">
+ <Icon name="alert-triangle" :size="14" /> {{ t('vm.idAttivaDr') }}
  </button>
- <span class="text-xs text-secondary">Da usare solo quando la sorgente è persa. Non avvia la VM.</span>
+ <span class="text-xs text-secondary">{{ t('vm.idDrNota') }}</span>
  </div>
  </div>
 
  <!-- Ritorno all'originale (3.27.0): solo repliche che stanno, o sono state, al posto dell'originale -->
  <div v-if="ritornoVisibile && ritorno" class="detail-card full-width">
- <h4><Icon name="rotate-ccw" :size="20" /> Ritorno all'originale</h4>
+ <h4><Icon name="rotate-ccw" :size="20" /> {{ t('vm.ritTitolo') }}</h4>
  <p class="text-sm mb-3">
  <span class="badge" :class="ritornoVista.classe"><Icon :name="ritornoVista.icona" :size="12" /> {{ ritornoVista.parola }}</span>
  <span class="ml-2">{{ ritornoVista.frase }}</span>
  <span v-if="ritorno.dettaglio.aggiornato" class="text-xs text-secondary ml-2">({{ ritorno.dettaglio.aggiornato }})</span>
  </p>
  <table class="simple-table">
- <tr><td>Replica:</td><td>VM <strong>{{ ritorno.replica.vmid }}</strong> {{ ritorno.replica.nome }} su {{ ritorno.replica.nodo }}, {{ statoVmParola(ritorno.replica.stato) }}</td></tr>
- <tr><td>Originale:</td><td>VM <strong>{{ ritorno.originale.vmid }}</strong> {{ ritorno.originale.nome }} su {{ ritorno.originale.nodo }}, {{ statoVmParola(ritorno.originale.stato) }}</td></tr>
- <tr><td>Configurazione:</td><td>
- <span v-if="ritorno.fotografia.presente">dell'originale, salvata il {{ ritorno.fotografia.del }}</span>
- <span v-else><Icon name="alert-triangle" :size="12" /> mai salvata: nome e uuid si ricavano dalla replica, bridge, onboot e tag no</span>
+ <tr><td>{{ t('vm.rit_replica') }}</td><td><i18n-t keypath="vm.ritRigaVm" tag="span"><template #vmid><strong>{{ ritorno.replica.vmid }}</strong></template><template #nome>{{ ritorno.replica.nome }}</template><template #nodo>{{ ritorno.replica.nodo }}</template><template #stato>{{ statoVmParola(ritorno.replica.stato) }}</template></i18n-t></td></tr>
+ <tr><td>{{ t('vm.rit_originale') }}</td><td><i18n-t keypath="vm.ritRigaVm" tag="span"><template #vmid><strong>{{ ritorno.originale.vmid }}</strong></template><template #nome>{{ ritorno.originale.nome }}</template><template #nodo>{{ ritorno.originale.nodo }}</template><template #stato>{{ statoVmParola(ritorno.originale.stato) }}</template></i18n-t></td></tr>
+ <tr><td>{{ t('vm.ritConfig') }}</td><td>
+ <span v-if="ritorno.fotografia.presente">{{ t('vm.ritFotoPresente', { quando: ritorno.fotografia.del }) }}</span>
+ <span v-else><Icon name="alert-triangle" :size="12" /> {{ t('vm.ritFotoAssente') }}</span>
  </td></tr>
  </table>
  <table class="simple-table mt-3">
- <tr><th class="text-left">Disco</th><th class="text-left">Da (replica)</th><th class="text-left">A (origine)</th><th class="text-left">Disco attuale dell'originale</th></tr>
+ <tr><th class="text-left">{{ t('vm.ritDisco') }}</th><th class="text-left">{{ t('vm.ritDa') }}</th><th class="text-left">{{ t('vm.ritA') }}</th><th class="text-left">{{ t('vm.ritDiscoAttuale') }}</th></tr>
  <tr v-for="d in ritorno.piano.dischi" :key="d.job_id">
  <td>{{ d.disk_name || '—' }}</td>
  <td class="text-xs font-mono">{{ d.da }}</td>
  <td class="text-xs font-mono">{{ d.a }}</td>
  <td class="text-xs">
- <span v-if="ritorno.dettaglio.dischi?.[d.job_id]?.vecchio">messo da parte: <span class="font-mono">{{ ritorno.dettaglio.dischi?.[d.job_id]?.vecchio }}</span></span>
- <span v-else-if="ritorno.dettaglio.dischi?.[d.job_id]">non c'era</span>
- <span v-else-if="d.rinomina">verrà messo da parte (rinominato, non cancellato)</span>
- <span v-else>non c'è</span>
+ <span v-if="ritorno.dettaglio.dischi?.[d.job_id]?.vecchio">{{ t('vm.ritMessoDaParte') }} <span class="font-mono">{{ ritorno.dettaglio.dischi?.[d.job_id]?.vecchio }}</span></span>
+ <span v-else-if="ritorno.dettaglio.dischi?.[d.job_id]">{{ t('vm.ritNonCera') }}</span>
+ <span v-else-if="d.rinomina">{{ t('vm.ritVerraMesso') }}</span>
+ <span v-else>{{ t('vm.ritNonCe') }}</span>
  </td>
  </tr>
  </table>
@@ -568,125 +566,121 @@
  </ul>
  <div class="mt-3 flex items-center gap-3">
  <button class="btn btn-sm btn-primary" :disabled="!ritornoPuoPreparare" @click="openRitorno('prepara')">
- <Icon name="refresh" :size="14" /> Prepara ritorno…
+ <Icon name="refresh" :size="14" /> {{ t('vm.ritPreparaBtn') }}
  </button>
  <button class="btn btn-sm btn-warning" :disabled="ritorno.stato !== 'pronto' || ritorno.in_corso" @click="openRitorno('completa')">
- <Icon name="rotate-ccw" :size="14" /> Completa ritorno…
+ <Icon name="rotate-ccw" :size="14" /> {{ t('vm.ritCompletaBtn') }}
  </button>
- <span v-if="!ritorno.piano.possibile && !ritornoAttivo" class="text-xs text-secondary">Non si può preparare: {{ ritorno.piano.motivo }}</span>
- <span v-else-if="ritorno.stato === 'pronto'" class="text-xs text-secondary">«Prepara» si può ripetere per accorciare l'ultima copia.</span>
+ <span v-if="!ritorno.piano.possibile && !ritornoAttivo" class="text-xs text-secondary">{{ t('vm.ritNonPossibile', { motivo: ritorno.piano.motivo }) }}</span>
+ <span v-else-if="ritorno.stato === 'pronto'" class="text-xs text-secondary">{{ t('vm.ritRipetere') }}</span>
  </div>
  </div>
 
  <!-- Replica registrata prima della 3.22.0: stessa identita' della sorgente -->
  <div v-else-if="vmInfoData.replica_identity?.da_riallineare" class="detail-card full-width">
- <h4><Icon name="shield" :size="20" /> Identità replica</h4>
+ <h4><Icon name="shield" :size="20" /> {{ t('vm.idTitolo') }}</h4>
  <p class="text-sm">
- <span class="badge badge-warning">Da riallineare</span>
- Replica della VM <strong>{{ vmInfoData.replica_identity.source_vmid }}</strong> registrata con le regole vecchie:
- può avere lo stesso UUID della sorgente e l'avvio automatico attivo.
+ <span class="badge badge-warning">{{ t('vm.idDaRiallineare') }}</span>
+ <i18n-t keypath="vm.idVecchie" tag="span"><template #vmid><strong>{{ vmInfoData.replica_identity.source_vmid }}</strong></template></i18n-t>
  </p>
  <div class="mt-3 flex items-center gap-3">
  <button class="btn btn-sm btn-primary" :disabled="riallineaBusy || vmInfoData.status === 'running'" @click="riallineaIdentita">
- <Icon name="shield" :size="14" /> {{ riallineaBusy ? 'In corso…' : 'Riallinea identità' }}
+ <Icon name="shield" :size="14" /> {{ riallineaBusy ? t('vm.inCorso') : t('vm.idRiallinea') }}
  </button>
- <span class="text-xs text-secondary">Scrive UUID derivato e avvio automatico spento. Solo a replica spenta; non la avvia.</span>
+ <span class="text-xs text-secondary">{{ t('vm.idRiallineaNota') }}</span>
  </div>
  </div>
 
  <!-- Snapshots Summary -->
  <div class="detail-card">
- <h4><Icon name="camera" :size="20" /> Snapshots</h4>
+ <h4><Icon name="camera" :size="20" /> {{ t('vm.snapRiquadro') }}</h4>
  <div v-if="vmInfoData.snapshots?.list?.length">
  <div class="text-2xl font-bold text-accent mb-2">{{ vmInfoData.snapshots.list.length }}</div>
- <div class="text-sm text-secondary">snapshot disponibili</div>
+ <div class="text-sm text-secondary">{{ t('vm.snapDisponibili') }}</div>
  <div class="mt-2 text-xs">
- Ultimo: {{ vmInfoData.snapshots.list[vmInfoData.snapshots.list.length - 1]?.name }}
+ {{ t('vm.snapUltimo', { nome: vmInfoData.snapshots.list[vmInfoData.snapshots.list.length - 1]?.name }) }}
  </div>
  </div>
- <div v-else class="text-secondary text-sm">Nessuno snapshot</div>
+ <div v-else class="text-secondary text-sm">{{ t('vm.snapZero') }}</div>
  </div>
 
  <!-- Raw Config Toggle -->
  <div class="detail-card full-width">
  <details>
- <summary class="cursor-pointer text-secondary"><Icon name="clipboard" :size="14" /> Mostra configurazione raw</summary>
+ <summary class="cursor-pointer text-secondary"><Icon name="clipboard" :size="14" /> {{ t('vm.configGrezza') }}</summary>
  <pre class="text-xs mt-2" style="max-height: 300px; overflow: auto; background: var(--bg-secondary); padding: 8px; border-radius: 4px;">{{ JSON.stringify(vmInfoData.config, null, 2) }}</pre>
  </details>
  </div>
  </div>
  <div v-else class="text-center text-secondary p-8">
- Nessun dato disponibile
+ {{ t('vm.nessunDato') }}
  </div>
  
  <template #footer>
- <button class="btn btn-secondary" @click="showVMInfoModal = false">Chiudi</button>
+ <button class="btn btn-secondary" @click="showVMInfoModal = false">{{ t('comune.chiudi') }}</button>
  </template>
  </ModalDialog>
 
  <!-- Attiva DR (identita' replica) -->
- <ModalDialog :visible="showRitorno" @close="showRitorno = false" :title="ritornoAzione === 'prepara' ? 'Prepara ritorno all\'originale' : 'Completa ritorno all\'originale'" width="600px">
+ <ModalDialog :visible="showRitorno" @close="showRitorno = false" :title="ritornoAzione === 'prepara' ? t('vm.ritPreparaTitolo') : t('vm.ritCompletaTitolo')" width="600px">
  <div v-if="ritornoAzione === 'prepara'" class="alert alert-info mb-4">
- <Icon name="info" :size="14" /> <strong>La replica resta accesa.</strong> Il disco attuale dell'originale viene rinominato, non cancellato, e i dati della replica vengono copiati sul nodo d'origine con syncoid.
- La replica programmata di questa VM resta ferma fino al completamento.
+ <Icon name="info" :size="14" /> <strong>{{ t('vm.ritPrepForte') }}</strong> {{ t('vm.ritPrepTesto') }}
  </div>
  <div v-else class="alert alert-warning mb-4">
- <Icon name="alert-triangle" :size="14" /> <strong>La replica viene spenta:</strong> il servizio è fermo finché l'originale non risponde.
- Se non risponde entro il tempo qui sotto, l'originale viene spenta e la replica riaccesa.
+ <Icon name="alert-triangle" :size="14" /> <strong>{{ t('vm.ritComplForte') }}</strong> {{ t('vm.ritComplTesto') }}
  </div>
  <div class="p-4 bg-dark-soft rounded mb-4 space-y-2" v-if="ritorno">
- <div><strong>Replica:</strong> VM {{ ritorno.replica.vmid }} {{ ritorno.replica.nome }} su {{ ritorno.replica.nodo }}</div>
- <div><strong>Originale:</strong> VM {{ ritorno.originale.vmid }} {{ ritorno.originale.nome }} su {{ ritorno.originale.nodo }}</div>
+ <div><strong>{{ t('vm.rit_replica') }}</strong> {{ t('vm.ritVmSu', { vmid: ritorno.replica.vmid, nome: ritorno.replica.nome, nodo: ritorno.replica.nodo }) }}</div>
+ <div><strong>{{ t('vm.rit_originale') }}</strong> {{ t('vm.ritVmSu', { vmid: ritorno.originale.vmid, nome: ritorno.originale.nome, nodo: ritorno.originale.nodo }) }}</div>
  </div>
  <div class="space-y-4">
  <div v-if="ritornoAzione === 'completa'">
- <label class="block text-sm text-secondary mb-1">Attesa della risposta dell'originale (secondi)</label>
+ <label class="block text-sm text-secondary mb-1">{{ t('vm.ritAttesa') }}</label>
  <input v-model.number="ritornoAttesa" type="number" min="30" max="1800" class="form-input">
  </div>
  <div>
- <label class="block text-sm text-secondary mb-1">Scrivi <code>RITORNA</code> per confermare <span class="text-danger">*</span></label>
+ <label class="block text-sm text-secondary mb-1"><i18n-t keypath="vm.scriviPerConfermare" tag="span"><template #parola><code>RITORNA</code></template></i18n-t> <span class="text-danger">*</span></label>
  <input v-model="ritornoConferma" type="text" class="form-input" placeholder="RITORNA" autocomplete="off">
  </div>
  </div>
  <template #footer>
  <div class="flex justify-between w-full">
- <button class="btn btn-secondary" @click="showRitorno = false">Annulla</button>
+ <button class="btn btn-secondary" @click="showRitorno = false">{{ t('comune.annulla') }}</button>
  <button class="btn" :class="ritornoAzione === 'prepara' ? 'btn-primary' : 'btn-warning'" @click="confirmRitorno" :disabled="ritornoConferma !== 'RITORNA' || ritornoBusy">
- {{ ritornoBusy ? 'In corso…' : (ritornoAzione === 'prepara' ? 'Prepara ritorno' : 'Completa ritorno') }}
+ {{ ritornoBusy ? t('vm.inCorso') : (ritornoAzione === 'prepara' ? t('vm.ritPrepara') : t('vm.ritCompleta')) }}
  </button>
  </div>
  </template>
  </ModalDialog>
 
- <ModalDialog :visible="showActivateDR" @close="showActivateDR = false" title="Attiva DR sulla replica" width="600px">
+ <ModalDialog :visible="showActivateDR" @close="showActivateDR = false" :title="t('vm.drTitolo')" width="600px">
  <div class="alert alert-warning mb-4">
- <Icon name="alert-triangle" :size="14" /> <strong>Cosa fa:</strong> scrive su questa replica l'uuid SMBIOS della VM sorgente, così i sistemi che la riconoscono dall'uuid (licenze, Veeam, Windows) la vedono come l'originale.
- <strong>Cosa non fa:</strong> non la avvia. Lo start resta un'azione separata.
+ <Icon name="alert-triangle" :size="14" /> <strong>{{ t('vm.drCosaFa') }}</strong> {{ t('vm.drCosaFaTesto') }} <strong>{{ t('vm.drCosaNonFa') }}</strong> {{ t('vm.drCosaNonFaTesto') }}
  </div>
  <div class="p-4 bg-dark-soft rounded mb-4 space-y-2">
- <div><strong>Replica:</strong> {{ selectedVM?.name }} ({{ selectedVM?.vmid }})</div>
- <div class="text-xs font-mono"><strong>UUID attuale:</strong> {{ vmInfoData?.replica_identity?.current_smbios_uuid }}</div>
- <div class="text-xs font-mono"><strong>UUID che verrà scritto:</strong> {{ vmInfoData?.replica_identity?.source_smbios_uuid }}</div>
+ <div><strong>{{ t('vm.rit_replica') }}</strong> {{ selectedVM?.name }} ({{ selectedVM?.vmid }})</div>
+ <div class="text-xs font-mono"><strong>{{ t('vm.idUuidAttuale') }}</strong> {{ vmInfoData?.replica_identity?.current_smbios_uuid }}</div>
+ <div class="text-xs font-mono"><strong>{{ t('vm.drUuidNuovo') }}</strong> {{ vmInfoData?.replica_identity?.source_smbios_uuid }}</div>
  </div>
  <div class="space-y-4">
  <div>
- <label class="block text-sm text-secondary mb-1">Scrivi <code>ATTIVA</code> per confermare <span class="text-danger">*</span></label>
+ <label class="block text-sm text-secondary mb-1"><i18n-t keypath="vm.scriviPerConfermare" tag="span"><template #parola><code>ATTIVA</code></template></i18n-t> <span class="text-danger">*</span></label>
  <input v-model="activateDROptions.confirm" type="text" class="form-input" placeholder="ATTIVA" autocomplete="off">
  </div>
  <label class="flex items-center gap-2 text-sm">
  <input type="checkbox" v-model="activateDROptions.ripristina_vmgenid">
- <span>Ripristina anche il <code>vmgenid</code> originale <span class="text-secondary">(solo se la VM è un domain controller e serve davvero)</span></span>
+ <span><i18n-t keypath="vm.drVmgenid" tag="span"><template #vmgenid><code>vmgenid</code></template></i18n-t> <span class="text-secondary">{{ t('vm.drVmgenidNota') }}</span></span>
  </label>
  <label class="flex items-center gap-2 text-sm">
  <input type="checkbox" v-model="activateDROptions.force">
- <span>Forza anche se la sorgente risulta ancora accesa <span class="text-danger">(due VM con lo stesso uuid nel cluster)</span></span>
+ <span>{{ t('vm.drForza') }} <span class="text-danger">{{ t('vm.drForzaNota') }}</span></span>
  </label>
  </div>
  <template #footer>
  <div class="flex justify-between w-full">
- <button class="btn btn-secondary" @click="showActivateDR = false">Annulla</button>
+ <button class="btn btn-secondary" @click="showActivateDR = false">{{ t('comune.annulla') }}</button>
  <button class="btn btn-warning" @click="confirmActivateDR" :disabled="activateDROptions.confirm !== 'ATTIVA' || activateDRBusy">
- {{ activateDRBusy ? 'In corso…' : 'Attiva DR' }}
+ {{ activateDRBusy ? t('vm.inCorso') : t('vm.drAttiva') }}
  </button>
  </div>
  </template>
@@ -711,12 +705,15 @@ import { confirmDangerous } from '../stores/confirm';
 import { useRoute } from 'vue-router';
 import PageHeader from '../components/ui/PageHeader.vue';
 import Icon from '../components/ui/Icon.vue';
+import { useI18n } from 'vue-i18n';
+import { dataOra } from '../utils/formato';
 import vmsService, { type VM, type Snapshot, type Backup, type SanoidConfig, type ZFSSnapshot, type RitornoStato } from '../services/vms';
 import nodesService from '../services/nodes';
 import ModalDialog from '../components/ModalDialog.vue';
 import JobModal from '../components/jobs/JobModal.vue';
 
 const toast = useToast()
+const { t, te } = useI18n()
 
 // State
 const vms = ref<VM[]>([]);
@@ -892,13 +889,13 @@ const loadVMs = async (forceRefresh: boolean = false) => {
 };
 
 const manageState = async (vm: VM, action: any) => {
- if (!await confirmDangerous(`Sei sicuro di voler eseguire ${action} su ${vm.name}?`)) return;
+ if (!await confirmDangerous(t('vm.confAzione', { azione: te(`vm.azione.${action}`) ? t(`vm.azione.${action}`) : action, nome: vm.name }))) return;
  vm.loading = true;
  try {
  await vmsService.manageState(vm.node_id!, vm.vmid, action);
  setTimeout(() => loadVMs(), 2000);
  } catch (e) {
- toast.error('Errore azione', errorMessage(e));
+ toast.error(t('vm.errAzione'), errorMessage(e));
  vm.loading = false;
  }
 };
@@ -930,10 +927,10 @@ const riallineaIdentita = async () => {
  riallineaBusy.value = true;
  try {
  const res = await apiClient.post(`/vms/node/${selectedVM.value.node_id}/vm/${selectedVM.value.vmid}/riallinea-identita`);
- toast.success('Identità riallineata', res.data.messaggio);
+ toast.success(t('vm.idRiallineata'), res.data.messaggio);
  await openVMInfoModal(selectedVM.value);
  } catch (e) {
- toast.error('Riallineo rifiutato', errorMessage(e));
+ toast.error(t('vm.idRifiutato'), errorMessage(e));
  } finally {
  riallineaBusy.value = false;
  }
@@ -968,17 +965,17 @@ const ritornoAvvisi = computed(() => {
 const ritornoVista = computed(() => {
  const r = ritorno.value;
  if (!r) return { icona: 'info', parola: '', frase: '', classe: '' };
- if (r.interrotto) return { icona: 'rotate-ccw', parola: 'Interrotto', frase: 'Il servizio si è riavviato a metà: controllare quale VM è accesa, poi rilanciare «Prepara».', classe: 'badge-warning' };
+ if (r.interrotto) return { icona: 'rotate-ccw', parola: t('vm.rs_interrotto'), frase: t('vm.rf_interrotto'), classe: 'badge-warning' };
  switch (r.stato) {
- case 'preparazione': return { icona: 'refresh', parola: 'Preparazione in corso', frase: 'Copia dei dati verso il nodo d\'origine. La replica resta accesa.', classe: 'badge-info' };
- case 'pronto': return { icona: 'check', parola: 'Pronto', frase: 'I dati sono sul nodo d\'origine: si può completare.', classe: 'badge-success' };
- case 'scambio': return { icona: 'refresh', parola: 'Scambio in corso', frase: 'La replica è ferma: ultima copia e accensione dell\'originale.', classe: 'badge-warning' };
- case 'completato': return { icona: 'check-circle', parola: 'Completato', frase: r.dettaglio.messaggio || 'L\'originale lavora.', classe: 'badge-success' };
- case 'fallito': return { icona: 'alert-triangle', parola: 'Non riuscito', frase: r.dettaglio.messaggio || r.dettaglio.errore || '', classe: 'badge-danger' };
- default: return { icona: 'info', parola: 'Da preparare', frase: 'Nessun ritorno aperto.', classe: 'badge-secondary' };
+ case 'preparazione': return { icona: 'refresh', parola: t('vm.rs_preparazione'), frase: t('vm.rf_preparazione'), classe: 'badge-info' };
+ case 'pronto': return { icona: 'check', parola: t('vm.rs_pronto'), frase: t('vm.rf_pronto'), classe: 'badge-success' };
+ case 'scambio': return { icona: 'refresh', parola: t('vm.rs_scambio'), frase: t('vm.rf_scambio'), classe: 'badge-warning' };
+ case 'completato': return { icona: 'check-circle', parola: t('vm.rs_completato'), frase: r.dettaglio.messaggio || t('vm.rf_completato'), classe: 'badge-success' };
+ case 'fallito': return { icona: 'alert-triangle', parola: t('vm.rs_fallito'), frase: r.dettaglio.messaggio || r.dettaglio.errore || '', classe: 'badge-danger' };
+ default: return { icona: 'info', parola: t('vm.rs_daPreparare'), frase: t('vm.rf_daPreparare'), classe: 'badge-secondary' };
  }
 });
-const statoVmParola = (stato: string) => ({ running: 'accesa', stopped: 'spenta', assente: 'non esiste più', sconosciuto: 'stato non leggibile' } as Record<string, string>)[stato] || stato;
+const statoVmParola = (stato: string) => (te(`vm.statoVm.${stato}`) ? t(`vm.statoVm.${stato}`) : stato);
 
 const fermaRitornoTimer = () => {
  if (ritornoTimer) { clearTimeout(ritornoTimer); ritornoTimer = null; }
@@ -1016,15 +1013,15 @@ const confirmRitorno = async () => {
  try {
  if (ritornoAzione.value === 'prepara') {
  await vmsService.preparaRitorno(vm.node_id!, vm.vmid);
- toast.success('Preparazione avviata', 'La copia verso il nodo d\'origine è partita: lo stato si aggiorna da solo.');
+ toast.success(t('vm.ritAvviataPrep'), t('vm.ritAvviataPrepDett'));
  } else {
  await vmsService.completaRitorno(vm.node_id!, vm.vmid, ritornoAttesa.value);
- toast.success('Scambio avviato', 'La replica viene spenta e l\'originale accesa: lo stato si aggiorna da solo.');
+ toast.success(t('vm.ritAvviatoScambio'), t('vm.ritAvviatoScambioDett'));
  }
  showRitorno.value = false;
  setTimeout(caricaRitorno, 1500);
  } catch (e) {
- toast.error('Ritorno rifiutato', errorMessage(e));
+ toast.error(t('vm.ritRifiutato'), errorMessage(e));
  } finally {
  ritornoBusy.value = false;
  }
@@ -1047,10 +1044,10 @@ const confirmActivateDR = async () => {
  vm_type: selectedVM.value.type,
  });
  showActivateDR.value = false;
- toast.success('DR attivato', `smbios1 → ${res.data.smbios1_dopo}. ${res.data.avviso}`);
+ toast.success(t('vm.drAttivato'), `smbios1 → ${res.data.smbios1_dopo}. ${res.data.avviso}`);
  await openVMInfoModal(selectedVM.value);
  } catch (e) {
- toast.error('Attiva DR rifiutato', errorMessage(e));
+ toast.error(t('vm.drRifiutato'), errorMessage(e));
  } finally {
  activateDRBusy.value = false;
  }
@@ -1111,24 +1108,24 @@ const createPveSnapshot = async () => {
  showCreatePveSnapshot.value = false;
  newSnapName.value = '';
  loadPveSnapshots();
- } catch(e) { toast.error('Errore', errorMessage(e)); }
+ } catch(e) { toast.error(t('comune.errore'), errorMessage(e)); }
 };
 
 const rollbackPveSnapshot = async (name: string) => {
- if(!await confirmDangerous(`Rollback a ${name}?`)) return;
+ if(!await confirmDangerous(t('vm.confRollback', { nome: name }))) return;
  try {
  await vmsService.rollbackSnapshot(selectedVM.value!.node_id!, selectedVM.value!.vmid, name, true);
- toast.success('Rollback avviato');
+ toast.success(t('vm.rollbackAvviato'));
  loadPveSnapshots();
- } catch(e) { toast.error('Errore', errorMessage(e)); }
+ } catch(e) { toast.error(t('comune.errore'), errorMessage(e)); }
 };
 
 const deletePveSnapshot = async (name: string) => {
- if(!await confirmDangerous(`Eliminare ${name}?`)) return;
+ if(!await confirmDangerous(t('vm.confElimina', { nome: name }))) return;
  try {
  await vmsService.deleteSnapshot(selectedVM.value!.node_id!, selectedVM.value!.vmid, name);
  loadPveSnapshots();
- } catch(e) { toast.error('Errore', errorMessage(e)); }
+ } catch(e) { toast.error(t('comune.errore'), errorMessage(e)); }
 };
 
 // ZFS
@@ -1144,20 +1141,20 @@ const loadZfsSnapshots = async () => {
 };
 
 const rollbackZfs = async (snap: ZFSSnapshot) => {
- if(!await confirmDangerous(`ATTENZIONE: Rollback distruttivo ZFS a ${snap.name} per dataset ${snap.dataset} (e altri). Confermi?`)) return;
+ if(!await confirmDangerous(t('vm.confRollbackZfs', { nome: snap.name, dataset: snap.dataset }))) return;
  try {
  await vmsService.restoreZFSSnapshot(selectedVM.value!.node_id!, selectedVM.value!.vmid, snap.name, 'rollback');
- toast.success('Rollback ZFS eseguito');
- } catch(e) { toast.error('Errore', errorMessage(e)); }
+ toast.success(t('vm.rollbackZfsFatto'));
+ } catch(e) { toast.error(t('comune.errore'), errorMessage(e)); }
 };
 
 const deleteZfsSnapshot = async (snap: ZFSSnapshot) => {
- if(!await confirmDangerous(`Eliminare lo snapshot "${snap.name}" da tutti i dischi della VM? Questa azione è irreversibile.`)) return;
+ if(!await confirmDangerous(t('vm.confEliminaSnap', { nome: snap.name }))) return;
  try {
  await vmsService.deleteZfsSnapshot(selectedVM.value!.node_id!, selectedVM.value!.vmid, snap.name);
- toast.success('Snapshot eliminato');
+ toast.success(t('vm.snapEliminato'));
  loadZfsSnapshots();
- } catch(e) { toast.error('Errore', errorMessage(e)); }
+ } catch(e) { toast.error(t('comune.errore'), errorMessage(e)); }
 };
 
 const startZfsCloneWizard = (snap: ZFSSnapshot) => {
@@ -1172,9 +1169,9 @@ const startZfsCloneWizard = (snap: ZFSSnapshot) => {
 const confirmZfsClone = async () => {
  if (!selectedVM.value || !zfsCloneSelection.value) return;
  const newId = zfsCloneOptions.value.newVmid;
- if (!newId) { toast.warning("Devi specificare un Nuovo VMID per il clone."); return; }
+ if (!newId) { toast.warning(t('vm.cloneServeVmid')); return; }
  
- if (!await confirmDangerous(`Sei sicuro di voler clonare la VM ${selectedVM.value.vmid} su VM ${newId}?\nQuesta operazione creerà nuovi dischi.`)) return;
+ if (!await confirmDangerous(t('vm.confClone', { da: selectedVM.value.vmid, a: newId }))) return;
  
  try {
  await vmsService.restoreZFSSnapshot(
@@ -1184,10 +1181,10 @@ const confirmZfsClone = async () => {
  'clone', 
  newId
  );
- toast.success('Clone ZFS avviato', `VM ${newId} in creazione`);
+ toast.success(t('vm.cloneAvviato'), t('vm.cloneInCreazione', { id: newId }));
  showZfsCloneModal.value = false;
  loadVMs();
- } catch(e) { toast.error('Errore', errorMessage(e)); }
+ } catch(e) { toast.error(t('comune.errore'), errorMessage(e)); }
 };
 
 // Sanoid
@@ -1211,8 +1208,8 @@ const saveSanoidConfig = async () => {
  sanoidSaving.value = true;
  try {
  await vmsService.updateSanoidConfig(selectedVM.value.node_id!, selectedVM.value.vmid, sanoidConfig.value);
- toast.success('Configurazione salvata');
- } catch(e) { toast.error('Errore', errorMessage(e)); }
+ toast.success(t('vm.configSalvata'));
+ } catch(e) { toast.error(t('comune.errore'), errorMessage(e)); }
  finally { sanoidSaving.value = false; }
 };
 
@@ -1239,9 +1236,9 @@ const triggerSanoidSnapshot = async () => {
  // If so, we just need to refresh.
  
  await loadZfsSnapshots();
- toast.success('Snapshot manuale eseguito', 'Verifica la lista ZFS Snapshots');
+ toast.success(t('vm.snapManuale'), t('vm.snapManualeDett'));
  } catch(e) { 
- toast.error('Errore snapshot', errorMessage(e));
+ toast.error(t('vm.errSnapshot'), errorMessage(e));
  }
  finally { sanoidTriggering.value = false; }
 };
@@ -1312,7 +1309,7 @@ const startRestoreWizard = async (bak: Backup) => {
 const executeRestore = async () => {
  if(!selectedVM.value || !restoreSelection.value) return;
  
- if(!await confirmDangerous("Confermi l'avvio del ripristino?")) return;
+ if(!await confirmDangerous(t('vm.confRipristino'))) return;
  
  // Logic override if new VMID provided? Not supported by current restoreBackup signature fully in backend?
  // Wait, backend restore uses 'vmid' path param. If we want new VMID, we need to pass it? 
@@ -1348,10 +1345,10 @@ const executeRestore = async () => {
  restoreOptions.value.start,
  restoreOptions.value.targetNodeId // Pass target node explicit
  );
- toast.success('Restore avviato');
+ toast.success(t('vm.ripristinoAvviato'));
  showBackupModal.value = false;
  } catch(e) {
- toast.error('Errore restore', errorMessage(e));
+ toast.error(t('vm.errRipristino'), errorMessage(e));
  }
 };
 
@@ -1364,16 +1361,16 @@ const formatSize = (bytes: number) => {
  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 };
 const formatDate = (ts: number) => {
- return new Date(ts * 1000).toLocaleString();
+ return dataOra(ts * 1000, { dateStyle: 'short', timeStyle: 'medium' });
 };
 
 const getPolicyBadge = (name: string) => {
- if (name.includes('hourly')) return { text: 'Hourly', class: 'badge-purple' };
- if (name.includes('daily')) return { text: 'Daily', class: 'badge-success' };
- if (name.includes('weekly')) return { text: 'Weekly', class: 'badge-warning' };
- if (name.includes('monthly')) return { text: 'Monthly', class: 'badge-danger' };
- if (name.includes('yearly')) return { text: 'Yearly', class: 'badge-info' };
- return { text: 'Manual', class: 'badge-secondary' };
+ if (name.includes('hourly')) return { text: t('vm.san_orari'), class: 'badge-purple' };
+ if (name.includes('daily')) return { text: t('vm.san_giornalieri'), class: 'badge-success' };
+ if (name.includes('weekly')) return { text: t('vm.san_settimanali'), class: 'badge-warning' };
+ if (name.includes('monthly')) return { text: t('vm.san_mensili'), class: 'badge-danger' };
+ if (name.includes('yearly')) return { text: t('vm.san_annuali'), class: 'badge-info' };
+ return { text: t('vm.san_manuale'), class: 'badge-secondary' };
 };
 </script>
 

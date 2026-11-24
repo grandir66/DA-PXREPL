@@ -8,7 +8,8 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 ### Modifiche
 
 - **Interfaccia in due lingue, seconda parte** (selettore ancora nascosto): tradotte
-  Dashboard, Repliche, elenco e finestra dei job, visore dei log e registri. In italiano le
+  Dashboard, Repliche, elenco e finestra dei job, visore dei log, registri, Nodi e Macchine
+  virtuali (con «Ritorno all'originale», «Riallinea identità» e «Attiva DR»). In italiano le
   varianti dello stesso termine diventano una forma sola, come da `docs/glossario-it-en.md`:
   «Ultimo run»/«Ultima run» → «Ultima esecuzione», «Sorgente» → «Origine», «Schedule» →
   «Pianificazione», «Successo» → «Riuscito», «System Logs» → «Registri di sistema».
