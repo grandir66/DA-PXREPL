@@ -7,6 +7,10 @@ import {
   formatFileReplProgress,
   type FileReplProgress,
 } from '../../utils/fileReplProgress'
+import { useI18n } from 'vue-i18n'
+import { dataOra } from '../../utils/formato'
+
+const { t } = useI18n()
 
 interface FileReplLogEntry {
   id: number
@@ -94,8 +98,8 @@ onUnmounted(stopPolling)
   <div class="frl-overlay" @click.self="emit('close')">
     <div class="frl-modal card">
       <div class="card-header">
-        <h3>Report sync — {{ jobName }}</h3>
-        <button class="btn btn-sm btn-secondary" type="button" @click="emit('close')">Chiudi</button>
+        <h3>{{ t('fileLog.titolo', { nome: jobName }) }}</h3>
+        <button class="btn btn-sm btn-secondary" type="button" @click="emit('close')">{{ t('comune.chiudi') }}</button>
       </div>
       <div class="card-body">
         <FileReplPathMapping
@@ -110,53 +114,53 @@ onUnmounted(stopPolling)
           :dest-label="job.dest_endpoint_name"
         />
 
-        <p v-if="loading && !logs.length" class="muted">Caricamento log…</p>
+        <p v-if="loading && !logs.length" class="muted">{{ t('fileLog.carico') }}</p>
 
         <div v-if="progress?.status === 'running'" class="frl-running">
-          <span class="frl-dot" /> In esecuzione
+          <span class="frl-dot" /> {{ t('fileLog.inCorso') }}
           <span v-if="progress.message" class="frl-step"> — {{ progress.message }}</span>
         </div>
         <p v-if="progressText" class="frl-progress-detail">
           {{ progressText }}
         </p>
         <p v-else-if="progress?.status === 'running'" class="frl-progress-detail muted">
-          In attesa dati da rclone…
+          {{ t('fileLog.attesa') }}
         </p>
         <p v-if="progress?.last_file" class="frl-last-file muted">
-          Ultimo file: {{ progress.last_file }}
+          {{ t('fileLog.ultimoFile', { file: progress.last_file }) }}
         </p>
 
         <div v-if="latest && latest.status !== 'started'" class="frl-report">
-          <strong>Ultimo report</strong>
+          <strong>{{ t('fileLog.ultimo') }}</strong>
           <p v-if="latest.duration != null" class="frl-meta">
-            Durata {{ latest.duration }}s
+            {{ t('fileLog.durata', { s: latest.duration }) }}
             <span v-if="latest.transferred"> · {{ latest.transferred }}</span>
-            <span v-if="latest.created_at"> · {{ new Date(latest.created_at).toLocaleString() }}</span>
+            <span v-if="latest.created_at"> · {{ dataOra(latest.created_at, { dateStyle: 'short', timeStyle: 'medium' }) }}</span>
           </p>
           <pre v-if="reportText">{{ reportText }}</pre>
         </div>
 
         <div v-if="liveError" class="frl-error">
-          <strong>Errore</strong>
+          <strong>{{ t('comune.errore') }}</strong>
           <pre>{{ liveError }}</pre>
         </div>
 
         <div v-else-if="latest?.status === 'failed' && latest.message" class="frl-error">
-          <strong>Fallito</strong>
+          <strong>{{ t('comune.fallito') }}</strong>
           <pre>{{ latest.message }}</pre>
         </div>
 
         <div v-if="outputText" class="frl-output">
-          <strong>Log tecnico</strong>
+          <strong>{{ t('fileLog.tecnico') }}</strong>
           <pre>{{ outputText }}</pre>
         </div>
 
         <p v-if="!loading && !liveError && !reportText && !outputText && progress?.status !== 'running'" class="muted">
-          Nessun log disponibile. Se il job non parte, verifica rsync/sshpass sul server e SSH sui NAS.
+          {{ t('fileLog.nessuno') }}
         </p>
 
         <details v-if="logs.length > 1" class="frl-history">
-          <summary>Storico esecuzioni ({{ logs.length }})</summary>
+          <summary>{{ t('fileLog.storico', { n: logs.length }) }}</summary>
           <ul>
             <li v-for="log in logs" :key="log.id">
               <span :class="log.status === 'failed' ? 'text-danger' : log.status === 'success' ? 'text-success' : ''">
@@ -164,7 +168,7 @@ onUnmounted(stopPolling)
               </span>
               — {{ log.message || log.error || '—' }}
               <span v-if="log.transferred"> ({{ log.transferred }})</span>
-              <small v-if="log.created_at">{{ new Date(log.created_at).toLocaleString() }}</small>
+              <small v-if="log.created_at">{{ dataOra(log.created_at, { dateStyle: 'short', timeStyle: 'medium' }) }}</small>
             </li>
           </ul>
         </details>

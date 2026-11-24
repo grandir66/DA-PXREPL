@@ -10,6 +10,9 @@ import {
 } from '../../utils/pathSelection'
 import { normalizeQnapDestShare, normalizeQnapStagingPath } from '../../utils/qnapPath'
 import FolderBrowserNode from './FolderBrowserNode.vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = withDefaults(
   defineProps<{
@@ -95,7 +98,7 @@ async function load(path: string) {
             ? detail.map((d) => d.msg || String(d)).join('; ')
             : e.message
     } else {
-      error.value = e instanceof Error ? e.message : 'Errore browse'
+      error.value = e instanceof Error ? e.message : t('sfoglia.errore')
     }
   } finally {
     loading.value = false
@@ -165,9 +168,9 @@ watch(
 <template>
   <div class="fb-wrap">
     <p v-if="hint" class="fb-hint">{{ hint }}</p>
-    <p v-if="!endpointId" class="fb-hint">Seleziona un endpoint per sfogliare le cartelle.</p>
+    <p v-if="!endpointId" class="fb-hint">{{ t('sfoglia.selEndpoint') }}</p>
     <p v-if="error" class="fb-error">{{ error }}</p>
-    <div v-if="loading" class="fb-loading">Caricamento…</div>
+    <div v-if="loading" class="fb-loading">{{ t('comune.caricamento') }}</div>
     <ul v-if="endpointId" class="fb-tree">
       <FolderBrowserNode
         v-for="entry in entries"
@@ -187,10 +190,10 @@ watch(
       />
     </ul>
     <p v-if="single && modelValue.length" class="fb-selected">
-      Share destinazione: <code>{{ modelValue[0] }}</code>
+      {{ t('sfoglia.shareDest') }} <code>{{ modelValue[0] }}</code>
     </p>
     <p v-else-if="modelValue.length" class="fb-selected">
-      {{ modelValue.length }} radici · i sottopercorsi sono inclusi automaticamente
+      {{ t('sfoglia.radici', { n: modelValue.length }) }}
     </p>
   </div>
 </template>

@@ -12,6 +12,10 @@ import { nasSyncApi, type NasSyncJob, type EndpointCapabilities } from '../servi
 import { fileReplicationApi, type FileReplicationJob } from '../services/fileReplication'
 import { formatFileReplProgress, type FileReplProgress } from '../utils/fileReplProgress'
 import { cronToHuman } from '../utils/cronHuman'
+import { useI18n } from 'vue-i18n'
+import { dataOra } from '../utils/formato'
+
+const { t } = useI18n()
 
 type TabId = 'all' | 'nas' | 'worm'
 
@@ -61,7 +65,7 @@ const showWorm = computed(() => activeTab.value === 'all' || activeTab.value ===
 const isEmpty = computed(() => nasJobs.value.length === 0 && wormJobs.value.length === 0)
 
 const tabs = computed<{ id: TabId; label: string; count: number }[]>(() => [
-  { id: 'all', label: 'Tutti', count: nasJobs.value.length + wormJobs.value.length },
+  { id: 'all', label: t('comune.tutto'), count: nasJobs.value.length + wormJobs.value.length },
   { id: 'nas', label: 'NAS→NAS', count: nasJobs.value.length },
   { id: 'worm', label: 'QNAP WORM', count: wormJobs.value.length },
 ])
@@ -96,7 +100,7 @@ async function refresh(silent = false) {
   if (wormS.status === 'fulfilled') wormStats.value = wormS.value.data
   if (eps.status === 'fulfilled') endpoints.value = eps.value.data
   const failed = results.some((r) => r.status === 'rejected')
-  if (failed) listError.value = 'Alcuni dati non sono stati caricati; mostro ciò che è disponibile.'
+  if (failed) listError.value = t('fileDati.parziale')
   if (!silent) loading.value = false
   await loadCapabilities(!silent)
 }
@@ -137,7 +141,7 @@ function nasStatusTone(job: NasSyncJob): string {
 }
 function nasStatusSummary(job: NasSyncJob): string {
   const p = nasProgress.value[job.id]
-  if (nasIsCatalogRefreshing(job)) return p?.message || 'Catalogo du in corso…'
+  if (nasIsCatalogRefreshing(job)) return p?.message || t('fileDati.catCorso')
   if (nasIsRunning(job) && p) {
     const parts: string[] = []
     if (p.current_folder_index && p.current_folder_total) parts.push(`${p.current_folder_index}/${p.current_folder_total}`)
@@ -153,9 +157,9 @@ function nasStatusSummary(job: NasSyncJob): string {
     return parts.join(' · ')
   }
   if (job.catalog_has_du && job.catalog_bytes_est) {
-    return `du ${job.catalog_folder_count || '?'} cart. · ${formatBytes(job.catalog_bytes_est)}`
+    return t('fileDati.catRiepilogo', { n: job.catalog_folder_count || '?', q: formatBytes(job.catalog_bytes_est) })
   }
-  if (sourceHasSsh(job)) return 'Catalogo du assente'
+  if (sourceHasSsh(job)) return t('fileDati.catAssente')
   return ''
 }
 function nasShowLastRunError(job: NasSyncJob): boolean {
@@ -237,30 +241,30 @@ async function nasRun(job: NasSyncJob) {
   runError.value = ''
   try {
     await nasSyncApi.run(job.id)
-    nasProgress.value[job.id] = { status: 'running', message: 'Avvio…' }
+    nasProgress.value[job.id] = { status: 'running', message: t('fileDati.avvio') }
     openNasLogs(job)
     await refresh()
     await refreshProgress()
     startLivePoll()
-  } catch (e) { runError.value = errMsg(e, 'Avvio job fallito') }
+  } catch (e) { runError.value = errMsg(e, t('fileDati.erroreAvvio')) }
 }
 async function nasStop(job: NasSyncJob) {
   runError.value = ''
-  if (!confirm(`Mettere in pausa il job "${job.name}"?`)) return
+  if (!confirm(t('fileDati.confPausa', { nome: job.name }))) return
   try { await nasSyncApi.stop(job.id); await refresh(); await refreshProgress() }
   catch (e) { runError.value = errMsg(e, 'Stop job fallito') }
 }
 async function nasRefreshCatalog(job: NasSyncJob) {
   runError.value = ''
-  if (!confirm(`Aggiornare catalogo du per "${job.name}"?\n\nScansione SSH sulla sorgente (1° livello) per dimensioni cartelle e stima tempi. Non avvia la copia.`)) return
+  if (!confirm(t('fileDati.confCatalogo', { nome: job.name }))) return
   try {
     await nasSyncApi.refreshCatalog(job.id)
-    nasProgress.value[job.id] = { status: 'catalog_refresh', phase_label: 'Catalogo du sorgente', message: 'Avvio…' }
+    nasProgress.value[job.id] = { status: 'catalog_refresh', phase_label: t('fileDati.catOrigine'), message: t('fileDati.avvio') }
     startLivePoll()
-  } catch (e) { runError.value = errMsg(e, 'Aggiornamento catalogo fallito') }
+  } catch (e) { runError.value = errMsg(e, t('fileDati.erroreCat')) }
 }
 async function nasToggle(id: number) { await nasSyncApi.toggle(id); await refresh() }
-async function nasDelete(id: number) { if (!confirm('Eliminare il job?')) return; await nasSyncApi.delete(id); await refresh() }
+async function nasDelete(id: number) { if (!confirm(t('comune.elimJob'))) return; await nasSyncApi.delete(id); await refresh() }
 function openNasNew() { editingNasJob.value = null; showNasJobModal.value = true; showNewMenu.value = false }
 function openNasEdit(job: NasSyncJob) { editingNasJob.value = job; showNasJobModal.value = true }
 function closeNasJobModal() { showNasJobModal.value = false; editingNasJob.value = null }
@@ -278,10 +282,10 @@ async function wormRun(job: FileReplicationJob) {
     openWormLogs(job)
     await refresh()
     startLivePoll()
-  } catch (e) { runError.value = errMsg(e, 'Avvio job fallito') }
+  } catch (e) { runError.value = errMsg(e, t('fileDati.erroreAvvio')) }
 }
 async function wormToggle(id: number) { await fileReplicationApi.toggle(id); await refresh() }
-async function wormDelete(id: number) { if (!confirm('Eliminare il job?')) return; await fileReplicationApi.delete(id); await refresh() }
+async function wormDelete(id: number) { if (!confirm(t('comune.elimJob'))) return; await fileReplicationApi.delete(id); await refresh() }
 function openWormNew() { editingWormJob.value = null; showWormJobModal.value = true; showNewMenu.value = false }
 function openWormEdit(job: FileReplicationJob) { editingWormJob.value = job; showWormJobModal.value = true }
 function closeWormJobModal() { showWormJobModal.value = false; editingWormJob.value = null }
@@ -300,17 +304,17 @@ function closeEndpointForm() { showEndpointForm.value = false; editingEndpoint.v
 function onEndpointSaved() { closeEndpointForm(); refresh() }
 async function testEndpoint(id: number) {
   endpointError.value = ''
-  try { const { data } = await fileEndpointsApi.test(id); await refresh(); alert(data.success ? `OK: ${data.message}` : `Fallito: ${data.message}`) }
+  try { const { data } = await fileEndpointsApi.test(id); await refresh(); alert(data.success ? `OK: ${data.message}` : `${t('comune.fallito')}: ${data.message}`) }
   catch (e) { endpointError.value = errMsg(e, 'Test fallito') }
 }
 async function deleteEndpoint(ep: FileEndpoint) {
-  if (!confirm(`Eliminare l'endpoint "${ep.name || ep.host}"?`)) return
+  if (!confirm(t('fileDati.confEliminaEndpoint', { nome: ep.name || ep.host }))) return
   endpointError.value = ''
   try {
     await fileEndpointsApi.delete(ep.id)
     if (editingEndpoint.value?.id === ep.id) closeEndpointForm()
     await refresh()
-  } catch (e) { endpointError.value = errMsg(e, 'Eliminazione fallita') }
+  } catch (e) { endpointError.value = errMsg(e, t('fileDati.erroreElimina')) }
 }
 
 function toLocalDate(v?: string | null): Date | null {
@@ -322,7 +326,7 @@ function toLocalDate(v?: string | null): Date | null {
   const d = new Date(iso)
   return isNaN(d.getTime()) ? null : d
 }
-function formatDate(v?: string | null) { const d = toLocalDate(v); return d ? d.toLocaleString() : '—' }
+function formatDate(v?: string | null) { const d = toLocalDate(v); return d ? dataOra(d, { dateStyle: 'short', timeStyle: 'medium' }) : '—' }
 function formatBytes(n?: number | null) {
   if (!n) return ''
   const units = ['B', 'KB', 'MB', 'GB', 'TB']
@@ -355,28 +359,27 @@ const vClickOutside = {
   <div class="repl-view">
     <header class="repl-head">
       <div class="repl-head-left">
-        <h1>Repliche file dati</h1>
+        <h1>{{ t('menu.replicheFileDati') }}</h1>
         <p class="repl-sub">
-          Replica di cartelle tra NAS: motore diretto rsync (i dati non passano dal server) o rclone SMB,
-          e replica verso QNAP con immutabilità WORM (snapshot nativi). Anagrafica endpoint condivisa.
+          {{ t('fileDati.sottotitolo') }}
         </p>
       </div>
       <div class="repl-head-actions">
         <button class="btn btn-secondary mr-2" @click="openNewEndpoint">
-          <Icon name="plus" :size="14" /> Endpoint
+          <Icon name="plus" :size="14" /> {{ t('fileDati.endpoint') }}
         </button>
         <div class="new-wrap" v-click-outside="() => (showNewMenu = false)">
           <button class="btn btn-primary" @click="showNewMenu = !showNewMenu">
-            <Icon name="plus" :size="14" /> Nuovo job <Icon name="chevron-down" :size="14" />
+            <Icon name="plus" :size="14" /> {{ t('fileDati.nuovo') }} <Icon name="chevron-down" :size="14" />
           </button>
           <ul v-if="showNewMenu" class="new-menu">
             <li @click="openNasNew()">
-              <strong>Replica dati NAS→NAS</strong>
-              <small>rsync diretto o rclone SMB tra NAS</small>
+              <strong>{{ t('fileDati.nasNas') }}</strong>
+              <small>{{ t('fileDati.nasNasSotto') }}</small>
             </li>
             <li @click="openWormNew()">
-              <strong>Replica QNAP WORM</strong>
-              <small>sync → staging QNAP con immutabilità snapshot</small>
+              <strong>{{ t('fileDati.worm') }}</strong>
+              <small>{{ t('fileDati.wormSotto') }}</small>
             </li>
           </ul>
         </div>
@@ -385,19 +388,19 @@ const vClickOutside = {
 
     <section class="repl-stats">
       <div class="repl-stat">
-        <span class="repl-stat-label">Job totali</span>
+        <span class="repl-stat-label">{{ t('fileDati.totali') }}</span>
         <span class="repl-stat-val">{{ totalCount }}</span>
       </div>
       <div class="repl-stat">
-        <span class="repl-stat-label">Attivi</span>
+        <span class="repl-stat-label">{{ t('comune.attivi') }}</span>
         <span class="repl-stat-val text-success">{{ activeCount }}</span>
       </div>
       <div class="repl-stat">
-        <span class="repl-stat-label">In esecuzione</span>
+        <span class="repl-stat-label">{{ t('fileDati.inCorso') }}</span>
         <span class="repl-stat-val text-warning">{{ runningCount }}</span>
       </div>
       <div class="repl-stat">
-        <span class="repl-stat-label">Falliti</span>
+        <span class="repl-stat-label">{{ t('fileDati.falliti') }}</span>
         <span class="repl-stat-val text-danger">{{ failedCount }}</span>
       </div>
     </section>
@@ -411,15 +414,15 @@ const vClickOutside = {
 
     <div class="card mb-4">
       <div class="card-header">
-        <h3>Endpoint registrati ({{ endpoints.length }})</h3>
-        <button class="btn btn-sm btn-secondary" :disabled="loading" @click="refresh()">Aggiorna</button>
+        <h3>{{ t('fileDati.registrati', { n: endpoints.length }) }}</h3>
+        <button class="btn btn-sm btn-secondary" :disabled="loading" @click="refresh()">{{ t('comune.aggiorna') }}</button>
       </div>
       <div class="card-body p-0">
         <p v-if="endpointError" class="p-3 text-danger">{{ endpointError }}</p>
         <table class="data-table" v-if="endpoints.length">
           <thead>
             <tr>
-              <th>Nome</th><th>Tipo</th><th>Ruolo</th><th>Capacità</th><th>Host</th><th>Ultimo test</th><th>Azioni</th>
+              <th>{{ t('comune.nome') }}</th><th>{{ t('comune.tipo') }}</th><th>{{ t('comune.ruolo') }}</th><th>{{ t('fileDati.capacita') }}</th><th>{{ t('comune.host') }}</th><th>{{ t('fileDati.ultimaProva') }}</th><th>{{ t('comune.azioni') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -446,14 +449,14 @@ const vClickOutside = {
                 <span v-else-if="!ep.last_test_status" class="muted">—</span>
               </td>
               <td class="actions">
-                <button class="btn btn-sm btn-secondary" @click="openEditEndpoint(ep)">Modifica</button>
-                <button class="btn btn-sm btn-primary" @click="testEndpoint(ep.id)">Test</button>
-                <button class="btn btn-sm btn-danger" @click="deleteEndpoint(ep)">Elimina</button>
+                <button class="btn btn-sm btn-secondary" @click="openEditEndpoint(ep)">{{ t('comune.modifica') }}</button>
+                <button class="btn btn-sm btn-primary" @click="testEndpoint(ep.id)">{{ t('comune.prova') }}</button>
+                <button class="btn btn-sm btn-danger" @click="deleteEndpoint(ep)">{{ t('comune.elimina') }}</button>
               </td>
             </tr>
           </tbody>
         </table>
-        <p v-else class="p-4">Nessun endpoint. Clicca <strong>+ Endpoint</strong> per registrarne uno.</p>
+        <p v-else class="p-4"><i18n-t keypath="fileDati.nessunEndpoint" tag="span"><template #bottone><strong>+ {{ t('fileDati.endpoint') }}</strong></template></i18n-t></p>
       </div>
     </div>
 
@@ -461,16 +464,16 @@ const vClickOutside = {
       <div class="card-header">
         <div class="repl-tabs">
           <button
-            v-for="t in tabs"
-            :key="t.id"
+            v-for="tab in tabs"
+            :key="tab.id"
             class="repl-tab"
-            :class="{ active: activeTab === t.id }"
-            @click="activeTab = t.id"
+            :class="{ active: activeTab === tab.id }"
+            @click="activeTab = tab.id"
           >
-            {{ t.label }} <span class="repl-tab-count">{{ t.count }}</span>
+            {{ tab.label }} <span class="repl-tab-count">{{ tab.count }}</span>
           </button>
         </div>
-        <button class="btn btn-sm btn-secondary" :disabled="loading" @click="refresh()">Aggiorna</button>
+        <button class="btn btn-sm btn-secondary" :disabled="loading" @click="refresh()">{{ t('comune.aggiorna') }}</button>
       </div>
       <div class="card-body p-0">
         <p v-if="listError" class="p-3 text-warning">{{ listError }}</p>
@@ -478,7 +481,7 @@ const vClickOutside = {
         <table class="data-table" v-if="!isEmpty">
           <thead>
             <tr>
-              <th>Tipo</th><th>Nome</th><th>Replica</th><th>Schedule</th><th>Ultimo run</th><th>Stato</th><th>Azioni</th>
+              <th>{{ t('comune.tipo') }}</th><th>{{ t('comune.nome') }}</th><th>{{ t('fileDati.replica') }}</th><th>{{ t('fileDati.pianificazione') }}</th><th>{{ t('fileDati.ultima') }}</th><th>{{ t('comune.stato') }}</th><th>{{ t('comune.azioni') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -489,7 +492,7 @@ const vClickOutside = {
                 <td>{{ job.name }}</td>
                 <td class="fr-job-structure">
                   <span class="engine-chip" :class="job.resolved_engine === 'direct_rsync' ? 'engine-direct' : 'engine-rclone'">
-                    {{ job.resolved_engine === 'direct_rsync' ? 'rsync diretto' : 'rclone SMB' }}
+                    {{ job.resolved_engine === 'direct_rsync' ? t('fileDati.rsync') : 'rclone SMB' }}
                   </span>
                   <FileReplPathMapping
                     compact :max-rows="2"
@@ -502,7 +505,7 @@ const vClickOutside = {
                 <td class="sched-cell">
                   <div class="sched-human">{{ cronToHuman(job.schedule) }}</div>
                   <small v-if="!job.is_active" class="sched-off">disattivato</small>
-                  <small v-else-if="job.next_run_at" class="muted d-block">Prossimo: {{ formatDate(job.next_run_at) }}</small>
+                  <small v-else-if="job.next_run_at" class="muted d-block">{{ t('fileDati.prossima', { quando: formatDate(job.next_run_at) }) }}</small>
                 </td>
                 <td>
                   {{ formatDate(job.last_run_at) }}
@@ -518,22 +521,22 @@ const vClickOutside = {
                     :class="{ 'text-warning': !job.catalog_has_du && sourceHasSsh(job) && !nasIsBusy(job) }"
                     :title="nasStatusSummary(job)"
                   >{{ nasStatusSummary(job) }}</span>
-                  <span v-if="nasIsBusy(job)" class="fr-status-hint">Dettaglio in Log</span>
+                  <span v-if="nasIsBusy(job)" class="fr-status-hint">{{ t('fileDati.dettLog') }}</span>
                   <span
                     v-if="nasShowLastRunError(job)" class="fr-status-err" :title="job.last_run_error || ''"
                   >{{ (job.last_run_error || '').length > 80 ? (job.last_run_error || '').slice(0, 80) + '…' : job.last_run_error }}</span>
                 </td>
                 <td class="actions">
-                  <button v-if="nasIsRunning(job)" class="btn btn-sm btn-warning" @click="nasStop(job)">Pausa</button>
-                  <button v-else class="btn btn-sm btn-primary" :disabled="nasIsBusy(job)" @click="nasRun(job)">Run</button>
+                  <button v-if="nasIsRunning(job)" class="btn btn-sm btn-warning" @click="nasStop(job)">{{ t('fileDati.pausa') }}</button>
+                  <button v-else class="btn btn-sm btn-primary" :disabled="nasIsBusy(job)" @click="nasRun(job)">{{ t('comune.esegui') }}</button>
                   <button
                     class="btn btn-sm btn-secondary" :disabled="nasIsBusy(job) || !sourceHasSsh(job)"
-                    title="Scansione du SSH per dimensioni cartelle e stima tempi" @click="nasRefreshCatalog(job)"
-                  >{{ nasIsCatalogRefreshing(job) ? 'Catalogo…' : 'Catalogo du' }}</button>
-                  <button class="btn btn-sm btn-secondary" @click="openNasEdit(job)">Modifica</button>
-                  <button class="btn btn-sm btn-secondary" @click="openNasLogs(job)">Log</button>
-                  <button class="btn btn-sm btn-secondary" @click="nasToggle(job.id)">{{ job.is_active ? 'Off' : 'On' }}</button>
-                  <button class="btn btn-sm btn-danger" @click="nasDelete(job.id)">Del</button>
+                    :title="t('fileDati.catAiuto')" @click="nasRefreshCatalog(job)"
+                  >{{ nasIsCatalogRefreshing(job) ? t('fileDati.catInCorso') : t('fileDati.catalogo') }}</button>
+                  <button class="btn btn-sm btn-secondary" @click="openNasEdit(job)">{{ t('comune.modifica') }}</button>
+                  <button class="btn btn-sm btn-secondary" @click="openNasLogs(job)">{{ t('comune.registro') }}</button>
+                  <button class="btn btn-sm btn-secondary" @click="nasToggle(job.id)">{{ job.is_active ? t('comune.spegni') : t('comune.accendi') }}</button>
+                  <button class="btn btn-sm btn-danger" @click="nasDelete(job.id)">{{ t('comune.elimina') }}</button>
                 </td>
               </tr>
             </template>
@@ -554,7 +557,7 @@ const vClickOutside = {
                 <td class="sched-cell">
                   <div class="sched-human">{{ cronToHuman(job.schedule) }}</div>
                   <small v-if="!job.is_active" class="sched-off">disattivato</small>
-                  <small v-else-if="job.next_run_at" class="muted d-block">Prossimo: {{ formatDate(job.next_run_at) }}</small>
+                  <small v-else-if="job.next_run_at" class="muted d-block">{{ t('fileDati.prossima', { quando: formatDate(job.next_run_at) }) }}</small>
                 </td>
                 <td>
                   {{ formatDate(job.last_run_at) }}
@@ -573,17 +576,17 @@ const vClickOutside = {
                   </small>
                 </td>
                 <td class="actions">
-                  <button class="btn btn-sm btn-primary" @click="wormRun(job)">Run</button>
-                  <button class="btn btn-sm btn-secondary" @click="openWormEdit(job)">Modifica</button>
-                  <button class="btn btn-sm btn-secondary" @click="openWormLogs(job)">Log</button>
-                  <button class="btn btn-sm btn-secondary" @click="wormToggle(job.id)">{{ job.is_active ? 'Off' : 'On' }}</button>
-                  <button class="btn btn-sm btn-danger" @click="wormDelete(job.id)">Del</button>
+                  <button class="btn btn-sm btn-primary" @click="wormRun(job)">{{ t('comune.esegui') }}</button>
+                  <button class="btn btn-sm btn-secondary" @click="openWormEdit(job)">{{ t('comune.modifica') }}</button>
+                  <button class="btn btn-sm btn-secondary" @click="openWormLogs(job)">{{ t('comune.registro') }}</button>
+                  <button class="btn btn-sm btn-secondary" @click="wormToggle(job.id)">{{ job.is_active ? t('comune.spegni') : t('comune.accendi') }}</button>
+                  <button class="btn btn-sm btn-danger" @click="wormDelete(job.id)">{{ t('comune.elimina') }}</button>
                 </td>
               </tr>
             </template>
           </tbody>
         </table>
-        <p v-else class="p-4">Nessun job. Crea un endpoint e un job (NAS→NAS o QNAP WORM) per iniziare.</p>
+        <p v-else class="p-4">{{ t('fileDati.nessuno') }}</p>
       </div>
     </div>
 

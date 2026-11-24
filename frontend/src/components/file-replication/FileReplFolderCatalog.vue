@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { FileReplFolderItem } from '../../utils/fileReplProgress'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   folders: FileReplFolderItem[]
@@ -53,7 +56,7 @@ const headerLine = computed(() => {
       activeFolder.value.path ||
       activeFolder.value.name ||
       ''
-    return `In lavorazione: ${full} (${props.currentIndex}/${props.currentTotal})`
+    return t('catalogo.inCorsoDett', { cartella: full, i: props.currentIndex, n: props.currentTotal })
   }
   return null
 })
@@ -69,7 +72,7 @@ const pendingCount = computed(
 
 const summaryLine = computed(() => {
   if (viewMode.value === 'catalog') {
-    return `${props.folders.length} cartelle catalogate (du)`
+    return t('catalogo.nCatalogate', { n: props.folders.length })
   }
   const parts = [`${doneCount.value}/${props.folders.length} replicate`]
   if (pendingCount.value) parts.push(`${pendingCount.value} in coda`)
@@ -85,11 +88,11 @@ function foldersForRoot(root: string) {
 }
 
 function statusLabel(status: string) {
-  if (status === 'done') return 'Replicata'
-  if (status === 'skipped') return 'Già allineata'
-  if (status === 'in_progress') return 'In lavorazione'
-  if (status === 'catalogued') return 'Nel catalogo du'
-  return 'In coda'
+  if (status === 'done') return t('catalogo.sFatta')
+  if (status === 'skipped') return t('catalogo.sSaltata')
+  if (status === 'in_progress') return t('catalogo.sInCorso')
+  if (status === 'catalogued') return t('catalogo.sCatalogata')
+  return t('catalogo.sCoda')
 }
 
 function statusIcon(status: string) {
@@ -105,13 +108,13 @@ function statusIcon(status: string) {
   <div v-if="folders.length" class="frfc" :class="{ 'frfc-compact': compact }">
     <div class="frfc-head">
       <strong>
-        {{ viewMode === 'catalog' ? 'Catalogo du (1° livello)' : 'Avanzamento replica' }}
+        {{ viewMode === 'catalog' ? t('catalogo.titolo') : t('catalogo.avanzamento') }}
       </strong>
       <span class="frfc-summary muted">{{ summaryLine }}</span>
     </div>
 
     <div v-if="parentPaths.length === 1" class="frfc-parent">
-      <span class="frfc-parent-label">Sotto</span>
+      <span class="frfc-parent-label">{{ t('catalogo.sotto') }}</span>
       <code class="frfc-parent-path">{{ parentPaths[0] }}</code>
     </div>
 
@@ -122,7 +125,7 @@ function statusIcon(status: string) {
     <template v-if="parentPaths.length > 1">
       <div v-for="root in parentPaths" :key="root" class="frfc-group">
         <div class="frfc-parent frfc-parent--group">
-          <span class="frfc-parent-label">Sotto</span>
+          <span class="frfc-parent-label">{{ t('catalogo.sotto') }}</span>
           <code class="frfc-parent-path">{{ root }}</code>
         </div>
         <ul class="frfc-list">
@@ -181,8 +184,8 @@ function statusIcon(status: string) {
             v-else-if="folder.status === 'in_progress' && (folder.session_human || folder.progress_pct != null)"
             class="frfc-progress muted"
           >
-            <template v-if="folder.session_human">{{ folder.session_human }} elaborati</template>
-            <template v-if="folder.progress_pct != null"> (~{{ folder.progress_pct }}% cartella)</template>
+            <template v-if="folder.session_human">{{ t('catalogo.elaborati', { q: folder.session_human }) }}</template>
+            <template v-if="folder.progress_pct != null"> {{ t('catalogo.percCartella', { p: folder.progress_pct }) }}</template>
           </small>
         </div>
       </li>

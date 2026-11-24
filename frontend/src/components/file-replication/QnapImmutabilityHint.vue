@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 defineProps<{
   snapshotSchedule?: string
   expirationDays?: number
@@ -8,22 +11,19 @@ defineProps<{
 
 <template>
   <div class="hint-card">
-    <h4>Snapshot QNAP (unico storico)</h4>
+    <h4>{{ t('qnap.titolo') }}</h4>
     <p>
-      dapx replica solo i <strong>file correnti</strong> da Synology. Cartelle snapshot e di sistema
-      (<code>#snapshot</code>, <code>@Snapshot</code>, …) non vengono mai copiate.
-      Lo storico si gestisce <strong>solo su QNAP</strong> con Snapshot Manager.
+      <i18n-t keypath="qnap.nota" tag="span"><template #cartelle><code>#snapshot</code>, <code>@Snapshot</code></template></i18n-t>
     </p>
     <ol>
-      <li>Share destinazione <em>thin</em>, compressione ON.</li>
-      <li>Snapshot schedule: almeno <strong>1h dopo</strong> il cron sync dapx.</li>
-      <li>Protection: <strong>Prohibit recycle and delete until expired</strong>.</li>
-      <li>Retention: Smart Versioning o max snapshot (es. {{ maxSnapshots ?? 10 }}).</li>
-      <li>Abilita <strong>Only if modified</strong> e guaranteed snapshot space.</li>
+      <li>{{ t('qnap.p1') }}</li>
+      <li>{{ t('qnap.p2') }}</li>
+      <li>{{ t('qnap.p3') }} <strong>Prohibit recycle and delete until expired</strong>.</li>
+      <li>{{ t('qnap.p4', { n: maxSnapshots ?? 10 }) }}</li>
+      <li>{{ t('qnap.p5') }}</li>
     </ol>
     <p class="hint-meta">
-      Snapshot consigliato: <code>{{ snapshotSchedule ?? '0 3 * * *' }}</code> —
-      retention {{ expirationDays ?? 30 }} giorni.
+      <i18n-t keypath="qnap.consigliato" tag="span"><template #cron><code>{{ snapshotSchedule ?? '0 3 * * *' }}</code></template><template #giorni>{{ expirationDays ?? 30 }}</template></i18n-t>
     </p>
   </div>
 </template>

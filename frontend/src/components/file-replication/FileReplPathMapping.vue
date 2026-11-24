@@ -2,6 +2,9 @@
 import { computed } from 'vue'
 import { buildFileReplMappings, formatDestShareLabel } from '../../utils/fileReplPaths'
 import { normalizeQnapDestShare } from '../../utils/qnapPath'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = withDefaults(
   defineProps<{
@@ -50,7 +53,7 @@ function shortPath(path: string) {
       <span>{{ destLabel || 'QNAP' }}/<code>{{ shareLabel }}</code></span>
     </p>
 
-    <p v-if="!rows.length" class="frpm-empty">Nessuna cartella sorgente.</p>
+    <p v-if="!rows.length" class="frpm-empty">{{ t('mappa.nessuna') }}</p>
 
     <ul v-else class="frpm-list">
       <li v-for="row in visibleRows" :key="row.sourcePath" class="frpm-row">
@@ -60,7 +63,7 @@ function shortPath(path: string) {
       </li>
     </ul>
 
-    <p v-if="hiddenCount > 0" class="frpm-more">+{{ hiddenCount }} cartelle</p>
+    <p v-if="hiddenCount > 0" class="frpm-more">{{ t('mappa.altre', { n: hiddenCount }) }}</p>
   </div>
 </template>
 

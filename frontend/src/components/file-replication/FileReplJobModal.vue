@@ -10,6 +10,9 @@ import { fileEndpointsApi, type FileEndpoint } from '../../services/fileEndpoint
 import { fileReplicationApi, type FileReplicationJob } from '../../services/fileReplication'
 import { normalizeQnapDestShare } from '../../utils/qnapPath'
 import { compactSourcePaths } from '../../utils/pathSelection'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   job?: FileReplicationJob | null
@@ -167,7 +170,7 @@ async function submit() {
       const detail = e.response?.data?.detail
       errorMsg.value = typeof detail === 'string' ? detail : e.message
     } else {
-      errorMsg.value = e instanceof Error ? e.message : 'Salvataggio fallito'
+      errorMsg.value = e instanceof Error ? e.message : t('fileJob.erroreSalva')
     }
   } finally {
     saving.value = false
@@ -190,31 +193,31 @@ onMounted(loadEndpoints)
   <div class="modal-overlay" @click.self="$emit('close')">
     <div class="modal-card">
       <header class="modal-head">
-        <h2>{{ isEdit ? 'Modifica job replica file' : 'Nuovo job replica file' }}</h2>
+        <h2>{{ isEdit ? t('fileJob.modifica') : t('fileJob.nuovo') }}</h2>
         <button type="button" class="btn btn-sm" @click="$emit('close')">✕</button>
       </header>
 
       <nav class="steps">
-        <span :class="{ active: step === 1 }">1. Sorgente</span>
-        <span :class="{ active: step === 2 }">2. Cartelle</span>
-        <span :class="{ active: step === 3 }">3. Destinazione</span>
-        <span :class="{ active: step === 4 }">4. Regole</span>
+        <span :class="{ active: step === 1 }">{{ t('fileJob.p1') }}</span>
+        <span :class="{ active: step === 2 }">{{ t('fileJob.p2') }}</span>
+        <span :class="{ active: step === 3 }">{{ t('fileJob.p3') }}</span>
+        <span :class="{ active: step === 4 }">{{ t('fileJob.p4') }}</span>
       </nav>
 
       <div v-show="step === 1" class="modal-body">
         <div class="form-group">
-          <label>Nome job</label>
+          <label>{{ t('fileJob.nome') }}</label>
           <input v-model="form.name" class="form-input" />
         </div>
         <div class="form-group">
-          <label>Endpoint sorgente</label>
+          <label>{{ t('fileJob.epOrigine') }}</label>
           <select v-model="form.source_endpoint_id" class="form-input" :disabled="isEdit">
-            <option :value="null" disabled>— seleziona —</option>
+            <option :value="null" disabled>{{ t('comune.seleziona') }}</option>
             <option v-for="ep in sourceEndpoints" :key="ep.id" :value="ep.id">
               {{ ep.name }} ({{ ep.endpoint_type }})
             </option>
           </select>
-          <small v-if="isEdit" class="text-muted">L'endpoint sorgente non è modificabile in modifica job.</small>
+          <small v-if="isEdit" class="text-muted">{{ t('fileJob.epOrigineFisso') }}</small>
         </div>
       </div>
 
@@ -225,25 +228,23 @@ onMounted(loadEndpoints)
           :exclude-presets="form.exclude_presets"
         />
         <p class="text-muted mt-2">
-          Seleziona le cartelle Synology. La struttura share/cartelle viene replicata sotto DATI su QNAP.
-          <strong>#snapshot</strong>, <strong>@Snapshot</strong>, <strong>#recycle</strong> e cartelle di sistema
-          sono <strong>sempre escluse</strong> dal sync (nessuno storico dalla sorgente).
+          <i18n-t keypath="fileJob.cartelleNota" tag="span"><template #a><strong>#snapshot</strong></template><template #b><strong>@Snapshot</strong></template><template #c><strong>#recycle</strong></template></i18n-t>
         </p>
       </div>
 
       <div v-show="step === 3" class="modal-body">
         <div class="form-group">
-          <label>Endpoint QNAP destinazione</label>
+          <label>{{ t('fileJob.epDest') }}</label>
           <select v-model="form.dest_endpoint_id" class="form-input" :disabled="isEdit">
-            <option :value="null" disabled>— seleziona —</option>
+            <option :value="null" disabled>{{ t('comune.seleziona') }}</option>
             <option v-for="ep in destEndpoints" :key="ep.id" :value="ep.id">
               {{ ep.name }}
             </option>
           </select>
-          <small v-if="isEdit" class="text-muted">L'endpoint destinazione non è modificabile in modifica job.</small>
+          <small v-if="isEdit" class="text-muted">{{ t('fileJob.epDestFisso') }}</small>
         </div>
         <div class="form-group">
-          <label>Share destinazione QNAP</label>
+          <label>{{ t('fileJob.shareDest') }}</label>
           <FolderBrowser
             v-model="destStagingPaths"
             :endpoint-id="form.dest_endpoint_id"
@@ -251,10 +252,10 @@ onMounted(loadEndpoints)
             mode="single"
             normalize-qnap-paths
             share-only
-            hint="Seleziona solo la share QNAP (es. DATI). Le sottocartelle ereditano il percorso Synology."
+            :hint="t('fileJob.shareAiuto')"
           />
           <small class="text-muted">
-            Scegli solo la share QNAP di destinazione. Le sottocartelle ereditano il percorso Synology.
+            {{ t('fileJob.shareNota') }}
           </small>
         </div>
         <FileReplPathMapping
@@ -281,37 +282,33 @@ onMounted(loadEndpoints)
         />
         <label class="checkbox-label">
           <input v-model="form.delete_on_dest" type="checkbox" />
-          Elimina su QNAP i file non più presenti in Synology (mirror corrente; nessuno storico sorgente)
+          {{ t('fileJob.mirror') }}
         </label>
         <p class="text-muted mt-2">
-          Esclusioni automatiche (non disabilitabili): <code>#snapshot</code>, <code>@Snapshot</code>,
-          <code>#recycle</code>, <code>@eaDir</code>, cestini e cartelle di sistema.
-          Lo storico/versioning va configurato solo con gli <strong>snapshot QNAP</strong>.
+          <i18n-t keypath="fileJob.esclusioniNota" tag="span"><template #elenco><code>#snapshot</code>, <code>@Snapshot</code>, <code>#recycle</code>, <code>@eaDir</code></template></i18n-t>
         </p>
         <div class="form-group mt-3">
-          <label>Quando eseguire la replica</label>
+          <label>{{ t('fileJob.quando') }}</label>
           <ScheduleEditor v-model="form.schedule_config" @cron="form.schedule = $event" />
         </div>
         <div class="form-group">
-          <label>Notifiche email</label>
+          <label>{{ t('fileJob.notifiche') }}</label>
           <select v-model="form.notify_mode" class="form-input">
-            <option value="daily">Solo nel riepilogo giornaliero (predefinito)</option>
-            <option value="failure">Riepilogo + mail subito se fallisce</option>
-            <option value="always">Mail a ogni esecuzione</option>
-            <option value="never">Nessuna notifica, escluso dal riepilogo</option>
+            <option value="daily">{{ t('fileJob.nDaily') }}</option>
+            <option value="failure">{{ t('fileJob.nFailure') }}</option>
+            <option value="always">{{ t('fileJob.nAlways') }}</option>
+            <option value="never">{{ t('fileJob.nNever') }}</option>
           </select>
           <small class="text-muted">
-            Con l'impostazione predefinita non arriva nessuna mail per questo job: le sue
-            esecuzioni compaiono nel riepilogo giornaliero, una mail sola per l'impianto.
-            Serve SMTP configurato in Impostazioni → Notifiche.
+            {{ t('fileJob.notNota') }}
           </small>
         </div>
         <div class="form-group">
-          <label>Oggetto email (opzionale)</label>
-          <input v-model="form.notify_subject" type="text" class="form-input" placeholder="Replica Comune → QNAP" />
+          <label>{{ t('fileJob.oggetto') }}</label>
+          <input v-model="form.notify_subject" type="text" class="form-input" :placeholder="t('fileJob.segnOggetto')" />
         </div>
         <div class="form-group">
-          <label>Pattern exclude aggiuntivi (uno per riga)</label>
+          <label>{{ t('fileJob.escludi') }}</label>
           <textarea v-model="form.exclude_patterns" class="form-input" rows="3" />
         </div>
         <QnapImmutabilityHint
@@ -324,8 +321,8 @@ onMounted(loadEndpoints)
       <p v-if="errorMsg" class="modal-error">{{ errorMsg }}</p>
 
       <footer class="modal-foot">
-        <button v-if="step > 1" type="button" class="btn btn-secondary" @click="step--">Indietro</button>
-        <button v-if="step < 4" type="button" class="btn btn-primary" @click="step++">Avanti</button>
+        <button v-if="step > 1" type="button" class="btn btn-secondary" @click="step--">{{ t('comune.indietro') }}</button>
+        <button v-if="step < 4" type="button" class="btn btn-primary" @click="step++">{{ t('comune.avanti') }}</button>
         <button
           v-else
           type="button"
@@ -333,7 +330,7 @@ onMounted(loadEndpoints)
           :disabled="saving || !form.name || !form.source_paths.length"
           @click="submit"
         >
-          {{ saving ? 'Salvataggio…' : isEdit ? 'Salva modifiche' : 'Crea job' }}
+          {{ saving ? t('comune.salvataggio') : isEdit ? t('comune.salvaModifiche') : t('fileJob.crea') }}
         </button>
       </footer>
     </div>
