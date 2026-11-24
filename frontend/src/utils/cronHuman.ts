@@ -1,8 +1,10 @@
 // Converte una espressione cron (5 campi: min hour dom month dow) in una frase
-// leggibile in italiano. Copre i preset del ScheduleEditor e i casi comuni;
+// leggibile nella lingua dell'interfaccia. Copre i preset del ScheduleEditor e i casi comuni;
 // se non riconosce il pattern, ritorna il cron grezzo come fallback.
 
-const GIORNI = ['domenica', 'lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì', 'sabato']
+import { i18n } from '../i18n'
+
+const t = i18n.global.t
 
 function hhmm(min: string, hour: string): string | null {
   const m = Number(min)
@@ -25,14 +27,14 @@ function giorniLabel(dow: string): string | null {
     nums = dow.split(',').map(Number)
   }
   if (nums.some((n) => !Number.isInteger(n) || n < 0 || n > 7)) return null
-  const names = nums.map((n) => GIORNI[n % 7]).filter((x): x is string => Boolean(x))
+  const names = nums.map((n) => t(`giorni.lunghi.${n % 7}`))
   if (!names.length) return null
   if (names.length === 1) return names[0] ?? null
-  return names.slice(0, -1).join(', ') + ' e ' + names[names.length - 1]
+  return names.slice(0, -1).join(', ') + t('giorni.e') + names[names.length - 1]
 }
 
 export function cronToHuman(cron?: string | null): string {
-  if (!cron || !cron.trim()) return 'Manuale'
+  if (!cron || !cron.trim()) return t('cron.manuale')
   const parts = cron.trim().split(/\s+/)
   if (parts.length !== 5) return cron // non standard → grezzo
   const [min, hour, dom, month, dow] = parts as [string, string, string, string, string]
@@ -40,16 +42,16 @@ export function cronToHuman(cron?: string | null): string {
   // Ogni N minuti: "*/N * * * *"
   const minEvery = min.match(/^\*\/(\d+)$/)
   if (minEvery && hour === '*' && dom === '*' && month === '*' && dow === '*') {
-    return `Ogni ${minEvery[1]} minuti`
+    return t('cron.ogniNMinuti', { n: minEvery[1] })
   }
   // Ogni ora: "M * * * *"
   if (/^\d+$/.test(min) && hour === '*' && dom === '*' && month === '*' && dow === '*') {
-    return Number(min) === 0 ? 'Ogni ora' : `Ogni ora (al minuto ${min})`
+    return Number(min) === 0 ? t('cron.ogniOra') : t('cron.ogniOraAlMinuto', { m: min })
   }
   // Ogni N ore: "M */N * * *"
   const hourEvery = hour.match(/^\*\/(\d+)$/)
   if (/^\d+$/.test(min) && hourEvery && dom === '*' && month === '*' && dow === '*') {
-    return `Ogni ${hourEvery[1]} ore`
+    return t('cron.ogniNOre', { n: hourEvery[1] })
   }
 
   const time = hhmm(min, hour)
@@ -57,15 +59,15 @@ export function cronToHuman(cron?: string | null): string {
     // Settimanale: dow specificato
     if (dom === '*' && month === '*' && dow !== '*') {
       const g = giorniLabel(dow)
-      if (g) return `Ogni ${g} alle ${time}`
+      if (g) return t('cron.settimanale', { giorni: g, ora: time })
     }
     // Mensile: dom specificato
     if (/^\d+$/.test(dom) && month === '*' && dow === '*') {
-      return `Il giorno ${dom} di ogni mese alle ${time}`
+      return t('cron.mensile', { giorno: dom, ora: time })
     }
     // Giornaliero
     if (dom === '*' && month === '*' && dow === '*') {
-      return `Ogni giorno alle ${time}`
+      return t('cron.giornaliero', { ora: time })
     }
   }
   return cron // pattern avanzato → mostra il cron

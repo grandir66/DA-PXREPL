@@ -3,5 +3,139 @@
     "etichetta": "Lingua",
     "it": "Italiano",
     "en": "English"
+  },
+  "comune": {
+    "caricamento": "Caricamento…",
+    "annulla": "Annulla",
+    "conferma": "Conferma",
+    "elimina": "Elimina",
+    "procedi": "Procedi",
+    "chiudi": "Chiudi",
+    "notifiche": "Notifiche",
+    "avviso": "Avviso",
+    "notifica": "Notifica",
+    "errore": "Errore",
+    "erroreImprevisto": "Errore imprevisto"
+  },
+  "menu": {
+    "operativo": "Operativo",
+    "dashboard": "Dashboard",
+    "nodi": "Nodi",
+    "vm": "Macchine virtuali",
+    "cluster": "Cluster",
+    "clusterHa": "Cluster & HA",
+    "replicheBackup": "Repliche & Backup",
+    "repliche": "Repliche",
+    "replicheFileDati": "Repliche file dati",
+    "snapshotVm": "Snapshot VM",
+    "pbsBackup": "PBS Backup",
+    "sanoid": "Sanoid / Syncoid",
+    "migrazioni": "Migrazioni",
+    "hostBackup": "Host Backup",
+    "sistema": "Sistema",
+    "aggiornaDati": "Aggiorna dati",
+    "aggiornamentoInCorso": "Aggiornamento…",
+    "registri": "Registri di sistema",
+    "impostazioni": "Impostazioni",
+    "aggiornamenti": "Aggiornamenti",
+    "backupConfig": "Backup configurazione",
+    "esci": "Esci",
+    "cacheAggiornata": "Cache aggiornata",
+    "cacheAggiornataDettaglio": "Dati di nodi e VM in aggiornamento",
+    "erroreAggiornamento": "Errore aggiornamento"
+  },
+  "login": {
+    "setupIniziale": "Setup iniziale",
+    "sottotitolo": "Backup e replica per Proxmox",
+    "utenteAdmin": "Nome utente amministratore",
+    "email": "Email",
+    "password": "Password",
+    "nomeCompleto": "Nome completo",
+    "configurazioneInCorso": "Configurazione in corso…",
+    "creaAccount": "Crea account",
+    "utente": "Nome utente",
+    "autenticazione": "Autenticazione",
+    "accessoInCorso": "Accesso in corso…",
+    "accedi": "Accedi",
+    "credenzialiNonValide": "Credenziali non valide o errore del server.",
+    "erroreSetup": "Errore durante il setup iniziale."
+  },
+  "conferma": {
+    "eliminareTitolo": "Eliminare {cosa}?",
+    "eliminareMessaggio": "«{nome}» sarà rimosso. L'operazione è irreversibile.",
+    "elemento": "l'elemento"
+  },
+  "accesso": {
+    "riservatoAdmin": "Accesso riservato agli amministratori",
+    "senzaPermessi": "Non hai i permessi per accedere a questa sezione.",
+    "tornaDashboard": "Torna alla Dashboard"
+  },
+  "giorni": {
+    "brevi": {
+      "mon": "Lun",
+      "tue": "Mar",
+      "wed": "Mer",
+      "thu": "Gio",
+      "fri": "Ven",
+      "sat": "Sab",
+      "sun": "Dom"
+    },
+    "lunghi": {
+      "0": "domenica",
+      "1": "lunedì",
+      "2": "martedì",
+      "3": "mercoledì",
+      "4": "giovedì",
+      "5": "venerdì",
+      "6": "sabato"
+    },
+    "e": " e "
+  },
+  "cron": {
+    "manuale": "Manuale",
+    "ogniNMinuti": "Ogni {n} minuti",
+    "ogniOra": "Ogni ora",
+    "ogniOraAlMinuto": "Ogni ora (al minuto {m})",
+    "ogniNOre": "Ogni {n} ore",
+    "settimanale": "Ogni {giorni} alle {ora}",
+    "mensile": "Il giorno {giorno} di ogni mese alle {ora}",
+    "giornaliero": "Ogni giorno alle {ora}"
+  },
+  "pianificazione": {
+    "tipo": {
+      "manual": "Manuale",
+      "hourly": "Orario",
+      "every_n_hours": "Ogni N ore",
+      "daily": "Giornaliero",
+      "weekly": "Settimanale",
+      "every_n_days": "Ogni N giorni",
+      "monthly": "Mensile",
+      "advanced": "Avanzato"
+    },
+    "suggerimento": {
+      "manual": "Solo a richiesta",
+      "hourly": "Ogni ora",
+      "every_n_hours": "Es. ogni 4 ore",
+      "daily": "Una volta al giorno",
+      "weekly": "Giorni scelti",
+      "every_n_days": "Es. ogni 2 giorni",
+      "monthly": "Un giorno fisso",
+      "advanced": "Espressione cron"
+    },
+    "minuto": "Minuto",
+    "diOgniOra": ": {minuto} di ogni ora (UTC)",
+    "ogni": "Ogni",
+    "ore": "ore",
+    "giorni": "giorni",
+    "orarioUtc": "Orario (UTC)",
+    "oraLocaleServer": "Orari in ora locale del server",
+    "giorniSettimana": "Giorni della settimana",
+    "giornoDelMese": "Giorno del mese",
+    "espressioneCron": "Espressione cron",
+    "segnapostoCron": "minuto ora giorno mese giorno_settimana",
+    "esempio": "Es.",
+    "riepilogo": "Riepilogo",
+    "cron": "Cron",
+    "prossimeEsecuzioni": "Prossime 5 esecuzioni (ora locale)"
   }
 }

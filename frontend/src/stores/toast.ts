@@ -9,6 +9,7 @@
  *   toast.error('Errore', 'Dettagli...')
  */
 import { defineStore } from 'pinia'
+import { i18n } from '../i18n'
 
 export type ToastKind = 'success' | 'error' | 'warning' | 'info'
 
@@ -66,7 +67,7 @@ export function useToast() {
 /**
  * Estrae un messaggio di errore leggibile da un'eccezione axios o JS.
  */
-export function errorMessage(e: unknown, fallback = 'Errore imprevisto'): string {
+export function errorMessage(e: unknown, fallback = i18n.global.t('comune.erroreImprevisto')): string {
   const any = e as any
   return (
     any?.response?.data?.detail ||

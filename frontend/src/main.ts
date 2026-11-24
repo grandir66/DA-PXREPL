@@ -33,8 +33,8 @@ try {
       // Heuristica: se contiene parole "errore"/"error"/"failed" lo
       // mostriamo come error, altrimenti info.
       const isError = /errore|error|failed|impossibile|exception/i.test(text)
-      if (isError) toast.error('Avviso', text)
-      else toast.info('Notifica', text)
+      if (isError) toast.error(i18n.global.t('comune.avviso'), text)
+      else toast.info(i18n.global.t('comune.notifica'), text)
     } catch {
       nativeAlert(msg)
     }

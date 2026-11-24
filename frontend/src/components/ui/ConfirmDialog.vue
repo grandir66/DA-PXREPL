@@ -12,14 +12,14 @@
           </p>
           <div class="confirm-actions">
             <button class="btn btn-secondary" @click="cancel" autofocus>
-              {{ store.options?.cancelText || 'Annulla' }}
+              {{ store.options?.cancelText || t('comune.annulla') }}
             </button>
             <button
               class="btn"
               :class="store.options?.danger ? 'btn-danger' : 'btn-primary'"
               @click="confirm"
             >
-              {{ store.options?.confirmText || 'Conferma' }}
+              {{ store.options?.confirmText || t('comune.conferma') }}
             </button>
           </div>
         </div>
@@ -32,6 +32,9 @@
 import { onMounted, onUnmounted } from 'vue'
 import { useConfirmStore } from '../../stores/confirm'
 import Icon from './Icon.vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const store = useConfirmStore()
 

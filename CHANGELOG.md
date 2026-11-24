@@ -14,7 +14,10 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
   (`frontend/src/utils/formato.ts`) e un controllo, dentro `npm run lint`, che fallisce se
   una chiave manca in una delle due lingue. Italiano predefinito e di ripiego. Il selettore
   di lingua resta **nascosto** finché le viste non sono tradotte: per chi usa l'appliance
-  non cambia niente, salvo `lang="it"` nella pagina (prima dichiarava inglese).
+  non cambia quasi niente: `lang="it"` nella pagina (prima dichiarava inglese) e tre voci
+  di menu uniformate all'italiano («Macchine virtuali», «Registri di sistema», «Backup
+  configurazione»). Tradotti finora menu, accesso, finestre di conferma, notifiche ed
+  editor della pianificazione; il glossario è in `docs/glossario-it-en.md`.
 
 - **Ritorno all'originale** (scheda nel dettaglio VM della replica, sotto «Identità
   replica»). Quando una replica è stata accesa al posto dell'originale, il sistema riporta la

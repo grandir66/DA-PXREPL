@@ -1,7 +1,7 @@
 <template>
   <div class="loading" :class="{ 'loading-inline': inline }">
     <div class="spinner" :style="{ width: size + 'px', height: size + 'px' }" />
-    <span v-if="message" class="loading-msg">{{ message }}</span>
+    <span v-if="message !== ''" class="loading-msg">{{ message ?? $t('comune.caricamento') }}</span>
   </div>
 </template>
 
@@ -13,7 +13,7 @@ withDefaults(
     inline?: boolean
   }>(),
   {
-    message: 'Caricamento…',
+    message: undefined,
     size: 22,
     inline: false,
   }

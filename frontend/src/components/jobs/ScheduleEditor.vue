@@ -10,15 +10,15 @@
         @click="setKind(opt.value)"
       >
         <span class="se-kind-icon"><Icon :name="opt.icon" :size="16" /></span>
-        <span class="se-kind-label">{{ opt.label }}</span>
-        <span class="se-kind-hint">{{ opt.hint }}</span>
+        <span class="se-kind-label">{{ t(`pianificazione.tipo.${opt.value}`) }}</span>
+        <span class="se-kind-hint">{{ t(`pianificazione.suggerimento.${opt.value}`) }}</span>
       </button>
     </div>
 
     <div class="se-form" v-if="model.kind !== 'manual'">
       <!-- hourly / every_n_hours: minute -->
       <div class="se-row" v-if="model.kind === 'hourly' || model.kind === 'every_n_hours'">
-        <label class="se-label">Minuto</label>
+        <label class="se-label">{{ t('pianificazione.minuto') }}</label>
         <input
           type="number"
           min="0"
@@ -27,10 +27,10 @@
           :value="model.minute ?? 0"
           @input="patch({ minute: clampInt(($event.target as any).value, 0, 59) })"
         />
-        <span class="se-hint">: {{ String(model.minute ?? 0).padStart(2, '0') }} di ogni ora (UTC)</span>
+        <span class="se-hint">{{ t('pianificazione.diOgniOra', { minuto: String(model.minute ?? 0).padStart(2, '0') }) }}</span>
       </div>
       <div class="se-row" v-if="model.kind === 'every_n_hours'">
-        <label class="se-label">Ogni</label>
+        <label class="se-label">{{ t('pianificazione.ogni') }}</label>
         <input
           type="number"
           min="1"
@@ -39,7 +39,7 @@
           :value="model.hours ?? 4"
           @input="patch({ hours: clampInt(($event.target as any).value, 1, 23) })"
         />
-        <span class="se-hint">ore</span>
+        <span class="se-hint">{{ t('pianificazione.ore') }}</span>
       </div>
 
       <!-- daily / weekly / monthly / every_n_days: time -->
@@ -47,19 +47,19 @@
         class="se-row"
         v-if="['daily', 'weekly', 'monthly', 'every_n_days'].includes(model.kind)"
       >
-        <label class="se-label">Orario (UTC)</label>
+        <label class="se-label">{{ t('pianificazione.orarioUtc') }}</label>
         <input
           type="time"
           class="form-input se-input-sm"
           :value="model.time || '02:00'"
           @input="patch({ time: ($event.target as any).value })"
         />
-        <span class="se-hint">Orari in ora locale del server</span>
+        <span class="se-hint">{{ t('pianificazione.oraLocaleServer') }}</span>
       </div>
 
       <!-- every_n_days: N -->
       <div class="se-row" v-if="model.kind === 'every_n_days'">
-        <label class="se-label">Ogni</label>
+        <label class="se-label">{{ t('pianificazione.ogni') }}</label>
         <input
           type="number"
           min="1"
@@ -68,12 +68,12 @@
           :value="model.days ?? 2"
           @input="patch({ days: clampInt(($event.target as any).value, 1, 30) })"
         />
-        <span class="se-hint">giorni</span>
+        <span class="se-hint">{{ t('pianificazione.giorni') }}</span>
       </div>
 
       <!-- weekly: weekdays -->
       <div class="se-row se-row-block" v-if="model.kind === 'weekly'">
-        <label class="se-label">Giorni della settimana</label>
+        <label class="se-label">{{ t('pianificazione.giorniSettimana') }}</label>
         <div class="se-weekdays">
           <button
             v-for="d in WEEKDAYS_ORDER"
@@ -83,14 +83,14 @@
             :class="{ active: (model.weekdays || []).includes(d) }"
             @click="toggleWeekday(d)"
           >
-            {{ WEEKDAY_LABELS_IT[d] }}
+            {{ t(`giorni.brevi.${d}`) }}
           </button>
         </div>
       </div>
 
       <!-- monthly: day_of_month -->
       <div class="se-row" v-if="model.kind === 'monthly'">
-        <label class="se-label">Giorno del mese</label>
+        <label class="se-label">{{ t('pianificazione.giornoDelMese') }}</label>
         <input
           type="number"
           min="1"
@@ -103,37 +103,37 @@
 
       <!-- advanced: cron raw -->
       <div class="se-row se-row-block" v-if="model.kind === 'advanced'">
-        <label class="se-label">Espressione cron</label>
+        <label class="se-label">{{ t('pianificazione.espressioneCron') }}</label>
         <input
           type="text"
           class="form-input"
           :value="model.cron || ''"
           @input="patch({ cron: ($event.target as any).value })"
-          placeholder="minuto ora giorno mese giorno_settimana"
+          :placeholder="t('pianificazione.segnapostoCron')"
         />
-        <span class="se-hint">Es. <code>0 */4 * * *</code></span>
+        <span class="se-hint">{{ t('pianificazione.esempio') }} <code>0 */4 * * *</code></span>
       </div>
     </div>
 
     <div class="se-preview">
       <div class="se-preview-row">
-        <span class="se-preview-label">Riepilogo</span>
+        <span class="se-preview-label">{{ t('pianificazione.riepilogo') }}</span>
         <span class="se-preview-value" :class="{ 'is-error': !!preview.error }">
           {{ preview.human || '—' }}
         </span>
       </div>
       <div class="se-preview-row" v-if="preview.cron">
-        <span class="se-preview-label">Cron</span>
+        <span class="se-preview-label">{{ t('pianificazione.cron') }}</span>
         <code class="se-preview-cron">{{ preview.cron }}</code>
       </div>
       <div class="se-preview-row" v-if="preview.error">
-        <span class="se-preview-label">Errore</span>
+        <span class="se-preview-label">{{ t('comune.errore') }}</span>
         <span class="se-preview-value is-error">{{ preview.error }}</span>
       </div>
       <div class="se-next" v-if="preview.next_runs.length">
-        <span class="se-preview-label">Prossime 5 esecuzioni (ora locale)</span>
+        <span class="se-preview-label">{{ t('pianificazione.prossimeEsecuzioni') }}</span>
         <ul>
-          <li v-for="(t, i) in preview.next_runs" :key="i">{{ formatRun(t) }}</li>
+          <li v-for="(run, i) in preview.next_runs" :key="i">{{ formatRun(run) }}</li>
         </ul>
       </div>
     </div>
@@ -142,10 +142,11 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import Icon from '../ui/Icon.vue'
+import { dataOra } from '../../utils/formato'
 import scheduleService, {
   WEEKDAYS_ORDER,
-  WEEKDAY_LABELS_IT,
   type ScheduleConfig,
   type ScheduleKind,
   type WeekDay,
@@ -160,20 +161,20 @@ const emit = defineEmits<{
   (e: 'cron', value: string | null): void
 }>()
 
+const { t } = useI18n()
+
 const kindOptions: Array<{
   value: ScheduleKind
-  label: string
-  hint: string
   icon: string
 }> = [
-  { value: 'manual', label: 'Manuale', hint: 'Solo on-demand', icon: 'hand' },
-  { value: 'hourly', label: 'Orario', hint: 'Ogni ora', icon: 'alarm-clock' },
-  { value: 'every_n_hours', label: 'Ogni N ore', hint: 'Es. ogni 4h', icon: 'clock' },
-  { value: 'daily', label: 'Giornaliero', hint: 'Una volta al giorno', icon: 'calendar' },
-  { value: 'weekly', label: 'Settimanale', hint: 'Giorni scelti', icon: 'calendar-days' },
-  { value: 'every_n_days', label: 'Ogni N giorni', hint: 'Es. ogni 2 giorni', icon: 'skip-forward' },
-  { value: 'monthly', label: 'Mensile', hint: 'Un giorno fisso', icon: 'calendar-range' },
-  { value: 'advanced', label: 'Avanzato', hint: 'Cron raw', icon: 'settings' },
+  { value: 'manual', icon: 'hand' },
+  { value: 'hourly', icon: 'alarm-clock' },
+  { value: 'every_n_hours', icon: 'clock' },
+  { value: 'daily', icon: 'calendar' },
+  { value: 'weekly', icon: 'calendar-days' },
+  { value: 'every_n_days', icon: 'skip-forward' },
+  { value: 'monthly', icon: 'calendar-range' },
+  { value: 'advanced', icon: 'settings' },
 ]
 
 const defaultsByKind: Record<ScheduleKind, ScheduleConfig> = {
@@ -263,12 +264,7 @@ function clampInt(v: any, min: number, max: number) {
 }
 
 function formatRun(iso: string) {
-  try {
-    const d = new Date(iso)
-    return d.toLocaleString('it-IT', { dateStyle: 'medium', timeStyle: 'short' })
-  } catch {
-    return iso
-  }
+  return dataOra(iso, { dateStyle: 'medium', timeStyle: 'short' }, iso)
 }
 </script>
 

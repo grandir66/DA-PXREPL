@@ -5,9 +5,9 @@
   <div v-else class="admin-gate">
     <div class="admin-gate-card">
       <Icon name="shield" :size="32" />
-      <h2>Accesso riservato agli amministratori</h2>
-      <p>Non hai i permessi per accedere a questa sezione.</p>
-      <router-link :to="{ name: 'dashboard' }" class="btn btn-primary btn-sm">Torna alla Dashboard</router-link>
+      <h2>{{ $t('accesso.riservatoAdmin') }}</h2>
+      <p>{{ $t('accesso.senzaPermessi') }}</p>
+      <router-link :to="{ name: 'dashboard' }" class="btn btn-primary btn-sm">{{ $t('accesso.tornaDashboard') }}</router-link>
     </div>
   </div>
 </template>

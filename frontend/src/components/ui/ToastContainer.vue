@@ -1,6 +1,6 @@
 <template>
   <Teleport to="body">
-    <div class="toast-stack" role="region" aria-live="polite" aria-label="Notifiche">
+    <div class="toast-stack" role="region" aria-live="polite" :aria-label="$t('comune.notifiche')">
       <transition-group name="toast">
         <div
           v-for="t in store.toasts"
@@ -14,7 +14,7 @@
             <div class="toast-title">{{ t.title }}</div>
             <div class="toast-message" v-if="t.message">{{ t.message }}</div>
           </div>
-          <button class="toast-close" @click.stop="store.dismiss(t.id)" aria-label="Chiudi">×</button>
+          <button class="toast-close" @click.stop="store.dismiss(t.id)" :aria-label="$t('comune.chiudi')">×</button>
         </div>
       </transition-group>
     </div>

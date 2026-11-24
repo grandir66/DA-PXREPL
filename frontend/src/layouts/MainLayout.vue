@@ -10,82 +10,82 @@
 
       <nav class="nav">
         <div class="nav-group">
-          <div class="nav-group-title">Operativo</div>
+          <div class="nav-group-title">{{ t('menu.operativo') }}</div>
           <router-link :to="{ name: 'dashboard' }" class="nav-item" active-class="active">
             <Icon name="home" :size="16" />
-            <span>Dashboard</span>
+            <span>{{ t('menu.dashboard') }}</span>
           </router-link>
           <router-link :to="{ name: 'nodes' }" class="nav-item" active-class="active">
             <Icon name="server" :size="16" />
-            <span>Nodi</span>
+            <span>{{ t('menu.nodi') }}</span>
           </router-link>
           <router-link :to="{ name: 'vms' }" class="nav-item" active-class="active">
             <Icon name="monitor" :size="16" />
-            <span>Virtual Machines</span>
+            <span>{{ t('menu.vm') }}</span>
           </router-link>
         </div>
 
         <div class="nav-group">
-          <div class="nav-group-title">Cluster</div>
+          <div class="nav-group-title">{{ t('menu.cluster') }}</div>
           <router-link :to="{ name: 'cluster' }" class="nav-item" active-class="active">
             <Icon name="cluster" :size="16" />
-            <span>Cluster &amp; HA</span>
+            <span>{{ t('menu.clusterHa') }}</span>
           </router-link>
         </div>
 
         <div class="nav-group">
-          <div class="nav-group-title">Repliche &amp; Backup</div>
+          <div class="nav-group-title">{{ t('menu.replicheBackup') }}</div>
           <router-link :to="{ name: 'replication' }" class="nav-item" active-class="active">
             <Icon name="archive" :size="16" />
-            <span>Repliche</span>
+            <span>{{ t('menu.repliche') }}</span>
           </router-link>
           <router-link :to="{ name: 'file-data-replication' }" class="nav-item" active-class="active">
             <Icon name="folder" :size="16" />
-            <span>Repliche file dati</span>
+            <span>{{ t('menu.replicheFileDati') }}</span>
           </router-link>
           <router-link :to="{ name: 'vm-snapshots' }" class="nav-item" active-class="active">
             <Icon name="copy" :size="16" />
-            <span>Snapshot VM</span>
+            <span>{{ t('menu.snapshotVm') }}</span>
           </router-link>
           <router-link :to="{ name: 'pbs-backup' }" class="nav-item" active-class="active">
             <Icon name="database" :size="16" />
-            <span>PBS Backup</span>
+            <span>{{ t('menu.pbsBackup') }}</span>
           </router-link>
           <router-link :to="{ name: 'sanoid-syncoid' }" class="nav-item" active-class="active">
             <Icon name="package" :size="16" />
-            <span>Sanoid / Syncoid</span>
+            <span>{{ t('menu.sanoid') }}</span>
           </router-link>
           <router-link :to="{ name: 'migration-jobs' }" class="nav-item" active-class="active">
             <Icon name="arrow-right-left" :size="16" />
-            <span>Migrazioni</span>
+            <span>{{ t('menu.migrazioni') }}</span>
           </router-link>
           <router-link :to="{ name: 'host-backup' }" class="nav-item" active-class="active">
             <Icon name="shield" :size="16" />
-            <span>Host Backup</span>
+            <span>{{ t('menu.hostBackup') }}</span>
           </router-link>
         </div>
 
         <div class="nav-group">
-          <div class="nav-group-title">Sistema</div>
+          <div class="nav-group-title">{{ t('menu.sistema') }}</div>
           <button type="button" class="nav-item" @click="refreshData" :disabled="refreshing">
             <Icon name="refresh" :size="16" :class="{ 'spin': refreshing }" />
-            <span>{{ refreshing ? 'Aggiornamento…' : 'Aggiorna dati' }}</span>
+            <span>{{ refreshing ? t('menu.aggiornamentoInCorso') : t('menu.aggiornaDati') }}</span>
           </button>
           <router-link :to="{ name: 'logs' }" class="nav-item" active-class="active">
             <Icon name="file-text" :size="16" />
-            <span>System Logs</span>
+            <span>{{ t('menu.registri') }}</span>
           </router-link>
           <router-link :to="{ name: 'settings' }" class="nav-item" active-class="active">
             <Icon name="settings" :size="16" />
-            <span>Impostazioni</span>
+            <span>{{ t('menu.impostazioni') }}</span>
           </router-link>
           <router-link v-if="authStore.isAdmin" :to="{ name: 'updates' }" class="nav-item" active-class="active">
             <Icon name="package" :size="16" />
-            <span>Aggiornamenti</span>
+            <span>{{ t('menu.aggiornamenti') }}</span>
           </router-link>
           <router-link v-if="authStore.isAdmin" :to="{ name: 'config-backup' }" class="nav-item" active-class="active">
             <Icon name="download" :size="16" />
-            <span>Backup config</span>
+            <span>{{ t('menu.backupConfig') }}</span>
           </router-link>
         </div>
       </nav>
@@ -106,7 +106,7 @@
             <span class="user-name">{{ authStore.user.username }}</span>
             <span class="user-role">{{ authStore.user.role || '' }}</span>
           </div>
-          <button class="user-logout" @click="logout" title="Logout">
+          <button class="user-logout" @click="logout" :title="t('menu.esci')">
             <Icon name="log-out" :size="14" />
           </button>
         </div>
@@ -149,9 +149,9 @@ async function refreshData() {
   refreshing.value = true
   try {
     await nodesService.refreshAllCache()
-    toast.success('Cache aggiornata', 'Dati nodi e VM in refresh')
+    toast.success(t('menu.cacheAggiornata'), t('menu.cacheAggiornataDettaglio'))
   } catch (e) {
-    toast.error('Errore aggiornamento', errorMessage(e))
+    toast.error(t('menu.erroreAggiornamento'), errorMessage(e))
   } finally {
     refreshing.value = false
   }

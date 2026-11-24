@@ -6,8 +6,8 @@
         <h1>DA-PXREPL</h1>
       </div>
       
-      <p class="subtitle" v-if="setupRequired">Setup Iniziale</p>
-      <p class="subtitle" v-else>Backup & Replica per Proxmox</p>
+      <p class="subtitle" v-if="setupRequired">{{ t('login.setupIniziale') }}</p>
+      <p class="subtitle" v-else>{{ t('login.sottotitolo') }}</p>
 
       <div v-if="loginError" class="alert alert-danger">
         {{ loginError }}
@@ -16,39 +16,39 @@
       <!-- SETUP FORM -->
       <form v-if="setupRequired" @submit.prevent="doSetup">
         <div class="form-group">
-            <label>Username Admin</label>
+            <label>{{ t('login.utenteAdmin') }}</label>
             <input type="text" class="form-input" v-model="setupForm.username" placeholder="admin" required>
         </div>
         <div class="form-group">
-            <label>Email</label>
+            <label>{{ t('login.email') }}</label>
             <input type="email" class="form-input" v-model="setupForm.email" placeholder="admin@example.com" required>
         </div>
         <div class="form-group">
-            <label>Password</label>
+            <label>{{ t('login.password') }}</label>
             <input type="password" class="form-input" v-model="setupForm.password" placeholder="••••••••" required>
         </div>
         <div class="form-group">
-            <label>Nome Completo</label>
+            <label>{{ t('login.nomeCompleto') }}</label>
             <input type="text" class="form-input" v-model="setupForm.full_name" placeholder="Administrator">
         </div>
         <button type="submit" class="btn btn-primary w-full" :disabled="loading">
-          {{ loading ? 'Configurazione in corso...' : 'Crea Account' }}
+          {{ loading ? t('login.configurazioneInCorso') : t('login.creaAccount') }}
         </button>
       </form>
 
       <!-- LOGIN FORM -->
       <form v-else @submit.prevent="doLogin">
         <div class="form-group">
-            <label>Username</label>
+            <label>{{ t('login.utente') }}</label>
             <input type="text" class="form-input" v-model="loginForm.username" placeholder="admin" required>
         </div>
         <div class="form-group">
-            <label>Password</label>
+            <label>{{ t('login.password') }}</label>
             <input type="password" class="form-input" v-model="loginForm.password" placeholder="••••••••" required>
         </div>
         
         <div class="form-group" v-if="realms.length > 1">
-            <label>Autenticazione</label>
+            <label>{{ t('login.autenticazione') }}</label>
             <select class="form-input" v-model="loginForm.realm">
                 <option v-for="r in realms" :key="r.realm" :value="r.realm">
                     {{ r.comment || r.realm }}
@@ -57,7 +57,7 @@
         </div>
 
         <button type="submit" class="btn btn-primary w-full" :disabled="loading">
-            {{ loading ? 'Accesso in corso...' : 'Accedi' }}
+            {{ loading ? t('login.accessoInCorso') : t('login.accedi') }}
         </button>
       </form>
       
@@ -73,6 +73,9 @@ import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import authService from '../services/auth';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 // State
 const setupRequired = ref(false);
@@ -127,7 +130,7 @@ const doLogin = async () => {
         router.push({ name: 'dashboard' });
     } catch (e: any) {
         console.error(e);
-        loginError.value = e.response?.data?.detail || 'Credenziali non valide o errore server.';
+        loginError.value = e.response?.data?.detail || t('login.credenzialiNonValide');
     } finally {
         loading.value = false;
     }
@@ -147,7 +150,7 @@ const doSetup = async () => {
         router.push({ name: 'dashboard' });
     } catch (e: any) {
         console.error(e);
-        loginError.value = e.response?.data?.detail || 'Errore durante il setup iniziale.';
+        loginError.value = e.response?.data?.detail || t('login.erroreSetup');
     } finally {
         loading.value = false;
     }

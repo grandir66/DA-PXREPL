@@ -3,5 +3,139 @@
     "etichetta": "Language",
     "it": "Italiano",
     "en": "English"
+  },
+  "comune": {
+    "caricamento": "Loading…",
+    "annulla": "Cancel",
+    "conferma": "Confirm",
+    "elimina": "Delete",
+    "procedi": "Proceed",
+    "chiudi": "Close",
+    "notifiche": "Notifications",
+    "avviso": "Warning",
+    "notifica": "Notice",
+    "errore": "Error",
+    "erroreImprevisto": "Unexpected error"
+  },
+  "menu": {
+    "operativo": "Operations",
+    "dashboard": "Dashboard",
+    "nodi": "Nodes",
+    "vm": "Virtual machines",
+    "cluster": "Cluster",
+    "clusterHa": "Cluster & HA",
+    "replicheBackup": "Replication & backup",
+    "repliche": "Replication",
+    "replicheFileDati": "File data replication",
+    "snapshotVm": "VM snapshots",
+    "pbsBackup": "PBS backup",
+    "sanoid": "Sanoid / Syncoid",
+    "migrazioni": "Migrations",
+    "hostBackup": "Host backup",
+    "sistema": "System",
+    "aggiornaDati": "Refresh data",
+    "aggiornamentoInCorso": "Refreshing…",
+    "registri": "System logs",
+    "impostazioni": "Settings",
+    "aggiornamenti": "Updates",
+    "backupConfig": "Configuration backup",
+    "esci": "Log out",
+    "cacheAggiornata": "Cache refreshed",
+    "cacheAggiornataDettaglio": "Node and VM data is being refreshed",
+    "erroreAggiornamento": "Refresh failed"
+  },
+  "login": {
+    "setupIniziale": "Initial setup",
+    "sottotitolo": "Backup and replication for Proxmox",
+    "utenteAdmin": "Administrator username",
+    "email": "Email",
+    "password": "Password",
+    "nomeCompleto": "Full name",
+    "configurazioneInCorso": "Setting up…",
+    "creaAccount": "Create account",
+    "utente": "Username",
+    "autenticazione": "Authentication",
+    "accessoInCorso": "Signing in…",
+    "accedi": "Sign in",
+    "credenzialiNonValide": "Invalid credentials or server error.",
+    "erroreSetup": "Initial setup failed."
+  },
+  "conferma": {
+    "eliminareTitolo": "Delete {cosa}?",
+    "eliminareMessaggio": "“{nome}” will be removed. This cannot be undone.",
+    "elemento": "this item"
+  },
+  "accesso": {
+    "riservatoAdmin": "Administrators only",
+    "senzaPermessi": "You do not have permission to open this section.",
+    "tornaDashboard": "Back to the dashboard"
+  },
+  "giorni": {
+    "brevi": {
+      "mon": "Mon",
+      "tue": "Tue",
+      "wed": "Wed",
+      "thu": "Thu",
+      "fri": "Fri",
+      "sat": "Sat",
+      "sun": "Sun"
+    },
+    "lunghi": {
+      "0": "Sunday",
+      "1": "Monday",
+      "2": "Tuesday",
+      "3": "Wednesday",
+      "4": "Thursday",
+      "5": "Friday",
+      "6": "Saturday"
+    },
+    "e": " and "
+  },
+  "cron": {
+    "manuale": "Manual",
+    "ogniNMinuti": "Every {n} minutes",
+    "ogniOra": "Every hour",
+    "ogniOraAlMinuto": "Every hour (at minute {m})",
+    "ogniNOre": "Every {n} hours",
+    "settimanale": "Every {giorni} at {ora}",
+    "mensile": "On day {giorno} of every month at {ora}",
+    "giornaliero": "Every day at {ora}"
+  },
+  "pianificazione": {
+    "tipo": {
+      "manual": "Manual",
+      "hourly": "Hourly",
+      "every_n_hours": "Every N hours",
+      "daily": "Daily",
+      "weekly": "Weekly",
+      "every_n_days": "Every N days",
+      "monthly": "Monthly",
+      "advanced": "Advanced"
+    },
+    "suggerimento": {
+      "manual": "On demand only",
+      "hourly": "Every hour",
+      "every_n_hours": "E.g. every 4 hours",
+      "daily": "Once a day",
+      "weekly": "Chosen days",
+      "every_n_days": "E.g. every 2 days",
+      "monthly": "A fixed day",
+      "advanced": "Cron expression"
+    },
+    "minuto": "Minute",
+    "diOgniOra": ": {minuto} of every hour (UTC)",
+    "ogni": "Every",
+    "ore": "hours",
+    "giorni": "days",
+    "orarioUtc": "Time (UTC)",
+    "oraLocaleServer": "Times are in the server's local time",
+    "giorniSettimana": "Days of the week",
+    "giornoDelMese": "Day of the month",
+    "espressioneCron": "Cron expression",
+    "segnapostoCron": "minute hour day month weekday",
+    "esempio": "E.g.",
+    "riepilogo": "Summary",
+    "cron": "Cron",
+    "prossimeEsecuzioni": "Next 5 runs (local time)"
   }
 }

@@ -13,6 +13,9 @@
  *   if (!ok) return
  */
 import { defineStore } from 'pinia'
+import { i18n } from '../i18n'
+
+const t = i18n.global.t
 
 export interface ConfirmOptions {
   title: string
@@ -41,8 +44,8 @@ export const useConfirmStore = defineStore('confirm', {
         try { this.resolver(false) } catch { /* ignore */ }
       }
       this.options = {
-        confirmText: 'Conferma',
-        cancelText: 'Annulla',
+        confirmText: t('comune.conferma'),
+        cancelText: t('comune.annulla'),
         danger: false,
         ...opts,
       }
@@ -66,12 +69,12 @@ export function useConfirm() {
 }
 
 /** Helper rapido: conferma di eliminazione con stile danger. */
-export function confirmDelete(name: string, what: string = 'elemento'): Promise<boolean> {
+export function confirmDelete(name: string, what: string = t('conferma.elemento')): Promise<boolean> {
   return useConfirmStore().ask({
-    title: `Eliminare ${what}?`,
-    message: `"${name}" sarà rimosso. L'operazione è irreversibile.`,
-    confirmText: 'Elimina',
-    cancelText: 'Annulla',
+    title: t('conferma.eliminareTitolo', { cosa: what }),
+    message: t('conferma.eliminareMessaggio', { nome: name }),
+    confirmText: t('comune.elimina'),
+    cancelText: t('comune.annulla'),
     danger: true,
   })
 }
@@ -80,13 +83,13 @@ export function confirmDelete(name: string, what: string = 'elemento'): Promise<
 export function confirmDangerous(
   title: string,
   message?: string,
-  confirmText: string = 'Procedi'
+  confirmText: string = t('comune.procedi')
 ): Promise<boolean> {
   return useConfirmStore().ask({
     title,
     message,
     confirmText,
-    cancelText: 'Annulla',
+    cancelText: t('comune.annulla'),
     danger: true,
   })
 }

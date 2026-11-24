@@ -47,7 +47,10 @@ function file(dir, out = []) {
   return out
 }
 const usate = new Set()
-const USO = /(?<![\w.])\$?t\(\s*(['"`])([A-Za-z0-9_.-]+)\1/g
+const USO = /(?<![\w$])\$?t\(\s*(['"`])([A-Za-z0-9_.-]+)\1/g
+// Chiavi composte, t(`giorni.brevi.${d}`): vale come usato tutto il prefisso.
+const USO_PREFISSO = /(?<![\w$])\$?t\(\s*`([A-Za-z0-9_.-]+\.)\$\{/g
+const prefissi = new Set()
 for (const p of file(src)) {
   const testo = readFileSync(p, 'utf8')
   for (const m of testo.matchAll(USO)) {
@@ -57,8 +60,15 @@ for (const p of file(src)) {
       errori.push(`${relative(radice, p)}:${riga} usa «${m[2]}», che non è in it.json`)
     }
   }
+  for (const m of testo.matchAll(USO_PREFISSO)) {
+    prefissi.add(m[1])
+    if (!Object.keys(lingue.it).some((k) => k.startsWith(m[1]))) {
+      const riga = testo.slice(0, m.index).split('\n').length
+      errori.push(`${relative(radice, p)}:${riga} usa il prefisso «${m[1]}», che non ha chiavi in it.json`)
+    }
+  }
 }
-const orfane = Object.keys(lingue.it).filter((k) => !usate.has(k))
+const orfane = Object.keys(lingue.it).filter((k) => !usate.has(k) && ![...prefissi].some((pre) => k.startsWith(pre)))
 
 console.log(`lingue: ${Object.keys(lingue.it).length} chiavi in it, ${Object.keys(lingue.en).length} in en, ${usate.size} usate nel codice`)
 if (orfane.length) console.log(`avviso: ${orfane.length} chiavi mai usate: ${orfane.slice(0, 20).join(', ')}${orfane.length > 20 ? ', …' : ''}`)
