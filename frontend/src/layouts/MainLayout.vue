@@ -91,6 +91,13 @@
       </nav>
 
       <div class="sidebar-foot">
+        <label v-if="SELETTORE_VISIBILE" class="lang-switch">
+          <Icon name="globe" :size="14" />
+          <span class="lang-label">{{ t('lingua.etichetta') }}</span>
+          <select :value="locale" @change="cambiaLingua" :aria-label="t('lingua.etichetta')">
+            <option v-for="l in LINGUE" :key="l" :value="l">{{ t(`lingua.${l}`) }}</option>
+          </select>
+        </label>
         <div class="user-chip" v-if="authStore.user">
           <div class="user-avatar">
             <Icon name="user" :size="14" />
@@ -124,11 +131,18 @@ import Icon from '../components/ui/Icon.vue'
 import ToastContainer from '../components/ui/ToastContainer.vue'
 import ConfirmDialog from '../components/ui/ConfirmDialog.vue'
 import { useToast, errorMessage } from '../stores/toast'
+import { useI18n } from 'vue-i18n'
+import { LINGUE, SELETTORE_VISIBILE, impostaLingua, type Lingua } from '../i18n'
 
 const authStore = useAuthStore()
 const router = useRouter()
 const toast = useToast()
 const refreshing = ref(false)
+const { t, locale } = useI18n()
+
+function cambiaLingua(e: Event) {
+  impostaLingua((e.target as HTMLSelectElement).value as Lingua)
+}
 
 async function refreshData() {
   if (refreshing.value) return
@@ -262,6 +276,25 @@ onMounted(async () => {
 .sidebar-foot {
   padding: var(--space-2);
   border-top: 1px solid var(--color-border);
+}
+.lang-switch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+.lang-switch .lang-label {
+  flex: 1;
+}
+.lang-switch select {
+  background: var(--color-bg-element);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 2px 4px;
+  font: inherit;
 }
 .user-chip {
   display: flex;

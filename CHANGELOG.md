@@ -7,6 +7,15 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ### Aggiunte
 
+- **Impianto per l'interfaccia in due lingue** (italiano e inglese; Riccardo, 24/11: «serve
+  l'inglese»). Finora non esisteva nessun sistema di traduzione: ~2.400 testi scritti a mano
+  nei componenti, un quarto dei quali già in inglese per caso. Entrano `vue-i18n`, i file
+  `frontend/src/locales/{it,en}.json`, una funzione sola per date e numeri
+  (`frontend/src/utils/formato.ts`) e un controllo, dentro `npm run lint`, che fallisce se
+  una chiave manca in una delle due lingue. Italiano predefinito e di ripiego. Il selettore
+  di lingua resta **nascosto** finché le viste non sono tradotte: per chi usa l'appliance
+  non cambia niente, salvo `lang="it"` nella pagina (prima dichiarava inglese).
+
 - **Ritorno all'originale** (scheda nel dettaglio VM della replica, sotto «Identità
   replica»). Quando una replica è stata accesa al posto dell'originale, il sistema riporta la
   produzione sulla VM originale coi dati aggiornati della replica, in due tempi:

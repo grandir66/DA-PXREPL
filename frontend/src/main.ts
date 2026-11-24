@@ -7,12 +7,14 @@ import router from './router'
 import { createPinia } from 'pinia'
 import { useToastStore } from './stores/toast'
 import { useConfirmStore } from './stores/confirm'
+import i18n from './i18n'
 
 const app = createApp(App)
 
 const pinia = createPinia()
 app.use(pinia)
 app.use(router)
+app.use(i18n)
 
 // Override globale di window.alert/confirm con il sistema di notifiche
 // stilato. Le viste legacy che usano ancora alert()/confirm() ne
