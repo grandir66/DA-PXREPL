@@ -1,20 +1,20 @@
 <template>
  <div class="nodes-page">
  <PageHeader
- title="Nodi Proxmox"
- subtitle="Gestione e monitoraggio nodi del cluster"
+ :title="t('nodi.titolo')"
+ :subtitle="t('nodi.sottotitolo')"
  icon="server"
  >
  <template #actions>
  <router-link :to="{ name: 'sanoid-syncoid' }" class="btn btn-secondary btn-sm">
-  Sanoid / Syncoid
+  {{ t('menu.sanoid') }}
  </router-link>
  <button class="btn btn-primary btn-sm" @click="openModal">
- Nuovo nodo
+ {{ t('nodi.nuovo') }}
  </button>
  <button class="btn btn-secondary btn-sm" @click="loadNodes" :disabled="loading">
  <Icon name="refresh" :size="14" :class="{ spin: loading }" />
- {{ loading ? 'Aggiorno…' : 'Aggiorna' }}
+ {{ loading ? t('comune.aggiornoInCorso') : t('comune.aggiorna') }}
  </button>
  </template>
  </PageHeader>
@@ -24,17 +24,17 @@
  <table class="data-table">
  <thead>
  <tr>
- <th>Nome</th>
+ <th>{{ t('comune.nome') }}</th>
  <th>Hostname</th>
- <th>Stato</th>
+ <th>{{ t('comune.stato') }}</th>
  <th>CPU</th>
  <th>RAM</th>
  <th>Storage</th>
  <th>VM</th>
- <th>Temp</th>
- <th>Ver</th>
+ <th>{{ t('nodi.temp') }}</th>
+ <th>{{ t('nodi.vers') }}</th>
  <th>Sanoid</th>
- <th>Azioni</th>
+ <th>{{ t('comune.azioni') }}</th>
  </tr>
  </thead>
  <tbody>
@@ -44,37 +44,37 @@
  <td>
  <span class="badge" :class="node.is_online ? 'badge-success' : 'badge-danger'">
  <span class="status-dot"></span>
- {{ node.is_online ? 'Online' : 'Offline' }}
+ {{ node.is_online ? t('comune.inLinea') : t('comune.nonInLineaStato') }}
  </span>
  </td>
  <td>
- <span v-if="node.cpu?.cores">{{ node.cpu.cores }} cores</span>
- <span v-else class="text-secondary">N/A</span>
+ <span v-if="node.cpu?.cores">{{ t('nodi.core', { n: node.cpu.cores }) }}</span>
+ <span v-else class="text-secondary">{{ t('comune.nd') }}</span>
  </td>
  <td>
  <div v-if="node.memory?.total_gb">
  <div>{{ formatSize(node.memory.total_gb * 1024 * 1024 * 1024) }}</div>
  <div class="text-sm text-secondary">
- Usata: {{ formatSize((node.memory.used_gb || 0) * 1024 * 1024 * 1024) }}
+ {{ t('nodi.usata', { q: formatSize((node.memory.used_gb || 0) * 1024 * 1024 * 1024) }) }}
  </div>
  </div>
- <span v-else class="text-secondary">N/A</span>
+ <span v-else class="text-secondary">{{ t('comune.nd') }}</span>
  </td>
  <td>
  <div v-if="node.storage_total_gb && node.storage_total_gb > 0">
  <div>{{ formatSize(node.storage_total_gb * 1024 * 1024 * 1024) }}</div>
  <div class="text-sm text-secondary">
- Usato: {{ formatSize((node.storage_used_gb || 0) * 1024 * 1024 * 1024) }}
+ {{ t('nodi.usato', { q: formatSize((node.storage_used_gb || 0) * 1024 * 1024 * 1024) }) }}
  </div>
  </div>
- <span v-else class="text-secondary">N/A</span>
+ <span v-else class="text-secondary">{{ t('comune.nd') }}</span>
  </td>
  <td>
- <router-link :to="'/vms?search=' + node.name" class="no-underline hover:text-accent transition-colors" title="Vedi VM di questo nodo">
+ <router-link :to="'/vms?search=' + node.name" class="no-underline hover:text-accent transition-colors" :title="t('nodi.vediVm')">
  <span v-if="node.vm_count !== undefined">
  {{ node.vm_count }} 
  <span v-if="node.running_vm_count && node.running_vm_count > 0" style="color: var(--accent-primary);">
- ({{ node.running_vm_count }} running)
+ {{ t('nodi.accese', { n: node.running_vm_count }) }}
  </span>
  </span>
  <span v-else class="text-secondary">-</span>
@@ -84,7 +84,7 @@
  <span v-if="node.temperature_highest_c">
  {{ node.temperature_highest_c }}°C
  </span>
- <span v-else class="text-secondary">N/A</span>
+ <span v-else class="text-secondary">{{ t('comune.nd') }}</span>
  </td>
  <td>
  <span v-if="node.proxmox_version">{{ node.proxmox_version }}</span>
@@ -94,26 +94,26 @@
  <div v-if="node.node_type === 'pve'">
  <span v-if="node.sanoid_installed" class="badge badge-success" title="Sanoid Installato">
  <Icon name="check-circle" :size="14" class="text-success" /> {{ node.sanoid_version || 'OK' }}
- <button class="btn-icon-sm" @click.stop="updateSanoid(node)" title="Aggiorna Sanoid">⬆️</button>
+ <button class="btn-icon-sm" @click.stop="updateSanoid(node)" :title="t('nodi.aggiornaSanoid')">⬆️</button>
  </span>
- <button v-else class="btn btn-warning btn-xs" @click="installSanoid(node)" title="Installa Sanoid">Installa</button>
+ <button v-else class="btn btn-warning btn-xs" @click="installSanoid(node)" :title="t('nodi.installaSanoid')">{{ t('comune.installa') }}</button>
  </div>
  <span v-else class="text-secondary">-</span>
  </td>
  <td>
  <div class="btn-group">
- <button class="btn btn-secondary btn-sm" @click="showNodeDetails(node)" title="Dettagli">Info</button>
- <button class="btn btn-secondary btn-sm" @click="testNode(node)" title="Test Connessione">Test</button>
- <button class="btn btn-primary btn-sm" @click="editNode(node)" title="Modifica">Modifica</button>
- <button class="btn btn-danger btn-sm" @click="deleteNode(node)" title="Elimina"><Icon name="trash" :size="14" /></button>
+ <button class="btn btn-secondary btn-sm" @click="showNodeDetails(node)" :title="t('comune.dettagli')">{{ t('nodi.info') }}</button>
+ <button class="btn btn-secondary btn-sm" @click="testNode(node)" :title="t('nodi.provaConnessione')">{{ t('nodi.prova') }}</button>
+ <button class="btn btn-primary btn-sm" @click="editNode(node)" :title="t('comune.modifica')">{{ t('comune.modifica') }}</button>
+ <button class="btn btn-danger btn-sm" @click="deleteNode(node)" :title="t('comune.elimina')"><Icon name="trash" :size="14" /></button>
  </div>
  </td>
  </tr>
  <tr v-if="nodes.length === 0 && !loading">
- <td colspan="10" class="empty-state-cell">Nessun nodo trovato</td>
+ <td colspan="10" class="empty-state-cell">{{ t('nodi.nessuno') }}</td>
  </tr>
  <tr v-if="loading && nodes.length === 0">
- <td colspan="10" class="empty-state-cell">⏳ Caricamento nodi...</td>
+ <td colspan="10" class="empty-state-cell">{{ t('nodi.caricamento') }}</td>
  </tr>
  </tbody>
  </table>
@@ -124,10 +124,10 @@
  <div v-if="showDetailsModal && selectedNode" class="modal-overlay" @click.self="closeDetailsModal">
  <div class="modal-content large">
  <div class="modal-header">
- <h3>Dettagli Nodo: {{ selectedNode.name }}</h3>
+ <h3>{{ t('nodi.dettagliNodo', { nome: selectedNode.name }) }}</h3>
  <div class="header-actions" style="display:flex; gap:10px;">
  <button class="btn btn-warning btn-sm" @click="runDiagnosticStart" :disabled="diagnosticLoading">
- {{ diagnosticLoading ? '⏳ Esecuzione...' : 'Diagnostic' }}
+ {{ diagnosticLoading ? t('nodi.esecuzione') : t('nodi.diagnostica') }}
  </button>
  <button class="close-btn" @click="closeDetailsModal">&times;</button>
  </div>
@@ -135,12 +135,12 @@
  <div class="modal-body">
  <div v-if="refreshing" class="text-center p-6">
  <div class="spinner-lg mb-4"></div>
- <p>Aggiornamento dati dai nodi in corso...</p>
- <p class="text-secondary text-sm">Potrebbe richiedere alcuni secondi.</p>
+ <p>{{ t('nodi.aggiornamentoDati') }}</p>
+ <p class="text-secondary text-sm">{{ t('nodi.qualcheSecondo') }}</p>
  </div>
  <div v-else-if="!selectedNode.host_info" class="text-center p-4">
- <p class="text-secondary">Nessun dato dettagliato disponibile.</p>
- <button class="btn btn-primary mt-2" @click="refreshData">Aggiorna Dati Ora</button>
+ <p class="text-secondary">{{ t('nodi.nessunDettaglio') }}</p>
+ <button class="btn btn-primary mt-2" @click="refreshData">{{ t('nodi.aggiornaOra') }}</button>
  </div>
  <div v-else class="details-grid">
  <!-- CPU -->
@@ -149,54 +149,54 @@
  <div class="kpi-row">
  <div class="kpi">
  <span class="val">{{ selectedNode.cpu?.cores || '-' }}</span>
- <span class="lbl">Cores</span>
+ <span class="lbl">{{ t('nodi.cores') }}</span>
  </div>
  <div class="kpi">
  <span class="val">{{ selectedNode.host_info.cpu?.threads || '-' }}</span>
- <span class="lbl">Threads</span>
+ <span class="lbl">{{ t('nodi.threads') }}</span>
  </div>
  <div class="kpi">
  <span class="val">{{ selectedNode.host_info.cpu?.sockets || '-' }}</span>
- <span class="lbl">Sockets</span>
+ <span class="lbl">{{ t('nodi.sockets') }}</span>
  </div>
  </div>
  <div class="kpi-row mt-2">
  <div class="kpi small">
  <span class="val">{{ selectedNode.host_info.cpu?.load_1m?.toFixed(2) || '0' }}</span>
- <span class="lbl">Load 1m</span>
+ <span class="lbl">{{ t('nodi.carico1') }}</span>
  </div>
  <div class="kpi small">
  <span class="val">{{ selectedNode.host_info.cpu?.load_5m?.toFixed(2) || '0' }}</span>
- <span class="lbl">Load 5m</span>
+ <span class="lbl">{{ t('nodi.carico5') }}</span>
  </div>
  <div class="kpi small">
  <span class="val">{{ selectedNode.host_info.cpu?.load_15m?.toFixed(2) || '0' }}</span>
- <span class="lbl">Load 15m</span>
+ <span class="lbl">{{ t('nodi.carico15') }}</span>
  </div>
  </div>
  <div class="list-info mt-2">
- <div class="text-sm text-secondary">{{ selectedNode.cpu?.model || 'N/A' }}</div>
+ <div class="text-sm text-secondary">{{ selectedNode.cpu?.model || t('comune.nd') }}</div>
  </div>
  </div>
 
  <!-- RAM -->
  <div class="detail-card">
- <h4><Icon name="memory" :size="20" /> Memoria</h4>
+ <h4><Icon name="memory" :size="20" /> {{ t('nodi.memoria') }}</h4>
  <div class="progress-bar-container" v-if="selectedNode.memory">
  <div class="progress-bar" :style="{width: (((selectedNode.memory.used_gb || 0) / (selectedNode.memory.total_gb || 1)) * 100) + '%'}"></div>
  </div>
  <div class="kpi-row mt-2">
  <div class="kpi small">
  <span class="val">{{ selectedNode.memory?.used_gb?.toFixed(1) || '-' }}</span>
- <span class="lbl">Used GB</span>
+ <span class="lbl">{{ t('nodi.gbUsati') }}</span>
  </div>
  <div class="kpi small">
  <span class="val">{{ selectedNode.memory?.total_gb?.toFixed(1) || '-' }}</span>
- <span class="lbl">Total GB</span>
+ <span class="lbl">{{ t('nodi.gbTotali') }}</span>
  </div>
  <div class="kpi small">
  <span class="val">{{ selectedNode.host_info.memory?.available_gb?.toFixed(1) || '-' }}</span>
- <span class="lbl">Avail GB</span>
+ <span class="lbl">{{ t('nodi.gbDisponibili') }}</span>
  </div>
  </div>
  <div class="stats-row text-xs mt-2" v-if="selectedNode.host_info.memory?.swap_total_gb">
@@ -206,12 +206,12 @@
 
  <!-- System Info -->
  <div class="detail-card">
- <h4><Icon name="monitor" :size="20" /> Sistema</h4>
+ <h4><Icon name="monitor" :size="20" /> {{ t('nodi.sistema') }}</h4>
  <table class="simple-table">
  <tr><td>Proxmox:</td><td><strong>{{ selectedNode.host_info.proxmox_version || selectedNode.proxmox_version || '-' }}</strong></td></tr>
  <tr><td>Kernel:</td><td>{{ selectedNode.host_info.kernel_version || '-' }}</td></tr>
- <tr><td>Uptime:</td><td>{{ formatUptime(selectedNode.host_info.uptime_seconds || 0) }}</td></tr>
- <tr><td>Node Name:</td><td>{{ selectedNode.host_info.node_name || selectedNode.name }}</td></tr>
+ <tr><td>{{ t('nodi.attivoDa') }}</td><td>{{ formatUptime(selectedNode.host_info.uptime_seconds || 0) }}</td></tr>
+ <tr><td>{{ t('nodi.nomeNodo') }}</td><td>{{ selectedNode.host_info.node_name || selectedNode.name }}</td></tr>
  </table>
  </div>
 
@@ -219,50 +219,50 @@
  <div class="detail-card">
  <h4><Icon name="wrench" :size="20" /> Hardware</h4>
  <table class="simple-table">
- <tr><td>Produttore:</td><td>{{ selectedNode.host_info.hardware?.manufacturer || '-' }}</td></tr>
- <tr><td>Modello:</td><td>{{ selectedNode.host_info.hardware?.model || '-' }}</td></tr>
- <tr><td>Serial:</td><td class="text-xs">{{ selectedNode.host_info.hardware?.serial || '-' }}</td></tr>
+ <tr><td>{{ t('nodi.produttore') }}</td><td>{{ selectedNode.host_info.hardware?.manufacturer || '-' }}</td></tr>
+ <tr><td>{{ t('nodi.modello') }}</td><td>{{ selectedNode.host_info.hardware?.model || '-' }}</td></tr>
+ <tr><td>{{ t('nodi.seriale') }}</td><td class="text-xs">{{ selectedNode.host_info.hardware?.serial || '-' }}</td></tr>
  <tr><td>BIOS:</td><td>{{ selectedNode.host_info.hardware?.bios_vendor || '-' }} {{ selectedNode.host_info.hardware?.bios_version || '' }}</td></tr>
- <tr><td>Board:</td><td>{{ selectedNode.host_info.hardware?.board || '-' }}</td></tr>
+ <tr><td>{{ t('nodi.scheda') }}</td><td>{{ selectedNode.host_info.hardware?.board || '-' }}</td></tr>
  </table>
  </div>
 
  <!-- Temperature -->
  <div class="detail-card" v-if="selectedNode.temperature_highest_c || selectedNode.host_info.temperature?.highest">
- <h4><Icon name="thermometer" :size="20" /> Temperatura</h4>
+ <h4><Icon name="thermometer" :size="20" /> {{ t('nodi.temperatura') }}</h4>
  <div class="kpi-row">
  <div class="kpi">
  <span class="val" :class="{'text-danger': (selectedNode.temperature_highest_c || selectedNode.host_info.temperature?.highest || 0) > 80}">
  {{ selectedNode.temperature_highest_c || selectedNode.host_info.temperature?.highest || '-' }}°C
  </span>
- <span class="lbl">Max</span>
+ <span class="lbl">{{ t('nodi.massima') }}</span>
  </div>
  </div>
  </div>
 
  <!-- License -->
  <div class="detail-card" v-if="selectedNode.host_info.license">
- <h4><Icon name="file-text" :size="20" /> Licenza</h4>
+ <h4><Icon name="file-text" :size="20" /> {{ t('nodi.licenza') }}</h4>
  <table class="simple-table">
- <tr><td>Stato:</td><td>
+ <tr><td>{{ t('comune.statoDuePunti') }}</td><td>
  <span :class="selectedNode.host_info.license.status === 'active' ? 'text-success' : 'text-warning'">
- {{ selectedNode.host_info.license.status || 'N/A' }}
+ {{ selectedNode.host_info.license.status || t('comune.nd') }}
  </span>
  </td></tr>
- <tr v-if="selectedNode.host_info.license.subscription"><td>Subscription:</td><td class="text-xs">{{ selectedNode.host_info.license.subscription }}</td></tr>
+ <tr v-if="selectedNode.host_info.license.subscription"><td>{{ t('nodi.sottoscrizione') }}</td><td class="text-xs">{{ selectedNode.host_info.license.subscription }}</td></tr>
  </table>
  </div>
 
  <!-- Storage (full width) -->
  <div class="detail-card full-width">
- <h4><Icon name="hard-drive" :size="20" /> Storage / Datastores ({{ (selectedNode.host_info.storage || []).length }})</h4>
+ <h4><Icon name="hard-drive" :size="20" /> {{ t('nodi.storage', { n: (selectedNode.host_info.storage || []).length }) }}</h4>
  <div class="storage-list" v-if="selectedNode.host_info.storage?.length">
  <div v-for="store in selectedNode.host_info.storage" :key="store.name" class="pool-item">
  <div class="pool-header">
  <strong>{{ store.name }}</strong>
  <span class="text-xs text-secondary">{{ store.type }}</span>
  <span :class="store.status === 'active' || store.status === 'available' ? 'text-success' : 'text-secondary'" class="text-xs">{{ store.status }}</span>
- <span v-if="store.shared" class="badge badge-info text-xs">Shared</span>
+ <span v-if="store.shared" class="badge badge-info text-xs">{{ t('nodi.condiviso') }}</span>
  </div>
  <div class="pool-stats">
  <div class="progress-bar-container" style="height:6px; margin:4px 0;">
@@ -273,12 +273,12 @@
  </div>
  </div>
  </div>
- <div v-else class="text-secondary text-sm">Nessun storage rilevato</div>
+ <div v-else class="text-secondary text-sm">{{ t('nodi.nessunoStorage') }}</div>
  </div>
 
  <!-- Network Topology -->
  <div class="detail-card full-width" v-if="selectedNode.host_info?.network?.length">
- <h4><Icon name="network" :size="20" /> Network Topology</h4>
+ <h4><Icon name="network" :size="20" /> {{ t('nodi.topologia') }}</h4>
  
  <!-- Bridges -->
  <div class="topology-bridges-list">
@@ -289,12 +289,12 @@
  <!-- Bridge Header -->
  <div class="topology-bridge-header">
  <span class="bridge-name">{{ bridge.name }}</span>
- <span class="bridge-cidr">{{ bridge.ip || 'L2 Switch' }}</span>
+ <span class="bridge-cidr">{{ bridge.ip || t('nodi.switchL2') }}</span>
  </div>
  
  <!-- Bridge Ports (Physical NICs) -->
  <div v-if="bridge.bridge_ports" class="bridge-ports-info">
- <span class="bridge-ports-label">Uplink:</span>
+ <span class="bridge-ports-label">{{ t('nodi.uplink') }}</span>
  <div class="bridge-ports-list">
  <template v-for="port in bridge.bridge_ports.split(' ').filter((p: string) => p)" :key="port">
  <div class="bridge-port-group">
@@ -334,7 +334,7 @@
  </div>
  
  <div v-if="getGuestsOnBridge(selectedNode.host_info.guests, bridge.name).length === 0" class="no-guests">
- No guests connected
+ {{ t('nodi.nessunGuest') }}
  </div>
  </div>
  </div>
@@ -342,7 +342,7 @@
  
  <!-- Other Interfaces (non-bridge) -->
  <details v-if="getNonBridgeInterfaces(selectedNode.host_info.network).length > 0" class="mt-3">
- <summary class="cursor-pointer text-secondary text-sm"><Icon name="clipboard" :size="14" /> Other Interfaces ({{ getNonBridgeInterfaces(selectedNode.host_info.network).length }})</summary>
+ <summary class="cursor-pointer text-secondary text-sm"><Icon name="clipboard" :size="14" /> {{ t('nodi.altreInterfacce', { n: getNonBridgeInterfaces(selectedNode.host_info.network).length }) }}</summary>
  <div class="storage-list mt-2">
  <div v-for="iface in getNonBridgeInterfaces(selectedNode.host_info.network)" :key="iface.name" class="pool-item">
  <div class="pool-header">
@@ -362,7 +362,7 @@
  <!-- Raw Data Toggle -->
  <div class="detail-card full-width">
  <details>
- <summary class="cursor-pointer text-secondary"><Icon name="clipboard" :size="14" /> Mostra dati raw JSON</summary>
+ <summary class="cursor-pointer text-secondary"><Icon name="clipboard" :size="14" /> {{ t('nodi.jsonGrezzo') }}</summary>
  <pre class="text-xs mt-2" style="max-height: 300px; overflow: auto; background: var(--bg-secondary); padding: 8px; border-radius: 4px;">{{ JSON.stringify(selectedNode.host_info, null, 2) }}</pre>
  </details>
  </div>
@@ -374,12 +374,12 @@
  <div v-if="showModal" class="modal-overlay">
  <div class="modal-content">
  <div class="modal-header">
- <h3>{{ editingNodeId ? 'Modifica Nodo' : 'Aggiungi Nuovo Nodo' }}</h3>
+ <h3>{{ editingNodeId ? t('nodi.modificaNodo') : t('nodi.aggiungiNodo') }}</h3>
  <button class="close-btn" @click="closeModal">&times;</button>
  </div>
  <div class="modal-body">
  <div class="form-group">
- <label>Nome Nodo</label>
+ <label>{{ t('nodi.fNome') }}</label>
  <input type="text" v-model="form.name" class="form-input" placeholder="pve-01">
  </div>
  <!-- ... rest of form ... -->
@@ -389,23 +389,23 @@
  </div>
  <div class="grid-2">
  <div class="form-group">
- <label>Utente SSH</label>
+ <label>{{ t('nodi.fUtenteSsh') }}</label>
  <input type="text" v-model="form.ssh_user" class="form-input" placeholder="root">
  </div>
  <div class="form-group">
- <label>Porta SSH</label>
+ <label>{{ t('nodi.fPortaSsh') }}</label>
  <input type="number" v-model.number="form.ssh_port" class="form-input">
  </div>
  </div>
  <div class="form-group">
- <label>Tipo Nodo</label>
+ <label>{{ t('nodi.fTipoNodo') }}</label>
  <select v-model="form.node_type" class="form-input">
  <option value="pve">Proxmox VE</option>
  <option value="pbs">Proxmox Backup Server</option>
  </select>
  </div>
  <div class="form-group" v-if="form.node_type === 'pve'">
- <label>Tipo Storage</label>
+ <label>{{ t('nodi.fTipoStorage') }}</label>
  <select v-model="form.storage_type" class="form-input">
  <option value="zfs">ZFS</option>
  <option value="btrfs">BTRFS</option>
@@ -414,36 +414,36 @@
  <!-- PBS Specific Fields -->
  <div v-if="form.node_type === 'pbs'" class="pbs-fields">
  <div class="form-group">
- <label>Datastore PBS</label>
+ <label>{{ t('nodi.fDatastore') }}</label>
  <input type="text" v-model="form.pbs_datastore" class="form-input" placeholder="datastore1">
- <small class="text-secondary">Nome del datastore su cui salvare i backup</small>
+ <small class="text-secondary">{{ t('nodi.fDatastoreNota') }}</small>
  </div>
  <div class="grid-2">
  <div class="form-group">
- <label>Utente PBS</label>
+ <label>{{ t('nodi.fUtentePbs') }}</label>
  <input type="text" v-model="form.pbs_username" class="form-input" placeholder="root@pam">
  </div>
  <div class="form-group">
- <label>Password PBS</label>
- <input type="password" v-model="form.pbs_password" class="form-input" placeholder="Password API">
+ <label>{{ t('nodi.fPasswordPbs') }}</label>
+ <input type="password" v-model="form.pbs_password" class="form-input" :placeholder="t('nodi.fPasswordApi')">
  </div>
  </div>
  <div class="form-group">
- <label>Fingerprint SSL (opzionale)</label>
+ <label>{{ t('nodi.fImpronta') }}</label>
  <input type="text" v-model="form.pbs_fingerprint" class="form-input" placeholder="xx:xx:xx:...">
- <small class="text-secondary">Fingerprint per verifica SSL. Lascia vuoto per auto-rilevamento.</small>
+ <small class="text-secondary">{{ t('nodi.fImprontaNota') }}</small>
  </div>
  </div>
  <div class="form-group">
- <label>Password Root (per setup SSH iniziale)</label>
- <input type="password" v-model="form.ssh_password" class="form-input" placeholder="Opzionale se chiave già presente">
- <small class="text-secondary">Usata solo per copiare la chiave pubblica, non salvata.</small>
+ <label>{{ t('nodi.fPasswordRoot') }}</label>
+ <input type="password" v-model="form.ssh_password" class="form-input" :placeholder="t('nodi.fPasswordRootSegn')">
+ <small class="text-secondary">{{ t('nodi.fPasswordRootNota') }}</small>
  </div>
  </div>
  <div class="modal-footer">
- <button class="btn btn-secondary" @click="closeModal">Annulla</button>
+ <button class="btn btn-secondary" @click="closeModal">{{ t('comune.annulla') }}</button>
  <button class="btn btn-primary" @click="saveNode" :disabled="creating">
- {{ creating ? 'Salvataggio...' : (editingNodeId ? 'Salva Modifiche' : 'Crea Nodo') }}
+ {{ creating ? t('comune.salvataggio') : (editingNodeId ? t('comune.salvaModifiche') : t('nodi.creaNodo')) }}
  </button>
  </div>
  </div>
@@ -453,7 +453,7 @@
  <div v-if="showDiagnosticModal" class="modal-overlay" style="z-index: 1005;" @click.self="showDiagnosticModal = false">
  <div class="modal-content large" style="max-width: 800px;">
  <div class="modal-header">
- <h3>Risultati Diagnostica: {{ selectedNode?.name }}</h3>
+ <h3>{{ t('nodi.risultatiDiagnostica', { nome: selectedNode?.name }) }}</h3>
  <button class="close-btn" @click="showDiagnosticModal = false">&times;</button>
  </div>
  <div class="modal-body">
@@ -461,11 +461,11 @@
  {{ diagnosticOutput }}
  </div>
  <div v-if="diagnosticExitCode !== 0" class="mt-4 text-danger font-bold">
- <Icon name="alert-triangle" :size="14" /> Script terminato con codice errore: {{ diagnosticExitCode }}
+ <Icon name="alert-triangle" :size="14" /> {{ t('nodi.codiceErrore', { codice: diagnosticExitCode }) }}
  </div>
  </div>
  <div class="modal-footer">
- <button class="btn btn-secondary" @click="showDiagnosticModal = false">Chiudi</button>
+ <button class="btn btn-secondary" @click="showDiagnosticModal = false">{{ t('comune.chiudi') }}</button>
  </div>
  </div>
  </div>
@@ -480,7 +480,9 @@ import PageHeader from '../components/ui/PageHeader.vue';
 import Icon from '../components/ui/Icon.vue';
 import { confirmDelete } from '../stores/confirm';
 import { useToast, errorMessage } from '../stores/toast';
+import { useI18n } from 'vue-i18n';
 
+const { t } = useI18n();
 const nodes = ref<Node[]>([]);
 const loading = ref(false);
 const refreshing = ref(false);
@@ -578,7 +580,7 @@ const refreshData = async () => {
  
  } catch (e) {
  console.error("Errore refresh dati", e);
- _toast.error("Errore aggiornamento dati", errorMessage(e));
+ _toast.error(t('nodi.erroreAggiornamento'), errorMessage(e));
  refreshing.value = false;
  }
 };
@@ -597,7 +599,7 @@ const formatUptime = (seconds: number) => {
  const d = Math.floor(seconds / (3600*24));
  const h = Math.floor(seconds % (3600*24) / 3600);
  const m = Math.floor(seconds % 3600 / 60);
- return `${d}d ${h}h ${m}m`;
+ return t('nodi.durata', { g: d, h, m });
 };
 
 const openModal = () => {
@@ -638,7 +640,7 @@ const closeModal = () => {
 
 const saveNode = async () => {
  if(!form.name || !form.hostname) {
- _toast.warning("Nome e Hostname richiesti");
+ _toast.warning(t('nodi.nomeHostRichiesti'));
  return;
  }
  creating.value = true;
@@ -672,7 +674,7 @@ const saveNode = async () => {
  } catch (e: any) {
  console.error('Error saving node', e);
  const errorMsg = e.response?.data?.detail || e.message;
- _toast.error('Errore salvataggio nodo', errorMsg);
+ _toast.error(t('nodi.erroreSalvataggio'), errorMsg);
  } finally {
  creating.value = false;
  }
@@ -686,14 +688,14 @@ const runDiagnosticStart = async () => {
  
  try {
  const res = await nodesService.runDiagnostic(selectedNode.value.id);
- diagnosticOutput.value = res.data.output || res.data.error || 'Nessun output restituito.';
+ diagnosticOutput.value = res.data.output || res.data.error || t('nodi.nessunOutput');
  diagnosticExitCode.value = res.data.exit_code;
  
  // Show modal only when done
  showDiagnosticModal.value = true;
  } catch (e: any) {
  console.error("Diagnostic error:", e);
- diagnosticOutput.value = `Errore esecuzione diagnostica:\n${e.response?.data?.detail || e.message}`;
+ diagnosticOutput.value = `${t('nodi.erroreDiagnostica')}\n${e.response?.data?.detail || e.message}`;
  diagnosticExitCode.value = 1;
  showDiagnosticModal.value = true;
  } finally {
@@ -704,41 +706,41 @@ const runDiagnosticStart = async () => {
 const _toast = useToast();
 
 const deleteNode = async (node: Node) => {
- if (!await confirmDelete(node.name, 'il nodo')) return;
+ if (!await confirmDelete(node.name, t('nodi.ilNodo'))) return;
  try {
  await nodesService.deleteNode(node.id);
- _toast.success(`Nodo "${node.name}" eliminato`);
+ _toast.success(t('nodi.eliminato', { nome: node.name }));
  loadNodes();
  } catch (e: any) {
- _toast.error('Errore eliminazione', errorMessage(e));
+ _toast.error(t('comune.erroreEliminazione'), errorMessage(e));
  }
 };
 
 const testNode = async (node: Node) => {
  try {
  await nodesService.testNode(node.id);
- _toast.info(`Test connessione avviato per ${node.name}`, 'Ricarica tra poco per vedere lo stato aggiornato.');
+ _toast.info(t('nodi.provaAvviata', { nome: node.name }), t('nodi.provaAvviataDett'));
  loadNodes();
  } catch (e: any) {
- _toast.error('Errore test connessione', errorMessage(e));
+ _toast.error(t('nodi.erroreProva'), errorMessage(e));
  }
 };
 
 const installSanoid = async (node: Node) => {
  const { confirmDangerous } = await import('../stores/confirm');
  const ok = await confirmDangerous(
- `Installare Sanoid/Syncoid su ${node.name}?`,
- 'Operazione di alcuni secondi sul nodo remoto.',
- 'Installa'
+ t('nodi.confInstalla', { nome: node.name }),
+ t('nodi.confInstallaDett'),
+ t('comune.installa')
  );
  if (!ok) return;
  try {
- _toast.info(`Installazione avviata su ${node.name}…`);
+ _toast.info(t('nodi.installAvviata', { nome: node.name }));
  await nodesService.installSanoid(node.id);
- _toast.success('Installazione completata');
+ _toast.success(t('nodi.installCompletata'));
  loadNodes();
  } catch (e: any) {
- _toast.error('Errore installazione Sanoid', errorMessage(e));
+ _toast.error(t('nodi.erroreInstalla'), errorMessage(e));
  }
 };
 
@@ -754,14 +756,14 @@ const updateSanoid = async (node: Node) => {
  // C-02: import locale (come installSanoid) — senza questo confirmDangerous
  // è undefined qui e il click causa un ReferenceError.
  const { confirmDangerous } = await import('../stores/confirm');
- if(!await confirmDangerous(`Aggiornare Sanoid sul nodo ${node.name}? L'operazione potrebbe richiedere alcuni minuti.`)) return;
+ if(!await confirmDangerous(t('nodi.confAggiorna', { nome: node.name }))) return;
  try {
- _toast.info(`Aggiornamento Sanoid avviato su ${node.name}…`);
+ _toast.info(t('nodi.aggAvviato', { nome: node.name }));
  await nodesService.updateSanoid(node.id);
- _toast.success('Aggiornamento Sanoid completato');
+ _toast.success(t('nodi.aggCompletato'));
  loadNodes();
  } catch (e: any) {
- _toast.error('Errore aggiornamento Sanoid', errorMessage(e));
+ _toast.error(t('nodi.erroreAggSanoid'), errorMessage(e));
  }
 };
 
