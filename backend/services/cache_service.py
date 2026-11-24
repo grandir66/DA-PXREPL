@@ -9,7 +9,32 @@ from services.pbs_service import pbs_service
 
 logger = logging.getLogger(__name__)
 
+# Dopo quanti giri senza risposta un nodo viene segnato non in linea. Un giro
+# solo e' spesso un singhiozzo di rete: `is_online` lo leggono il login e lo
+# scheduler, e non deve ballare.
+GIRI_MUTI_PER_OFFLINE = 3
+
+
 class CacheService:
+    def __init__(self):
+        self._giri_muti: dict = {}
+
+    def _segna_esito(self, node: Node, ha_risposto: bool) -> None:
+        """Aggiorna `is_online`/`last_check` dal giro periodico (3.26.0).
+
+        Prima li scriveva solo il «Test» a mano: a Domarc erano fermi ad aprile.
+        """
+        if ha_risposto:
+            self._giri_muti.pop(node.id, None)
+            node.is_online = True
+            node.last_check = datetime.utcnow()
+            return
+        muti = self._giri_muti.get(node.id, 0) + 1
+        self._giri_muti[node.id] = muti
+        if muti >= GIRI_MUTI_PER_OFFLINE and node.is_online:
+            logger.warning(f"Nodo {node.name}: {muti} giri senza risposta, segnato non in linea")
+            node.is_online = False
+
     async def refresh_all_nodes(self, db: Session):
         """Aggiorna la cache per tutti i nodi attivi"""
         nodes = db.query(Node).filter(Node.is_active == True).all()
@@ -55,12 +80,19 @@ class CacheService:
             
             # 2. Ottieni lista VM/CT con metriche avanzate (via pvesh cluster resource)
             # Questo ritorna CPU usage, MaxMem, Uptime, etc.
-            resources = await proxmox_service.get_cluster_resources(
+            ha_risposto, resources = await proxmox_service.get_cluster_resources_esito(
                 hostname=node.hostname,
                 port=node.ssh_port,
                 username=node.ssh_user,
                 key_path=node.ssh_key_path
             )
+            self._segna_esito(node, ha_risposto)
+            if not ha_risposto:
+                # Niente risposta non vuol dire «niente VM»: prima l'elenco vuoto
+                # faceva cancellare dalla cache tutte le VM del nodo (3.26.0).
+                db.commit()
+                logger.warning(f"Nodo {node.name} non ha risposto: cache VM lasciata com'e'")
+                return
             
             # Filtra risorse per questo nodo
             # La risorsa ha campo 'node' che deve combaciare con node.name
@@ -143,15 +175,15 @@ class CacheService:
                     )
                     db.add(new_vm)
             
-            # Remove deleted VMs
-            for vmid, vm_obj in current_vms.items():
-                if vmid not in found_vmids:
-                    db.delete(vm_obj)
-            
-            if guests:
-                # Il nodo ha risposto con dei dati: e' la prova che e' raggiungibile.
-                # Prima last_check lo scriveva solo il «Test» a mano (24/11/2026).
-                node.last_check = datetime.utcnow()
+            # Remove deleted VMs. Se l'elenco viene dal ripiego `qm list` ed e'
+            # vuoto mentre in cache ce ne sono, non si sa se sono sparite o se
+            # il ripiego ha fallito: non si cancella.
+            if guests or node_resources or not current_vms:
+                for vmid, vm_obj in current_vms.items():
+                    if vmid not in found_vmids:
+                        db.delete(vm_obj)
+            else:
+                logger.warning(f"Nodo {node.name}: elenco VM vuoto dal ripiego, cache lasciata com'e'")
             db.commit()
             logger.info(f"Updated {len(guests)} VMs for node {node.name}")
             

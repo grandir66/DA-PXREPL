@@ -348,7 +348,7 @@ const etichettaSchedule = (cron: string | null) => {
  if (!cron) return 'Manuale';
  const m = cron.trim().match(/^(\d+) (\d+) \* \* (\*|[0-6])$/);
  if (!m) return cron;
- const ora = `${m[2].padStart(2, '0')}:${m[1].padStart(2, '0')}`;
+ const ora = `${(m[2] ?? '').padStart(2, '0')}:${(m[1] ?? '').padStart(2, '0')}`;
  if (m[3] === '*') return `Giornaliero (${ora})`;
  const giorni = ['domenica', 'lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì', 'sabato'];
  return `Settimanale (${giorni[Number(m[3])]} ${ora})`;

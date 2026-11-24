@@ -49,6 +49,20 @@
  </div>
  </div>
 
+ <!-- SCHEDULER (nella scheda Generale) -->
+ <div v-if="activeTab === 'general' && isAdmin" class="card" style="margin-top: 24px;">
+ <h3>Scheduler</h3>
+ <div class="card-body">
+ <label style="display: flex; gap: 8px; align-items: center;">
+ <input type="checkbox" v-model="recuperoAvvio" @change="salvaRecupero" /> Recupera all'avvio le corse saltate
+ </label>
+ <p class="text-secondary text-sm mt-2">
+ Se il servizio riparte dopo un fermo, i job che hanno saltato il loro ultimo orario partono subito, una volta sola
+ (le repliche restano al massimo 4 insieme). Spento: aspettano il prossimo orario. Vale dal prossimo avvio del servizio.
+ </p>
+ </div>
+ </div>
+
  <!-- NOTIFICATIONS TAB -->
  <div v-if="activeTab === 'notifications'" class="card">
  <div class="card-header">
@@ -228,6 +242,7 @@ onMounted(async () => {
  ]);
  notifications.value = notifRes.data;
  authConfig.value = authRes.data;
+ if (isAdmin.value) await caricaRecupero();
  } catch (e) {
  toast.error('Errore caricamento impostazioni', errorMessage(e));
  }
@@ -243,6 +258,25 @@ const saveNotifications = async () => {
  toast.error('Errore salvataggio');
  } finally {
  saving.value = false;
+ }
+};
+
+const recuperoAvvio = ref(false);
+const caricaRecupero = async () => {
+ try {
+ const r = await apiClient.get('/settings/system/scheduler_recupero_avvio');
+ recuperoAvvio.value = String(r.data.value).toLowerCase() === 'true';
+ } catch (e) {
+ recuperoAvvio.value = false; // impostazione non ancora creata: spento
+ }
+};
+const salvaRecupero = async () => {
+ try {
+ await apiClient.put('/settings/system/scheduler_recupero_avvio', { value: recuperoAvvio.value ? 'true' : 'false' });
+ toast.success(recuperoAvvio.value ? 'Recupero all\'avvio acceso' : 'Recupero all\'avvio spento');
+ } catch (e) {
+ recuperoAvvio.value = !recuperoAvvio.value;
+ toast.error('Errore salvataggio', errorMessage(e));
  }
 };
 

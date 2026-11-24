@@ -1475,6 +1475,21 @@ echo "Configuration created"
         Ottiene risorse cluster (VM, CT) con dettagli su nodo e stato.
         Usa pvesh per ottenere dati aggregati dal cluster.
         """
+        _, resources = await self.get_cluster_resources_esito(hostname, port, username, key_path)
+        return resources
+
+    async def get_cluster_resources_esito(
+        self,
+        hostname: str,
+        port: int = 22,
+        username: str = "root",
+        key_path: str = "/root/.ssh/id_rsa"
+    ) -> Tuple[bool, List[Dict]]:
+        """Come `get_cluster_resources`, ma dice anche se il nodo ha risposto.
+
+        «Elenco vuoto» e «non ha risposto» non sono la stessa cosa: chi poi
+        cancella le VM che non vede piu' deve saperlo (3.26.0).
+        """
         result = await ssh_service.execute(
             hostname=hostname,
             command="pvesh get /cluster/resources --output-format json 2>/dev/null",
@@ -1484,13 +1499,15 @@ echo "Configuration created"
         )
         
         resources = []
+        ok = False
         if result.success and result.stdout.strip():
             try:
                 resources = json.loads(result.stdout)
+                ok = True
             except json.JSONDecodeError:
                 logger.error(f"Errore parsing cluster resources da {hostname}")
         
-        return resources
+        return ok, resources
 
     async def vm_lifecycle_action(
         self,

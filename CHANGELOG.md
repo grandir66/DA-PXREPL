@@ -5,6 +5,32 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.26.0] - 2026-11-24
+
+Migliorie dopo la verifica delle due installazioni del 24/11.
+
+### Aggiunte
+
+- **Recupero all'avvio delle corse saltate** (Impostazioni → Generale → Scheduler,
+  spento di default). A DTS il container è rimasto spento dal 12 al 24/11: alla
+  ripartenza ogni job ha aspettato il suo prossimo orario, quello settimanale
+  un'altra settimana. Con l'opzione accesa, nei primi cinque minuti dopo l'avvio
+  un job che ha saltato l'ultimo orario parte subito, una volta; un job mai
+  partito no. Le repliche restano sotto il tetto di `DAPX_MAX_REPLICHE`.
+
+### Correzioni
+
+- **Un nodo che non risponde non svuota più la cache delle sue VM.** «Elenco
+  vuoto» e «nessuna risposta» erano la stessa cosa, e le VM in cache venivano
+  cancellate fino al giro dopo.
+- **Lo stato «in linea» dei nodi lo aggiorna il giro periodico**: in linea alla
+  prima risposta, non in linea dopo tre giri senza. Prima lo scriveva solo il
+  «Test» a mano.
+- **`update.sh` tiene le ultime 10 copie** del database e del file d'ambiente e
+  limita il journal a 200 MB (a Domarc 36 copie, a DTS 502 MB di journal). La
+  rotazione parte dall'aggiornamento successivo a questo.
+- Frontend: `npm run lint` e `npm run build:check` di nuovo verdi.
+
 ## [3.25.0] - 2026-11-24
 
 Richieste di Riccardo del 24/11 dopo la verifica delle due installazioni.

@@ -56,6 +56,24 @@ def _prev_run_before(schedule: str, before_utc: datetime) -> datetime:
     return prev.astimezone(timezone.utc).replace(tzinfo=None)
 
 
+# Recupero delle corse saltate (3.26.0). DTS, 12-24/11/2026: container spento
+# 12 giorni, alla ripartenza ogni job ha aspettato il suo prossimo orario (la
+# replica del sabato un'altra settimana). Se l'impostazione
+# `scheduler_recupero_avvio` e' accesa, nei primi minuti dopo l'avvio un job
+# che ha saltato il suo ultimo orario parte UNA volta, subito. Nasce spenta.
+_RECUPERO_FINESTRA_S = 300
+_recupero_fino_a: Optional[datetime] = None
+
+
+def apri_finestra_recupero(now: datetime, accesa: bool) -> None:
+    global _recupero_fino_a
+    _recupero_fino_a = now + timedelta(seconds=_RECUPERO_FINESTRA_S) if accesa else None
+
+
+def _recupero_in_corso(now: datetime) -> bool:
+    return _recupero_fino_a is not None and now <= _recupero_fino_a
+
+
 def compute_initial_next_run(
     schedule: str,
     last_run: Optional[datetime],
@@ -78,6 +96,10 @@ def compute_initial_next_run(
         return now + timedelta(days=3650)
     if (last_run is None or last_run < prev_slot) and (now - prev_slot).total_seconds() <= _CRON_SLOT_GRACE_SEC:
         return prev_slot
+    # Un job mai partito non si recupera: non ha saltato niente.
+    if last_run is not None and last_run < prev_slot and _recupero_in_corso(now):
+        logger.info("Recupero all'avvio: cron %r, orario saltato %s UTC, parte ora", schedule, prev_slot)
+        return now
     return next_future
 
 
@@ -145,6 +167,7 @@ class SchedulerService:
         # come "in esecuzione" e impedisce nuove run.
         self._reset_stale_running_jobs()
 
+        self._apri_recupero()
         self._running = True
         self.last_tick = datetime.utcnow()
         self._task = asyncio.create_task(self._scheduler_loop())
@@ -154,6 +177,21 @@ class SchedulerService:
 
         # Carica configurazione orario riepilogo
         self._load_daily_summary_config()
+
+    def _apri_recupero(self) -> None:
+        """Legge l'impostazione e apre (o no) la finestra di recupero."""
+        accesa = False
+        db = SessionLocal()
+        try:
+            cfg = db.query(SystemConfig).filter(SystemConfig.key == "scheduler_recupero_avvio").first()
+            accesa = bool(cfg and (cfg.value or "").lower() == "true")
+        except Exception as e:  # noqa: BLE001 - lo scheduler deve partire comunque
+            logger.warning(f"Recupero all'avvio: impostazione non leggibile ({e}), resta spento")
+        finally:
+            db.close()
+        apri_finestra_recupero(datetime.utcnow(), accesa)
+        if accesa:
+            logger.info("Recupero all'avvio acceso: le corse saltate partono ora, una volta")
 
     def _reset_stale_running_jobs(self) -> None:
         """All'avvio, marca come failed/idle i job lasciati in stato

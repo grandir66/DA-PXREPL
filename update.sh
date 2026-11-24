@@ -288,6 +288,28 @@ if [ -f "/etc/dapx-unified/dapx-unified.env" ]; then
     log_success "Configurazione backuppata"
 fi
 
+# Rotazione: restano le ultime 10 copie di ogni tipo. A Domarc il 24/11/2026
+# c'erano 36 copie del database e 15 del file d'ambiente, mai tolte. Le copie
+# `dapx.db.backup-*` in $DATA_DIR le faceva install.sh a ogni reinstallazione.
+ruota_copie() {
+    # $1 = cartella, $2 = prefisso del nome, $3 = quante tenere
+    ls -1t "$1"/"$2"* 2>/dev/null | tail -n +$(($3 + 1)) | while IFS= read -r vecchia; do
+        rm -f -- "$vecchia"
+    done
+}
+ruota_copie "$BACKUP_DIR" "dapx.db.pre-update-" 10
+ruota_copie "$BACKUP_DIR" "dapx-unified.env.pre-update-" 10
+ruota_copie "$BACKUP_DIR" "backup_pre_update_" 10
+ruota_copie "$DATA_DIR" "dapx.db.backup-" 10
+
+# Tetto al journal del container: a DTS era a 502 MB senza limite.
+if [ -d /etc/systemd ] && [ ! -f /etc/systemd/journald.conf.d/dapx-unified.conf ]; then
+    mkdir -p /etc/systemd/journald.conf.d
+    printf '[Journal]\nSystemMaxUse=200M\n' > /etc/systemd/journald.conf.d/dapx-unified.conf
+    systemctl restart systemd-journald 2>/dev/null || true
+    log_success "Journal limitato a 200 MB"
+fi
+
 # ============== STOP SERVICE ==============
 
 echo -e "\n${BOLD}Arresto Servizio${NC}\n"

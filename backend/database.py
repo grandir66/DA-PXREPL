@@ -1144,6 +1144,9 @@ def init_default_config(db_session):
         ("daily_summary_hour", "8", "int", "notifications", "Ora invio riepilogo giornaliero (0-23, UTC)"),
         ("daily_summary_enabled", "true", "bool", "notifications", "Abilita riepilogo giornaliero"),
         
+        # Scheduler
+        ("scheduler_recupero_avvio", "false", "bool", "scheduler", "All'avvio rilancia una volta i job che hanno saltato l'ultimo orario"),
+
         # Syslog remoto (3.25.0): nasce spento
         ("syslog_enabled", "false", "bool", "syslog", "Invia tutto il log a un syslog remoto"),
         ("syslog_host", "", "string", "syslog", "Indirizzo del syslog remoto (es. Wazuh)"),

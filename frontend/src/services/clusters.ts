@@ -22,7 +22,7 @@ export interface ClusterCreatePayload {
   is_default?: boolean
 }
 
-export interface ClusterUpdatePayload extends Partial<ClusterCreatePayload> {}
+export type ClusterUpdatePayload = Partial<ClusterCreatePayload>
 
 export default {
   list() {
