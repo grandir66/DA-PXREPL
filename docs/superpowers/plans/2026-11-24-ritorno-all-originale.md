@@ -33,7 +33,7 @@
 | S2 | [x] | Logica pura del ritorno (piano dei passi, conf ricostruita, nomi) | in linea | S1 | le prove passano dopo essere state viste fallire | pytest del task 2 |
 | S3 | [x] | Passi SSH e rotte «stato», «prepara», «completa» | in linea | S2 | le rotte rispondono e rifiutano i casi vietati | pytest del task 3 |
 | S4 | [x] | Interfaccia in `VMs.vue` | in linea | S3 | lint e build puliti, una schermata a 1920 | `npm run lint`, `npm run build:check` |
-| S5 | [~] | Prova vera su una VM di test a Domarc | in linea | S4 | ritorno riuscito e ritorno fallito apposta, tutti e due letti | registro del piano |
+| S5 | [x] | Prova vera su una VM di test a Domarc | in linea | S4 | ritorno riuscito e ritorno fallito apposta, tutti e due letti | registro del piano |
 | S6 | [ ] | Documenti e rilascio | in linea | S5 | release su GitHub | `gh release view` |
 
 ## Casi da non dimenticare
@@ -103,7 +103,7 @@ def piano_ritorno(jobs: List[dict], stato_replica: str, stato_originale: str,
 **Commit:** `ritorno: scheda nell'interfaccia`.
 **Verifica (24/11 sera):** `cd frontend && npm run lint` → 0 errori (44 avvisi vecchi); `npm run build:check` → pulito. Schermata a 1920 **non fatta**: in locale non c'è una replica col DR attivo da aprire; si guarda al task 5 su Domarc.
 
-### [~] Task 5 — Prova vera a Domarc
+### [x] Task 5 — Prova vera a Domarc
 
 **Dove:** Domarc, LXC 332 su `192.168.40.4`, snapshot `pre-pxrepl-ritorno-<data>` prima di aggiornare. Una VM di test nuova, piccola (Debian, 2 dischi da 4 G, agent installato), con un job di replica verso PX-NAS. Nessuna VM vera, mai la 423.
 **Sequenza:** corsa di replica → spegnere la VM di test → «Attiva DR» e accensione della replica → scrivere un file nella replica → «Prepara» → «Completa» → controllare: file presente nell'originale, nome/uuid/bridge/onboot/tag dell'originale, replica spenta con identità di replica, disco vecchio presente col nome datato, corsa successiva del job incrementale e verde. Poi il giro del guasto: conf di ritorno con un bridge inesistente → l'originale non parte → la replica deve tornare accesa da sola.
@@ -123,8 +123,16 @@ def piano_ritorno(jobs: List[dict], stato_replica: str, stato_originale: str,
 - **Fermo qui**: task 5 (prova vera a Domarc) e task 6 (rilascio) partono solo dopo aver detto a Riccardo cosa si fa su Domarc.
 - 24/11 20:05-20:15, task 5 avviato col sì di Riccardo. Snapshot dell'LXC 332 `pre-pxrepl-ritorno-20261124` su DA-PX-04. `frontend/dist` ricostruito e pubblicato (`afda7c4`), poi `./update.sh -y` nell'LXC 332: codice a `0296e0b`, le quattro colonne aggiunte a `sync_jobs`, `/api/health` healthy (versione ancora 3.26.0: il numero cambia al task 6).
 - 24/11 20:15: VM di test **9801 `dapx-test-ritorno`** su DA-PX-04 (Debian 12 genericcloud, `zfs:vm-9801-disk-0` e `zfs:vm-9801-disk-1` da 4 G, `net0` su `vmbr_int` con `link_down=1`, tag `dapx-test`, onboot 0), accesa. Senza agent: l'immagine cloud non lo porta e la VM è staccata dalla rete, quindi l'attesa usa «running per 30 s» e i dati si confrontano a blocchi (checksum dello snapshot finale sui due lati) invece che con un file scritto nell'ospite. `vmbr_int` su PX-NAS non esiste: la replica nascerà su `vmbr0`, cioè il caso DTS.
-- **Fermo**: per creare il job e premere «Attiva DR», «Prepara», «Completa» serve un accesso all'app di Domarc. Chiesto a Riccardo come.
+- Accesso all'app: col sì di Riccardo, script `/root/dapx-prova-api.py` nell'LXC 332 che crea al momento un gettone di 5 minuti per l'utente amministratore e chiama le API locali; il gettone non è mai scritto su disco né stampato. Le chiamate sono nell'audit a nome `admin`.
 - Da togliere a fine prova: VM 9801 e i suoi due dischi su DA-PX-04; replica e `ZFS-LARGE/replica/vm-9801-disk-*` su PX-NAS; dischi `zfs/dapx-vecchio-9801-*`; il job di prova; snapshot `pre-pxrepl-ritorno-20261124` dell'LXC 332.
+- 24/11 20:13-20:14, job 17 e 18 (gruppo `e5489efa`, 9801 → PX-NAS `ZFS-LARGE/replica`, VMID 29801, `dest_bridge=vmbr0`) creati da `POST /api/sync-jobs/vm-replica` e lanciati: verdi, replica 29801 registrata su `vmbr0` con uuid derivato.
+- **Giro buono, 20:15-20:17**: `qm stop 9801` → «Attiva DR» sulla 29801 → `qm start 29801` → «Prepara» (56 s): `zfs/vm-9801-disk-0` e `-1` rinominati in `zfs/dapx-vecchio-9801-disk-0-20261124-1915` e `…-disk-1-20261124-1916`, copia completa, replica rimasta accesa → «Completa» con attesa 60 s (47 s in tutto, replica spenta in 5 s): 9801 `running` con `name: dapx-test-ritorno`, `bridge=vmbr_int`, `onboot: 0`, `tags: dapx-test`, uuid e vmgenid originali, nota dell'originale conservata; 29801 `stopped` con uuid derivato e segno `dapx-replica`; conf di prima in `/root/dapx-bak-20261124/9801.conf.pre-ritorno-191659`; job riaccesi. Dati: lo snapshot finale `syncoid_PX-NAS_2026-11-24:20:17:06` ha lo stesso guid sui due lati (8112491860483370093 e 4490211224906258668 per il secondo disco). Corsa normale successiva (20:18): «Sending incremental», 3,3 MB, verde.
+- **Difetto trovato dal primo giro del guasto (20:19-20:21)**: il ritorno è riuscito invece di fallire, perché la fotografia era ferma alla prima corsa. Era agganciata a `_try_register_vm_after_sync`, che durante la corsa esce in silenzio per le VM già registrate. Corretto in `c847734`: `fotografa_originale` è un passo a sé dopo la corsa riuscita. Riprovato alle 20:23: fotografia aggiornata col bridge nuovo.
+- **Giro del guasto, 20:24-20:25**: `net0` della 9801 su `vmbr_nonc` (inesistente), corsa, «Attiva DR», replica accesa, «Prepara», «Completa»: `qm start 9801` rifiutato («bridge 'vmbr_nonc' does not exist»), replica 29801 riaccesa da sola in 17 s dall'inizio dello scambio, stato `fallito` col motivo, job spenti. Una corsa normale lanciata apposta in quello stato: «0 dischi», nessuno snapshot nuovo sulla replica.
+- **Secondo difetto, vecchio**: «Attiva DR» riscriveva la descrizione così come la stampa `qm config` (`%3A`), e `qm set` la ricodificava (`%253A`); alla seconda attivazione l'identità non si leggeva più. Corretto a parte in `fix(attiva-dr)`, con prova. La scheda del ritorno ora non dipende più dalla lettura dell'identità (`110d2e1`).
+- Non provato sul vero: attesa con `qm agent ping` (VM senza agent), originale sparita dal nodo, riavvio del servizio a metà, guardia della corsa normale su un job attivo (qui i job erano spenti). Coperti solo dalle prove automatiche, tranne la guardia.
+- Schermata a 1920 non fatta: Chrome si ferma sull'avviso del certificato di `https://192.168.4.199` e non lo scavalco. La prova è lasciata in piedi (29801 accesa col DR attivo, ritorno `fallito`) perché Riccardo possa aprire la scheda.
+- LXC 332 a `110d2e1` (20:30), healthy.
 
 ## Consuntivo
 ### Fatto
