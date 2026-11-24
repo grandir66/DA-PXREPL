@@ -136,12 +136,12 @@ def piano_ritorno(jobs: List[dict], stato_replica: str, stato_originale: str,
 - 24/11 sera, pulizia col sì di Riccardo («Pulisci e rilascia»). Tolti: job 17 e 18 (`DELETE /api/sync-jobs/vm-group/e5489efa`, `jobs_deleted: 2`); su PX-NAS la VM 29801 (`qm destroy --purge`) e `ZFS-LARGE/replica/vm-9801-disk-0` e `-1` coi loro snapshot; su DA-PX-04 la VM 9801 coi suoi due dischi, i sei dataset `zfs/dapx-vecchio-9801-disk-0-20261124-{1915,1920,1924}` e `zfs/dapx-vecchio-9801-disk-1-20261124-{1916,1920,1925}`, le tre copie `/root/dapx-bak-20261124/9801.conf.pre-ritorno-{191659,192058,192533}` e la cartella vuota. Verifica: `qm list` e `zfs list -t all` sui due nodi senza niente che contenga 9801.
 - 24/11 sera, task 6: cancello una volta (esito nel Consuntivo), 3.27.0 rilasciata da `main`, Domarc aggiornata. **Verifica:** `gh release view v3.27.0`, `/api/health` dell'LXC 332.
 - 24/11 21:59-22:00, rilascio: commit `4e12991`, tag `v3.27.0`, release https://github.com/grandir66/DA-PXREPL/releases/tag/v3.27.0 (`releases/latest` e `version.json` su `raw` dicono 3.27.0). Cancello: 567 prove backend verdi, lint 0 errori, `build:check` pulita. Domarc: snapshot dell'LXC 332 `pre-pxrepl-3270-20261124` su DA-PX-04, `./update.sh -y`, `/api/health` 3.27.0 healthy, scheduler in battito. Tolti dall'LXC 332 lo script di prova e i log, e lo snapshot `pre-pxrepl-ritorno-20261124`. Restano sull'LXC 332 quattro snapshot (`pre-pxrepl-3245`, `-3250`, `-3260`, `-3270`).
+- 25/11 00:07-00:08, DTS alla 3.27.0 col sì di Riccardo: snapshot LXC 124 `pre-pxrepl-3270-20261125` su DTS-PX-04, `./update.sh -y`, `/api/health` 3.27.0 healthy, chiavi del cluster 8 righe prima e dopo.
 
 ## Consuntivo
 ### Fatto
 I sei task. La funzione è in `backend/services/ritorno_originale.py` con tre rotte in `routers/vms.py` e la scheda in `VMs.vue`; 31 prove più una per «Attiva DR». Provata sul vero a Domarc, giro buono e giro del guasto, su una VM di test a due dischi. Rilasciata nella 3.27.0.
 ### Mancante
-- DTS non aggiornata (aspetta il sì di Riccardo).
 - Non provato sul vero: attesa con `qm agent ping`, originale sparita dal nodo, riavvio del servizio a metà, guardia della corsa normale su un job attivo.
 - La scheda non è stata guardata resa a schermo (avviso di certificato in Chrome).
 ### Scostamenti dal piano

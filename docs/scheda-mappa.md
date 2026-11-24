@@ -4,7 +4,7 @@ tono: ok
 famiglia: 01-nucleo
 ordine: 100
 stato: manutenzione
-prossimo: DTS alla 3.27.0 col sì di Riccardo; rifare la replica 103 → 9103 del 3CX; accendere il syslog verso Wazuh
+prossimo: rifare la replica 103 → 9103 del 3CX; accendere il syslog verso Wazuh
 applicazione: repl
 ---
 cruscotto backup/replica Proxmox (ZFS Sanoid/Syncoid, PBS)
