@@ -1,8 +1,8 @@
 <template>
   <div class="cluster-page">
     <PageHeader
-        title="Cluster Management"
-        subtitle="Manage Proxmox Cluster, HA, and Configuration"
+        :title="t('cluster.titolo')"
+        :subtitle="t('cluster.sottotitolo')"
         icon="cluster"
     >
       <template #actions>
@@ -20,7 +20,7 @@
         </div>
         <button class="btn btn-secondary btn-sm" @click="refreshAll" :disabled="loading">
           <Icon name="refresh" :size="14" :class="{ spin: loading }" />
-          {{ loading ? 'Updating…' : 'Refresh' }}
+          {{ loading ? t('comune.aggiornoInCorso') : t('comune.aggiorna') }}
         </button>
       </template>
     </PageHeader>
@@ -31,31 +31,31 @@
         class="tab-btn" 
         :class="{ active: activeTab === 'config' }" 
         @click="activeTab = 'config'">
-        <Icon name="settings" /> Config
+        <Icon name="settings" /> {{ t('cluster.tConfig') }}
       </button>
       <button 
         class="tab-btn" 
         :class="{ active: activeTab === 'monitor' }" 
         @click="activeTab = 'monitor'">
-        <Icon name="monitor" /> Cluster Monitor
+        <Icon name="monitor" /> {{ t('cluster.tMonitor') }}
       </button>
       <button 
         class="tab-btn" 
         :class="{ active: activeTab === 'ha' }" 
         @click="activeTab = 'ha'">
-        <Icon name="shield" /> HA Manager
+        <Icon name="shield" /> {{ t('cluster.tHa') }}
       </button>
       <button 
         class="tab-btn" 
         :class="{ active: activeTab === 'topology' }" 
         @click="activeTab = 'topology'">
-        <Icon name="network" /> Topology
+        <Icon name="network" /> {{ t('cluster.tTopologia') }}
       </button>
       <button 
         class="tab-btn danger-tab" 
         :class="{ active: activeTab === 'dangerous' }" 
         @click="activeTab = 'dangerous'">
-        <Icon name="alert-triangle" :size="14" /> Dangerous Ops
+        <Icon name="alert-triangle" :size="14" /> {{ t('cluster.tPericolo') }}
       </button>
     </div>
 
@@ -68,8 +68,8 @@
         <div class="card mb-4">
           <div class="flex justify-between items-center">
             <div>
-              <h4><Icon name="activity" /> Cluster Status</h4>
-              <p class="help-text">Current cluster initialization and connection status.</p>
+              <h4><Icon name="activity" /> {{ t('cluster.stato') }}</h4>
+              <p class="help-text">{{ t('cluster.statoNota') }}</p>
             </div>
             <div class="cluster-status-badge" :class="clusterStatusClass">
               {{ clusterStatusText }}
@@ -77,26 +77,26 @@
           </div>
           <div v-if="store.clusterStatus" class="cluster-status-grid mt-4">
             <div class="status-item">
-              <span class="label">Cluster Name</span>
+              <span class="label">{{ t('cluster.nome') }}</span>
               <strong>{{ store.clusterStatus.cluster_name || 'N/A' }}</strong>
             </div>
             <div class="status-item">
               <span class="label">Quorum</span>
               <strong :class="store.clusterStatus.quorum ? 'text-success' : 'text-danger'">
-                {{ store.clusterStatus.quorum ? 'OK' : 'NO QUORUM' }}
+                {{ store.clusterStatus.quorum ? 'OK' : t('cluster.noQuorum') }}
               </strong>
             </div>
             <div class="status-item">
-              <span class="label">Nodes</span>
+              <span class="label">{{ t('cluster.nodi') }}</span>
               <strong>{{ store.clusterNodes?.length || 0 }}</strong>
             </div>
             <div class="status-item">
-              <span class="label">Votes</span>
+              <span class="label">{{ t('cluster.voti') }}</span>
               <strong>{{ store.clusterStatus.total_votes || 0 }} / {{ store.clusterStatus.expected_votes || 0 }}</strong>
             </div>
           </div>
           <div v-else class="mt-4 text-secondary">
-            <em><Icon name="alert-triangle" /> No cluster data available. Configure entry point below and refresh.</em>
+            <em><Icon name="alert-triangle" /> {{ t('cluster.nessunDato') }}</em>
           </div>
         </div>
         
@@ -104,14 +104,14 @@
         <div class="card" v-if="!isEditingCluster">
           <div class="flex justify-between items-center mb-4">
                <div>
-                  <h4><Icon name="plug" /> Cluster Connections</h4>
-                  <p class="help-text">Manage connecting to one or more Proxmox clusters. These connections are used for Monitoring, HA, and Load Balancing.</p>
+                  <h4><Icon name="plug" /> {{ t('cluster.connessioni') }}</h4>
+                  <p class="help-text">{{ t('cluster.connessioniNota') }}</p>
                </div>
-               <button class="btn btn-primary btn-sm" @click="startEditCluster()"><Icon name="plus" /> Add Cluster</button>
+               <button class="btn btn-primary btn-sm" @click="startEditCluster()"><Icon name="plus" /> {{ t('cluster.aggiungi') }}</button>
           </div>
           
           <div v-if="clusters.length === 0" class="text-center p-8 bg-custom-gray rounded text-secondary border border-dashed border-gray-600">
-               No clusters configured. Click "Add Cluster" to connect.
+               {{ t('cluster.nessuno') }}
           </div>
 
           <div v-else class="cluster-list">
@@ -121,9 +121,9 @@
                        <div>
                            <div class="font-bold flex items-center gap-2 text-lg">
                                {{ cluster.name || `Cluster (${cluster.hosts.split(',')[0]})` }}
-                               <span v-if="cluster.is_default" class="px-2 py-0.5 text-xs bg-blue-900 text-blue-200 rounded">Default</span>
-                               <span v-if="cluster.is_initialized" class="px-2 py-0.5 text-xs bg-green-900 text-green-200 rounded">Online</span>
-                               <span v-else class="px-2 py-0.5 text-xs bg-yellow-900 text-yellow-200 rounded">Offline</span>
+                               <span v-if="cluster.is_default" class="px-2 py-0.5 text-xs bg-blue-900 text-blue-200 rounded">{{ t('cluster.predefinito') }}</span>
+                               <span v-if="cluster.is_initialized" class="px-2 py-0.5 text-xs bg-green-900 text-green-200 rounded">{{ t('comune.inLinea') }}</span>
+                               <span v-else class="px-2 py-0.5 text-xs bg-yellow-900 text-yellow-200 rounded">{{ t('comune.nonInLineaStato') }}</span>
                            </div>
                            <div class="text-xs text-secondary mt-1 font-mono">
                                {{ cluster.hosts }} • {{ cluster.api_user || 'Token' }}
@@ -131,8 +131,8 @@
                        </div>
                    </div>
                    <div class="flex gap-2">
-                       <button class="btn btn-sm btn-secondary" @click.stop="startEditCluster(cluster)"><Icon name="pencil" :size="14" /> Edit</button>
-                       <button class="btn btn-sm btn-danger" @click.stop="deleteCluster(cluster.id)"><Icon name="trash" :size="14" /> Delete</button>
+                       <button class="btn btn-sm btn-secondary" @click.stop="startEditCluster(cluster)"><Icon name="pencil" :size="14" /> {{ t('comune.modifica') }}</button>
+                       <button class="btn btn-sm btn-danger" @click.stop="deleteCluster(cluster.id)"><Icon name="trash" :size="14" /> {{ t('comune.elimina') }}</button>
                    </div>
                </div>
           </div>
@@ -140,44 +140,44 @@
 
         <!-- Add/Edit Cluster Form -->
         <div class="card" v-if="isEditingCluster">
-           <h4 class="mb-6 pb-2 border-b border-gray-700">{{ editingClusterId ? 'Edit Cluster' : 'New Cluster Connection' }}</h4>
+           <h4 class="mb-6 pb-2 border-b border-gray-700">{{ editingClusterId ? t('cluster.modifica') : t('cluster.nuova') }}</h4>
            
            <div class="form-grid">
              <div class="form-group">
-               <label>Friendly Name</label>
-               <input type="text" v-model="clusterConfig.name" class="form-input" placeholder="e.g. Production Cluster">
-               <small class="text-secondary">Name used to identify this cluster in menus.</small>
+               <label>{{ t('cluster.nomeBreve') }}</label>
+               <input type="text" v-model="clusterConfig.name" class="form-input" :placeholder="t('cluster.segnNome')">
+               <small class="text-secondary">{{ t('cluster.nomeBreveNota') }}</small>
              </div>
              <div class="form-group">
-               <label>Cluster Hosts / IPs</label>
+               <label>{{ t('cluster.host') }}</label>
                <input type="text" v-model="clusterConfig.hosts" class="form-input" placeholder="192.168.1.10, 192.168.1.11">
-               <small class="text-secondary">Comma separated list of Proxmox node IPs.</small>
+               <small class="text-secondary">{{ t('cluster.hostNota') }}</small>
              </div>
              <div class="form-group">
-                 <label>Username</label>
+                 <label>{{ t('comune.utente') }}</label>
                  <input type="text" v-model="clusterConfig.user" class="form-input" placeholder="root@pam">
              </div>
              <div class="form-group">
-                 <label>API Token / Password</label>
-                 <input type="password" v-model="clusterConfig.password" class="form-input" placeholder="Enter only to change">
+                 <label>{{ t('cluster.token') }}</label>
+                 <input type="password" v-model="clusterConfig.password" class="form-input" :placeholder="t('cluster.soloPerCambiare')">
              </div>
              <div class="form-group checkbox col-span-2 mt-2">
                   <label class="flex items-center gap-2 cursor-pointer">
                       <input type="checkbox" v-model="clusterConfig.verify_ssl">
-                      Verify SSL Certificate (Disable for self-signed)
+                      {{ t('cluster.verifica') }}
                   </label>
              </div>
              <div class="form-group checkbox col-span-2">
                   <label class="flex items-center gap-2 cursor-pointer">
                       <input type="checkbox" v-model="clusterConfig.is_default">
-                      Set as Default Cluster
+                      {{ t('cluster.impostaPredefinito') }}
                   </label>
              </div>
            </div>
            
            <div class="mt-8 flex justify-end gap-2 border-t border-gray-700 pt-4">
-               <button class="btn btn-secondary" @click="cancelEditCluster">Cancel</button>
-               <button class="btn btn-primary" @click="saveCluster"><Icon name="download" :size="14" /> {{ editingClusterId ? 'Update Connection' : 'Create Connection' }}</button>
+               <button class="btn btn-secondary" @click="cancelEditCluster">{{ t('comune.annulla') }}</button>
+               <button class="btn btn-primary" @click="saveCluster"><Icon name="download" :size="14" /> {{ editingClusterId ? t('cluster.aggiornaConn') : t('cluster.creaConn') }}</button>
            </div>
         </div>
       </div>
@@ -186,8 +186,8 @@
       <div v-if="activeTab === 'topology'" class="topology-panel" style="animation: fadeIn 0.3s ease;">
           <div v-if="loadingTopology" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 80px 20px;">
              <div class="spinner-sm" style="width: 40px; height: 40px; border-width: 3px; margin-bottom: 16px;"></div>
-             <h3 style="margin: 0 0 8px 0; font-size: 1.25rem;">Analyzing Network Topology...</h3>
-             <p class="text-secondary" style="margin: 0;">Connecting to nodes and retrieving configuration</p>
+             <h3 style="margin: 0 0 8px 0; font-size: 1.25rem;">{{ t('cluster.analisi') }}</h3>
+             <p class="text-secondary" style="margin: 0;">{{ t('cluster.analisiNota') }}</p>
           </div>
           
           <div v-else-if="topologyData">
@@ -195,15 +195,15 @@
               <div class="card" style="margin-bottom: 24px;">
                   <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border-color);">
                        <Icon name="link" :size="20" />
-                       <h4 style="margin: 0; font-size: 1.1rem;">Corosync Cluster Status</h4>
+                       <h4 style="margin: 0; font-size: 1.1rem;">{{ t('cluster.corosync') }}</h4>
                   </div>
                   <div class="table-container">
                       <table class="data-table">
                           <thead>
                               <tr>
-                                  <th>Node</th>
-                                  <th v-for="i in [0, 1]" :key="i" style="text-align: center;">Ring {{ i }}</th>
-                                  <th style="text-align: right;">Quorum Votes</th>
+                                  <th>{{ t('comune.nodo') }}</th>
+                                  <th v-for="i in [0, 1]" :key="i" style="text-align: center;">{{ t('cluster.anello', { n: i }) }}</th>
+                                  <th style="text-align: right;">{{ t('cluster.votiQuorum') }}</th>
                               </tr>
                           </thead>
                           <tbody>
@@ -232,7 +232,7 @@
               <div>
                   <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px;">
                       <Icon name="waypoints" :size="20" />
-                      <h4 style="margin: 0; font-size: 1.1rem;">Network Map</h4>
+                      <h4 style="margin: 0; font-size: 1.1rem;">{{ t('cluster.mappa') }}</h4>
                   </div>
                   
                   <div class="topology-grid">
@@ -245,17 +245,17 @@
                                   <div>
                                       <h3 style="margin: 0; font-size: 1.1rem; cursor: pointer; color: var(--accent);" 
                                           @click="navigateToNode(String(nodeName))"
-                                          title="Click to view node details">{{ nodeName }}</h3>
-                                      <span class="text-xs text-secondary">Proxmox Node</span>
+                                          :title="t('cluster.vediNodo')">{{ nodeName }}</h3>
+                                      <span class="text-xs text-secondary">{{ t('cluster.nodoProxmox') }}</span>
                                   </div>
                               </div>
-                              <span class="badge badge-success">Online</span>
+                              <span class="badge badge-success">{{ t('comune.inLinea') }}</span>
                           </div>
                           
                           <div class="topology-node-content">
                               <!-- Physical Ports -->
                               <div class="topology-section">
-                                  <h5 class="topology-section-title"><Icon name="plug" :size="14" /> Physical Interfaces</h5>
+                                  <h5 class="topology-section-title"><Icon name="plug" :size="14" /> {{ t('cluster.fisiche') }}</h5>
                                   <div class="topology-iface-list">
                                       <div v-for="iface in (nodeData || []).filter((i: any) => i.type === 'eth' || i.type === 'bond')" 
                                            :key="iface.iface" 
@@ -269,7 +269,7 @@
 
                               <!-- Bridges -->
                               <div class="topology-section">
-                                  <h5 class="topology-section-title"><Icon name="network" :size="14" /> Bridges & Virtual Machines</h5>
+                                  <h5 class="topology-section-title"><Icon name="network" :size="14" /> {{ t('cluster.bridgeVm') }}</h5>
                                   <div class="topology-bridges-list">
                                       <div v-for="bridge in (nodeData || []).filter((i: any) => i.type === 'bridge')" 
                                            :key="bridge.iface" 
@@ -278,12 +278,12 @@
                                           <!-- Bridge Header -->
                                           <div class="topology-bridge-header">
                                               <span class="bridge-name">{{ bridge.iface }}</span>
-                                              <span class="bridge-cidr">{{ bridge.cidr || 'L2 Switch' }}</span>
+                                              <span class="bridge-cidr">{{ bridge.cidr || t('nodi.switchL2') }}</span>
                                           </div>
                                           
                                           <!-- Bridge Ports (Physical NICs) -->
                                           <div v-if="bridge.bridge_ports" class="bridge-ports-info">
-                                              <span class="bridge-ports-label">Uplink:</span>
+                                              <span class="bridge-ports-label">{{ t('nodi.uplink') }}</span>
                                               <div class="bridge-ports-list">
                                                   <template v-for="port in bridge.bridge_ports.split(' ').filter((p: string) => p)" :key="port">
                                                       <div class="bridge-port-group">
@@ -312,7 +312,7 @@
                                                    class="topology-guest-item clickable-guest"
                                                    :class="{ vm: (guest as any).type === 'vm', ct: (guest as any).type === 'ct' }"
                                                    @click="navigateToVM(guest)"
-                                                   title="Click to view VM details">
+                                                   :title="t('cluster.vediVm')">
                                                   <span class="guest-icon"><Icon :name="(guest as any).type === 'vm' ? 'monitor' : 'box'" :size="14" /></span>
                                                   <div class="guest-info">
                                                       <strong style="color: var(--accent);">{{ (guest as any).name || (guest as any).id }}</strong>
@@ -325,7 +325,7 @@
                                               </div>
                                               
                                               <div v-if="getGuestsOnBridge(String(nodeName), bridge.iface).length === 0" class="no-guests">
-                                                  No guests connected
+                                                  {{ t('nodi.nessunGuest') }}
                                               </div>
                                           </div>
                                       </div>
@@ -349,7 +349,7 @@
              <!-- Cluster Summary -->
              <div class="monitor-summary mb-6">
                  <div class="summary-card">
-                     <span class="summary-label">Nodes</span>
+                     <span class="summary-label">{{ t('cluster.nodi') }}</span>
                      <span class="summary-value">{{ Object.keys(lastAnalysis.nodes || {}).length }}</span>
                  </div>
                  <div class="summary-card">
@@ -375,11 +375,11 @@
                         <div class="node-title">
                             <h3 @click="navigateToNode(String(nodeName))" 
                                 style="cursor: pointer; color: var(--accent);" 
-                                title="Click to view node details">{{ nodeName }}</h3>
+                                :title="t('cluster.vediNodo')">{{ nodeName }}</h3>
                             <span class="node-status" :class="getNodeStatusClass(node)">{{ getNodeStatus(node) }}</span>
                         </div>
                         <div class="node-score" :class="getScoreClass(node.pressure_score)">
-                            Score: {{ node.pressure_score.toFixed(1) }}
+                            {{ t('cluster.punteggio', { n: node.pressure_score.toFixed(1) }) }}
                         </div>
                     </div>
 
@@ -408,13 +408,13 @@
                         <!-- Network -->
                         <div class="metric-item">
                             <div class="metric-label">
-                                <span><Icon name="download" :size="14" /> Net In</span>
+                                <span><Icon name="download" :size="14" /> {{ t('cluster.reteIn') }}</span>
                                 <span class="metric-value">{{ formatBytes(node.network_in || 0) }}/s</span>
                             </div>
                         </div>
                         <div class="metric-item">
                             <div class="metric-label">
-                                <span><Icon name="upload" :size="14" /> Net Out</span>
+                                <span><Icon name="upload" :size="14" /> {{ t('cluster.reteOut') }}</span>
                                 <span class="metric-value">{{ formatBytes(node.network_out || 0) }}/s</span>
                             </div>
                         </div>
@@ -423,9 +423,9 @@
                     <!-- Guest Indicators (Running Guests) -->
                     <div class="guest-indicators">
                         <div class="guest-indicators-header">
-                            <span class="indicator-title">Running Guests ({{ getGuestsForNode(String(nodeName)).length }})</span>
+                            <span class="indicator-title">{{ t('cluster.accese', { n: getGuestsForNode(String(nodeName)).length }) }}</span>
                             <button class="btn-xs btn-text" @click="toggleTopology(String(nodeName))">
-                                {{ showTopology[nodeName] ? 'Hide Topology' : 'Show Network Topology' }}
+                                {{ showTopology[nodeName] ? t('cluster.nascondiTopo') : t('cluster.mostraTopo') }}
                             </button>
                         </div>
                         <div class="guest-chips-grid">
@@ -446,11 +446,11 @@
 
                     <!-- Network Topology View -->
                     <div v-if="showTopology[nodeName]" class="network-topology">
-                        <h4><Icon name="network" /> Network Topology</h4>
+                        <h4><Icon name="network" /> {{ t('nodi.topologia') }}</h4>
                         <div v-for="(bridge, bridgeName) in getNetworkTopology(String(nodeName))" :key="bridgeName" class="topology-bridge">
                             <div class="bridge-header"><Icon name="network" :size="14" /> {{ bridgeName }}</div>
                             <div v-for="(vlan, vlanId) in bridge" :key="vlanId" class="topology-vlan">
-                                <div class="vlan-header"><Icon name="tag" :size="14" /> VLAN {{ vlanId === 'untagged' ? 'Untagged' : vlanId }}</div>
+                                <div class="vlan-header"><Icon name="tag" :size="14" /> VLAN {{ vlanId === 'untagged' ? t('cluster.senzaTag') : vlanId }}</div>
                                 <div class="vlan-guests">
                                     <div v-for="guest in vlan" :key="guest.id" class="topology-guest" :class="guest.type">
                                         <Icon :name="guest.type === 'vm' ? 'monitor' : 'box'" :size="14" /> <strong>{{ guest.name || guest.id }}</strong> ({{ guest.iface }})
@@ -462,8 +462,8 @@
 
                     <div class="node-footer">
                         <div class="guest-counts">
-                            <span class="guest-badge vm">{{ getGuestCount(String(nodeName), 'qemu') }} VMs</span>
-                            <span class="guest-badge ct">{{ getGuestCount(String(nodeName), 'lxc') }} CTs</span>
+                            <span class="guest-badge vm">{{ t('cluster.nVm', { n: getGuestCount(String(nodeName), 'qemu') }) }}</span>
+                            <span class="guest-badge ct">{{ t('cluster.nCt', { n: getGuestCount(String(nodeName), 'lxc') }) }}</span>
                         </div>
                     </div>
                 </div>
@@ -472,16 +472,16 @@
 
          <!-- Add Node (Available if needed, or moved to Config) -->
          <div class="card mt-6">
-            <h4><Icon name="plus" /> Join Node to Cluster</h4>
+            <h4><Icon name="plus" /> {{ t('cluster.unisci') }}</h4>
             <div class="form-grid">
                 <div class="form-group">
-                    <label>New Node IP</label>
+                    <label>{{ t('cluster.ipNuovo') }}</label>
                     <input type="text" v-model="newNodeIP" class="form-input" placeholder="192.168.x.x">
                 </div>
             </div>
             <div class="mt-3">
                 <button class="btn btn-primary" @click="addNodeToCluster" :disabled="!newNodeIP || loading">
-                    <Icon name="plus" /> Add Node
+                    <Icon name="plus" /> {{ t('cluster.aggiungiNodo') }}
                 </button>
             </div>
         </div>
@@ -491,15 +491,15 @@
       <div v-if="activeTab === 'ha'" class="ha-panel">
          <!-- HA Resources -->
          <div class="card mb-4">
-            <h4>HA Managed Resources</h4>
+            <h4>{{ t('cluster.haRisorse') }}</h4>
             <table class="data-table">
                 <thead>
                     <tr>
                         <th>SID</th>
-                        <th>Type</th>
-                        <th>State</th>
-                        <th>Group</th>
-                        <th>Action</th>
+                        <th>{{ t('comune.tipo') }}</th>
+                        <th>{{ t('cluster.haStato') }}</th>
+                        <th>{{ t('cluster.gruppo') }}</th>
+                        <th>{{ t('comune.azioni') }}</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -508,9 +508,9 @@
                         <td><span class="badge" :class="res.type === 'vm' ? 'badge-success' : 'badge-info'">{{ res.type }}</span></td>
                         <td><span :class="getHAStateClass(res.state)">{{ res.state }}</span></td>
                         <td>{{ res.group || '-' }}</td>
-                        <td><button class="btn btn-xs btn-danger" @click="removeFromHA(res)">Remove</button></td>
+                        <td><button class="btn btn-xs btn-danger" @click="removeFromHA(res)">{{ t('cluster.rimuovi') }}</button></td>
                     </tr>
-                    <tr v-if="store.haResources.length === 0"><td colspan="5" class="text-center p-4">No HA resources.</td></tr>
+                    <tr v-if="store.haResources.length === 0"><td colspan="5" class="text-center p-4">{{ t('cluster.haNessuna') }}</td></tr>
                 </tbody>
             </table>
          </div>
@@ -518,63 +518,63 @@
          <!-- Available Guests -->
          <div class="card mb-4">
             <div class="flex justify-between">
-                <h4>Available Guests</h4>
+                <h4>{{ t('cluster.disponibili') }}</h4>
                 <div class="flex gap-2">
-                    <button class="btn btn-xs btn-secondary" @click="selectAllGuests">Select All</button>
-                    <button class="btn btn-xs btn-secondary" @click="selectedGuestsForHA = []">Clear</button>
+                    <button class="btn btn-xs btn-secondary" @click="selectAllGuests">{{ t('cluster.selTutti') }}</button>
+                    <button class="btn btn-xs btn-secondary" @click="selectedGuestsForHA = []">{{ t('cluster.pulisci') }}</button>
                 </div>
             </div>
             <div class="table-scroll">
                 <table class="data-table">
-                    <thead><tr><th><input type="checkbox" :checked="allGuestsSelected" @change="toggleSelectAllGuests"></th><th>ID</th><th>Name</th><th>Node</th><th>Status</th></tr></thead>
+                    <thead><tr><th><input type="checkbox" :checked="allGuestsSelected" @change="toggleSelectAllGuests"></th><th>ID</th><th>{{ t('comune.nome') }}</th><th>{{ t('comune.nodo') }}</th><th>{{ t('comune.stato') }}</th></tr></thead>
                     <tbody>
                         <tr v-for="guest in store.availableGuests" :key="guest.vmid" :class="{'bg-highlight': selectedGuestsForHA.includes(guest.vmid), 'opacity-50': guest.in_ha}">
                             <td><input type="checkbox" :checked="selectedGuestsForHA.includes(guest.vmid)" @change="toggleGuestForHA(guest.vmid)" :disabled="guest.in_ha"></td>
                             <td>{{ guest.vmid }}</td>
                             <td>{{ guest.name }}</td>
                             <td>{{ guest.node }}</td>
-                            <td><span v-if="guest.in_ha" class="text-success"><Icon name="check-circle" :size="14" /> In HA</span><span v-else>{{ guest.status }}</span></td>
+                            <td><span v-if="guest.in_ha" class="text-success"><Icon name="check-circle" :size="14" /> {{ t('cluster.inHa') }}</span><span v-else>{{ guest.status }}</span></td>
                         </tr>
                     </tbody>
                 </table>
             </div>
             
             <div v-if="selectedGuestsForHA.length > 0" class="mt-4 p-4 bg-dark-soft rounded border border-gray-700">
-                <h5>Add {{ selectedGuestsForHA.length }} guests to HA</h5>
+                <h5>{{ t('cluster.aggiungiNHa', { n: selectedGuestsForHA.length }) }}</h5>
                 <div class="grid grid-cols-3 gap-4 mt-2">
                     <select v-model="newHAResource.group" class="form-input">
-                        <option value="">No Group</option>
+                        <option value="">{{ t('cluster.nessunGruppo') }}</option>
                         <option v-for="g in store.haGroups" :key="g.group" :value="g.group">{{ g.group }}</option>
                     </select>
                     <select v-model="newHAResource.state" class="form-input">
-                        <option value="started">Started</option>
-                        <option value="stopped">Stopped</option>
+                        <option value="started">{{ t('cluster.avviata') }}</option>
+                        <option value="stopped">{{ t('cluster.fermata') }}</option>
                     </select>
-                    <button class="btn btn-primary" @click="addSelectedGuestsToHA">Add to HA</button>
+                    <button class="btn btn-primary" @click="addSelectedGuestsToHA">{{ t('cluster.aggiungiHa') }}</button>
                 </div>
             </div>
          </div>
 
          <!-- HA Groups -->
          <div class="card">
-            <h4>HA Groups</h4>
+            <h4>{{ t('cluster.haGruppi') }}</h4>
             <div class="grid grid-cols-2 gap-6">
                 <div>
                      <table class="data-table">
-                        <thead><tr><th>Group</th><th>Nodes</th><th>Action</th></tr></thead>
+                        <thead><tr><th>{{ t('cluster.gruppo') }}</th><th>{{ t('cluster.nodi') }}</th><th>{{ t('comune.azioni') }}</th></tr></thead>
                         <tbody>
                             <tr v-for="grp in store.haGroups" :key="grp.group">
                                 <td>{{ grp.group }}</td>
                                 <td>{{ grp.nodes }}</td>
-                                <td><button class="btn btn-xs btn-danger" @click="deleteHAGroup(grp.group)">Delete</button></td>
+                                <td><button class="btn btn-xs btn-danger" @click="deleteHAGroup(grp.group)">{{ t('comune.elimina') }}</button></td>
                             </tr>
                         </tbody>
                      </table>
                 </div>
                 <div class="p-4 bg-dark-soft rounded">
-                    <h5>Create Group</h5>
+                    <h5>{{ t('cluster.creaGruppo') }}</h5>
                     <div class="space-y-3 mt-2">
-                        <input type="text" v-model="newHAGroup.name" class="form-input" placeholder="Group Name">
+                        <input type="text" v-model="newHAGroup.name" class="form-input" :placeholder="t('cluster.nomeGruppo')">
                         <div class="space-y-1 max-h-40 overflow-y-auto border border-gray-700 p-2 rounded">
                             <div v-for="node in store.clusterNodes" :key="node.name">
                                 <label class="flex items-center gap-2">
@@ -583,7 +583,7 @@
                                 </label>
                             </div>
                         </div>
-                        <button class="btn btn-primary w-full" @click="createHAGroupFromSelection">Create Group</button>
+                        <button class="btn btn-primary w-full" @click="createHAGroupFromSelection">{{ t('cluster.creaGruppo') }}</button>
                     </div>
                 </div>
             </div>
@@ -593,29 +593,28 @@
       <!-- DANGEROUS OPS TAB -->
       <div v-if="activeTab === 'dangerous'" class="dangerous-panel">
           <div class="alert alert-danger mb-6 border-l-4 border-red-600">
-              <h3 class="text-red-500 font-bold text-lg flex items-center gap-2">DANGER ZONE
+              <h3 class="text-red-500 font-bold text-lg flex items-center gap-2">{{ t('cluster.pericolo') }}
               </h3>
               <p class="mt-2 text-primary">
-                  The operations in this section are <strong>destructive</strong>. 
-                  Removing nodes incorrectly can break quorum and make your cluster read-only or inaccessible.
+                  {{ t('cluster.pericoloNota') }}
               </p>
               <p class="mt-2 font-bold">
-                  <Icon name="shield" :size="14" /> An automatic configuration backup will be triggered before any operation.
+                  <Icon name="shield" :size="14" /> {{ t('cluster.backupPrima') }}
               </p>
           </div>
 
           <div class="card border-red-900/30">
-              <h4 class="text-red-400">Manage Dead Nodes</h4>
+              <h4 class="text-red-400">{{ t('cluster.nodiMorti') }}</h4>
               <p class="mb-4 text-sm text-secondary">
-                  If a node is permanently dead or has been physically removed, you can remove it from the cluster configuration here.
+                  {{ t('cluster.nodiMortiNota') }}
               </p>
               
               <table class="data-table">
                  <thead>
                     <tr>
-                        <th>Node Name</th>
-                        <th>Status</th>
-                        <th>Actions</th>
+                        <th>{{ t('cluster.nomeNodo') }}</th>
+                        <th>{{ t('comune.stato') }}</th>
+                        <th>{{ t('comune.azioni') }}</th>
                     </tr>
                  </thead>
                  <tbody>
@@ -628,14 +627,14 @@
                          </td>
                          <td>
                             <div class="flex gap-2">
-                                 <button class="btn btn-xs btn-warning" @click="cleanNodeReferences(node.name)" title="Remove leftover config">
-                                     <Icon name="eraser" :size="14" /> Clean Refs
+                                 <button class="btn btn-xs btn-warning" @click="cleanNodeReferences(node.name)" :title="t('cluster.pulisciRifAiuto')">
+                                     <Icon name="eraser" :size="14" /> {{ t('cluster.pulisciRif') }}
                                  </button>
                                  <button class="btn btn-xs btn-danger" 
                                      @click="removeNodeFromCluster(node.name)" 
                                      :disabled="node.is_local || node.status === 'online'"
-                                     title="Remove from quorum (Must be offline)">
-                                     <Icon name="trash" :size="14" /> Force Remove
+                                     :title="t('cluster.forzaAiuto')">
+                                     <Icon name="trash" :size="14" /> {{ t('cluster.forza') }}
                                  </button>
                             </div>
                          </td>
@@ -660,6 +659,9 @@ import { useHAStore } from '../stores/ha_store';
 import haService from '../services/ha';
 import clustersService, { type ProxmoxCluster } from '../services/clusters';
 import nodesService from '../services/nodes';
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const toast = useToast()
 
@@ -674,7 +676,7 @@ const selectedClusterId = ref<number | null>(null);
 const isEditingCluster = ref(false);
 const editingClusterId = ref<number | null>(null);
 
-// API Config State for "Config" tab (legacy + new form)
+// API Config State for t('cluster.tConfig') tab (legacy + new form)
 const clusterConfig = reactive({
     name: '',
     hosts: '',
@@ -721,9 +723,9 @@ const totalCTs = computed(() => {
 
 // Cluster status computed properties
 const clusterStatusText = computed(() => {
-    if (!store.clusterStatus) return 'Not Configured';
-    if (store.clusterStatus.quorum) return 'Initialized';
-    return 'No Quorum';
+    if (!store.clusterStatus) return t('cluster.sNonConfigurato');
+    if (store.clusterStatus.quorum) return t('cluster.sInizializzato');
+    return t('cluster.sNoQuorum');
 });
 
 const clusterStatusClass = computed(() => {
@@ -937,12 +939,12 @@ const saveCluster = async () => {
     } catch (e: any) {
         console.error("Failed to save cluster", e);
         const msg = e.response?.data?.detail || e.message;
-        toast.error("Salvataggio cluster fallito", msg);
+        toast.error(t('cluster.erroreSalva'), msg);
     }
 };
 
 const deleteCluster = async (id: number) => {
-    if (!await confirmDangerous("Sei sicuro di voler eliminare questa configurazione cluster?\n\nI nodi Proxmox e le sincronizzazioni NON verranno toccati.\nVerrà rimossa solo la connessione per il monitoraggio e HA.")) return;
+    if (!await confirmDangerous(t('cluster.confElimina'))) return;
     try {
         await clustersService.delete(id);
         await fetchClusters();
@@ -976,7 +978,7 @@ const getFirstPVENodeId = async () => {
         const res = await haService.getClusterEntry();
         if (res.data.entry_node_id) return res.data.entry_node_id;
     } catch (e) {
-        toast.error('Errore rilevamento cluster', errorMessage(e));
+        toast.error(t('cluster.erroreRileva'), errorMessage(e));
     }
     try {
         const nodesRes = await nodesService.getNodes();
@@ -999,16 +1001,16 @@ const triggerClusterBackup = async () => {
     }
 };
 const addNodeToCluster = async () => {
-   if(!await confirmDangerous(`Add ${newNodeIP.value} to cluster?`)) return;
+   if(!await confirmDangerous(t('cluster.confAggiungiNodo', { ip: newNodeIP.value }))) return;
    const nodeId = await getFirstPVENodeId();
    if (!nodeId) return;
 
    try {
        const res = await haService.addClusterNode(nodeId, newNodeIP.value);
        const d = res.data;
-       if (d.success) { toast.success('Nodo aggiunto'); refreshAll(); }
-       else toast.error('Errore', d.message);
-   } catch(e) { toast.error('Errore', errorMessage(e)); }
+       if (d.success) { toast.success(t('cluster.nodoAggiunto')); refreshAll(); }
+       else toast.error(t('comune.errore'), d.message);
+   } catch(e) { toast.error(t('comune.errore'), errorMessage(e)); }
 };
 
 // --- HA ACTIONS ---
@@ -1019,23 +1021,23 @@ const getHAStateClass = (state: string) => {
 };
 
 const removeFromHA = async (res: any) => {
-    if(!await confirmDangerous('Remove resource?')) return;
+    if(!await confirmDangerous(t('cluster.confRisorsa'))) return;
     const nodeId = await getFirstPVENodeId();
     if (!nodeId) return;
     try {
         await haService.removeResource(nodeId, res.sid, res.type);
         refreshAll();
-    } catch(e) { toast.error('Errore', errorMessage(e)); }
+    } catch(e) { toast.error(t('comune.errore'), errorMessage(e)); }
 };
 
 const deleteHAGroup = async (groupName: string) => {
-     if(!await confirmDangerous('Delete Group?')) return;
+     if(!await confirmDangerous(t('cluster.confGruppo'))) return;
      const nodeId = await getFirstPVENodeId();
      if (!nodeId) return;
      try {
          await haService.deleteGroup(nodeId, groupName);
          refreshAll();
-     } catch(e) { toast.error('Errore', errorMessage(e)); }
+     } catch(e) { toast.error(t('comune.errore'), errorMessage(e)); }
 };
 
 const toggleGuestForHA = (vmid: number) => {
@@ -1098,8 +1100,8 @@ const createHAGroupFromSelection = async () => {
 
 // --- DANGEROUS OPS ---
 const removeNodeFromCluster = async (name: string) => {
-    if(!await confirmDangerous(`DANGER: Remove ${name}? Node must be OFFLINE.`)) return;
-    if(!await confirmDangerous(`Are you really sure? This can break quorum.`)) return;
+    if(!await confirmDangerous(t('cluster.confTogli', { nome: name }))) return;
+    if(!await confirmDangerous(t('cluster.confTogli2'))) return;
 
     await triggerClusterBackup();
 
@@ -1108,13 +1110,13 @@ const removeNodeFromCluster = async (name: string) => {
     try {
         const res = await haService.removeClusterNode(nodeId, name);
         const d = res.data;
-        if (d.success) { toast.success('Rimosso'); refreshAll(); }
-        else toast.error('Errore', d.message);
-    } catch(e) { toast.error('Errore', errorMessage(e)); }
+        if (d.success) { toast.success(t('cluster.rimosso')); refreshAll(); }
+        else toast.error(t('comune.errore'), d.message);
+    } catch(e) { toast.error(t('comune.errore'), errorMessage(e)); }
 };
 
 const cleanNodeReferences = async (name: string) => {
-    if(!await confirmDangerous(`Clean references for ${name}?`)) return;
+    if(!await confirmDangerous(t('cluster.confPulisci', { nome: name }))) return;
 
     await triggerClusterBackup();
 
@@ -1122,8 +1124,8 @@ const cleanNodeReferences = async (name: string) => {
     if (!nodeId) return;
     try {
         await haService.cleanClusterNode(nodeId, name);
-        toast.success('Pulizia completata');
-    } catch(e) { toast.error('Errore', errorMessage(e)); }
+        toast.success(t('cluster.pulito'));
+    } catch(e) { toast.error(t('comune.errore'), errorMessage(e)); }
 };
 // --- HELPER FUNCTIONS ---
 
@@ -1168,9 +1170,9 @@ const getGuestCount = (nodeName: string, guestType: 'qemu' | 'lxc') => {
 };
 
 const getNodeStatus = (node: any) => {
-    if (node.pressure_score > 50) return 'Critical';
-    if (node.pressure_score > 20) return 'Warning';
-    return 'Healthy';
+    if (node.pressure_score > 50) return t('cluster.sCritico');
+    if (node.pressure_score > 20) return t('cluster.sAttenzione');
+    return t('cluster.sSano');
 };
 
 const getNodeStatusClass = (node: any) => {

@@ -15,6 +15,9 @@ import {
 } from '../../services/nasSync'
 import { normalizeQnapDestShare, normalizeQnapStagingPath } from '../../utils/qnapPath'
 import { compactSourcePaths } from '../../utils/pathSelection'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   job?: NasSyncJob | null
@@ -90,9 +93,9 @@ const engineHint = computed(() => {
   if (!src || !dst) return ''
   if (form.sync_method === 'auto') {
     if (src.rsync_source && dst.rsync_dest)
-      return 'Verrà usato il motore diretto rsync: i dati non passano dal server dapx.'
+      return t('nasJob.usaRsync')
     return (
-      'Verrà usato rclone SMB (fallback): ' +
+      t('nasJob.usaRclone') + ' ' +
       (src.reasons.rsync_source || dst.reasons.rsync_dest || '')
     )
   }
@@ -231,7 +234,7 @@ async function submit() {
       const detail = e.response?.data?.detail
       errorMsg.value = typeof detail === 'string' ? detail : e.message
     } else {
-      errorMsg.value = e instanceof Error ? e.message : 'Salvataggio fallito'
+      errorMsg.value = e instanceof Error ? e.message : t('fileJob.erroreSalva')
     }
   } finally {
     saving.value = false
@@ -254,31 +257,31 @@ onMounted(loadEndpoints)
   <div class="modal-overlay" @click.self="$emit('close')">
     <div class="modal-card">
       <header class="modal-head">
-        <h2>{{ isEdit ? 'Modifica job Repliche dati' : 'Nuovo job Repliche dati' }}</h2>
+        <h2>{{ isEdit ? t('nasJob.modifica') : t('nasJob.nuovo') }}</h2>
         <button type="button" class="btn btn-sm" @click="$emit('close')">✕</button>
       </header>
 
       <nav class="steps">
-        <span :class="{ active: step === 1 }">1. Sorgente</span>
-        <span :class="{ active: step === 2 }">2. Cartelle</span>
-        <span :class="{ active: step === 3 }">3. Destinazione</span>
-        <span :class="{ active: step === 4 }">4. Regole</span>
+        <span :class="{ active: step === 1 }">{{ t('fileJob.p1') }}</span>
+        <span :class="{ active: step === 2 }">{{ t('fileJob.p2') }}</span>
+        <span :class="{ active: step === 3 }">{{ t('fileJob.p3') }}</span>
+        <span :class="{ active: step === 4 }">{{ t('fileJob.p4') }}</span>
       </nav>
 
       <div v-show="step === 1" class="modal-body">
         <div class="form-group">
-          <label>Nome job</label>
+          <label>{{ t('fileJob.nome') }}</label>
           <input v-model="form.name" class="form-input" />
         </div>
         <div class="form-group">
-          <label>Endpoint sorgente</label>
+          <label>{{ t('fileJob.epOrigine') }}</label>
           <select v-model="form.source_endpoint_id" class="form-input" :disabled="isEdit">
-            <option :value="null" disabled>— seleziona —</option>
+            <option :value="null" disabled>{{ t('comune.seleziona') }}</option>
             <option v-for="ep in sourceEndpoints" :key="ep.id" :value="ep.id">
               {{ ep.name }} ({{ ep.endpoint_type }})
             </option>
           </select>
-          <small v-if="isEdit" class="text-muted">L'endpoint sorgente non è modificabile in modifica job.</small>
+          <small v-if="isEdit" class="text-muted">{{ t('fileJob.epOrigineFisso') }}</small>
         </div>
       </div>
 
@@ -289,30 +292,26 @@ onMounted(loadEndpoints)
           :exclude-presets="form.exclude_presets"
         />
         <p class="text-muted mt-2">
-          Seleziona le cartelle sorgente. La struttura sorgente viene replicata sotto il percorso
-          base di destinazione. <strong>#snapshot</strong>, <strong>@Snapshot</strong>,
-          <strong>#recycle</strong> e cartelle di sistema sono <strong>sempre escluse</strong> dal
-          sync (nessuno storico dalla sorgente).
+          <i18n-t keypath="nasJob.cartelleNota" tag="span"><template #a><strong>#snapshot</strong></template><template #b><strong>@Snapshot</strong></template><template #c><strong>#recycle</strong></template></i18n-t>
         </p>
         <p class="text-muted">
-          Non schedulare le stesse cartelle sia qui che nel modulo «Replica file»: i due moduli
-          non si coordinano tra loro.
+          {{ t('nasJob.nonDoppio') }}
         </p>
       </div>
 
       <div v-show="step === 3" class="modal-body">
         <div class="form-group">
-          <label>Endpoint destinazione</label>
+          <label>{{ t('nasJob.epDest') }}</label>
           <select v-model="form.dest_endpoint_id" class="form-input" :disabled="isEdit">
-            <option :value="null" disabled>— seleziona —</option>
+            <option :value="null" disabled>{{ t('comune.seleziona') }}</option>
             <option v-for="ep in destEndpoints" :key="ep.id" :value="ep.id">
               {{ ep.name }}
             </option>
           </select>
-          <small v-if="isEdit" class="text-muted">L'endpoint destinazione non è modificabile in modifica job.</small>
+          <small v-if="isEdit" class="text-muted">{{ t('fileJob.epDestFisso') }}</small>
         </div>
         <div class="form-group">
-          <label>Percorso base destinazione</label>
+          <label>{{ t('nasJob.percorsoBase') }}</label>
           <FolderBrowser
             v-model="destBasePaths"
             :endpoint-id="form.dest_endpoint_id"
@@ -320,10 +319,10 @@ onMounted(loadEndpoints)
             mode="single"
             normalize-qnap-paths
             share-only
-            hint="Seleziona solo la share di destinazione (es. DATI). Le sottocartelle ereditano il percorso sorgente."
+            :hint="t('nasJob.shareAiuto')"
           />
           <small class="text-muted">
-            Scegli solo la share di destinazione. Le sottocartelle ereditano il percorso sorgente.
+            {{ t('nasJob.shareNota') }}
           </small>
         </div>
         <FileReplPathMapping
@@ -339,11 +338,11 @@ onMounted(loadEndpoints)
 
       <div v-show="step === 4" class="modal-body">
         <div class="engine-panel">
-          <h4>Motore di replica</h4>
+          <h4>{{ t('nasJob.motore') }}</h4>
           <select v-model="form.sync_method" class="form-input">
-            <option value="auto">Automatico (consigliato)</option>
-            <option value="direct_rsync">Diretto rsync (NAS→NAS)</option>
-            <option value="rclone_smb">rclone SMB (via server dapx)</option>
+            <option value="auto">{{ t('nasJob.mAuto') }}</option>
+            <option value="direct_rsync">{{ t('nasJob.mRsync') }}</option>
+            <option value="rclone_smb">{{ t('nasJob.mRclone') }}</option>
           </select>
           <p v-if="engineHint" class="text-muted">{{ engineHint }}</p>
           <button
@@ -353,7 +352,7 @@ onMounted(loadEndpoints)
             :disabled="preflightRunning"
             @click="runPreflight"
           >
-            {{ preflightRunning ? 'Verifica…' : 'Verifica prerequisiti' }}
+            {{ preflightRunning ? t('nasJob.verificaInCorso') : t('nasJob.verifica') }}
           </button>
           <ul v-if="preflightChecks.length" class="preflight-list">
             <li v-for="c in preflightChecks" :key="c.check"
@@ -376,51 +375,46 @@ onMounted(loadEndpoints)
         />
         <label class="checkbox-label">
           <input v-model="form.delete_on_dest" type="checkbox" />
-          Elimina sulla destinazione i file non più presenti nella sorgente (mirror)
+          {{ t('nasJob.mirror') }}
         </label>
         <p class="text-muted mt-2">
-          Esclusioni automatiche (non disabilitabili): <code>#snapshot</code>, <code>@Snapshot</code>,
-          <code>#recycle</code>, <code>@eaDir</code>, cestini e cartelle di sistema.
-          Lo storico/versioning va configurato solo con gli <strong>snapshot</strong> del NAS di destinazione.
+          <i18n-t keypath="nasJob.esclusioniNota" tag="span"><template #elenco><code>#snapshot</code>, <code>@Snapshot</code>, <code>#recycle</code>, <code>@eaDir</code></template></i18n-t>
         </p>
         <template v-if="form.sync_method !== 'direct_rsync'">
           <label class="checkbox-label mt-2">
             <input v-model="form.rclone_size_only" type="checkbox" />
-            Confronta solo la dimensione dei file (rclone --size-only, evita il calcolo hash)
+            {{ t('nasJob.sizeOnly') }}
           </label>
           <p class="text-muted mt-2">
-            rclone usa <code>--no-traverse</code> e <code>--fast-list</code> per limitare le chiamate
-            SMB su cartelle con molti file.
+            <i18n-t keypath="nasJob.rcloneNota" tag="span"><template #a><code>--no-traverse</code></template><template #b><code>--fast-list</code></template></i18n-t>
           </p>
         </template>
         <div class="form-group">
-          <label>Limite banda (KB/s, vuoto = nessun limite)</label>
+          <label>{{ t('nasJob.banda') }}</label>
           <input v-model.number="form.bandwidth_limit_kb" type="number" class="form-input" />
         </div>
         <div class="form-group mt-3">
-          <label>Quando eseguire la replica</label>
+          <label>{{ t('fileJob.quando') }}</label>
           <ScheduleEditor v-model="form.schedule_config" @cron="form.schedule = $event" />
         </div>
         <div class="form-group">
-          <label>Notifiche email</label>
+          <label>{{ t('fileJob.notifiche') }}</label>
           <select v-model="form.notify_mode" class="form-input">
-            <option value="daily">Solo nel riepilogo giornaliero (predefinito)</option>
-            <option value="failure">Riepilogo + mail subito se fallisce</option>
-            <option value="always">Mail a ogni esecuzione</option>
-            <option value="never">Nessuna notifica, escluso dal riepilogo</option>
+            <option value="daily">{{ t('fileJob.nDaily') }}</option>
+            <option value="failure">{{ t('fileJob.nFailure') }}</option>
+            <option value="always">{{ t('fileJob.nAlways') }}</option>
+            <option value="never">{{ t('fileJob.nNever') }}</option>
           </select>
           <small class="text-muted">
-            Con l'impostazione predefinita non arriva nessuna mail per questo job: le sue
-            esecuzioni compaiono nel riepilogo giornaliero, una mail sola per l'impianto.
-            Serve SMTP configurato in Impostazioni → Notifiche.
+            {{ t('fileJob.notNota') }}
           </small>
         </div>
         <div class="form-group">
-          <label>Oggetto email (opzionale)</label>
-          <input v-model="form.notify_subject" type="text" class="form-input" placeholder="Replica Comune → NAS" />
+          <label>{{ t('fileJob.oggetto') }}</label>
+          <input v-model="form.notify_subject" type="text" class="form-input" :placeholder="t('nasJob.segnOggetto')" />
         </div>
         <div class="form-group">
-          <label>Pattern exclude aggiuntivi (uno per riga)</label>
+          <label>{{ t('fileJob.escludi') }}</label>
           <textarea v-model="form.exclude_patterns" class="form-input" rows="3" />
         </div>
         <QnapImmutabilityHint
@@ -434,8 +428,8 @@ onMounted(loadEndpoints)
       <p v-if="errorMsg" class="modal-error">{{ errorMsg }}</p>
 
       <footer class="modal-foot">
-        <button v-if="step > 1" type="button" class="btn btn-secondary" @click="step--">Indietro</button>
-        <button v-if="step < 4" type="button" class="btn btn-primary" @click="step++">Avanti</button>
+        <button v-if="step > 1" type="button" class="btn btn-secondary" @click="step--">{{ t('comune.indietro') }}</button>
+        <button v-if="step < 4" type="button" class="btn btn-primary" @click="step++">{{ t('comune.avanti') }}</button>
         <button
           v-else
           type="button"
@@ -443,7 +437,7 @@ onMounted(loadEndpoints)
           :disabled="saving || !form.name || !form.source_paths.length"
           @click="submit"
         >
-          {{ saving ? 'Salvataggio…' : isEdit ? 'Salva modifiche' : 'Crea job' }}
+          {{ saving ? t('comune.salvataggio') : isEdit ? t('comune.salvaModifiche') : t('fileJob.crea') }}
         </button>
       </footer>
     </div>

@@ -3,6 +3,9 @@ import axios from 'axios'
 import { computed, reactive, ref, watch } from 'vue'
 import { fileEndpointsApi, type FileEndpoint } from '../../services/fileEndpoints'
 import { nasSyncApi, type EndpointCapabilities } from '../../services/nasSync'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   endpoint?: FileEndpoint | null
@@ -160,7 +163,7 @@ async function save() {
     } else {
       payload.endpoint_type = form.endpoint_type
       if (!form.password) {
-        errorMsg.value = 'Password obbligatoria per un nuovo endpoint'
+        errorMsg.value = t('endpoint.servePassword')
         return
       }
       payload.password = form.password
@@ -183,7 +186,7 @@ async function save() {
       const detail = e.response?.data?.detail
       errorMsg.value = typeof detail === 'string' ? detail : e.message
     } else {
-      errorMsg.value = e instanceof Error ? e.message : 'Errore salvataggio'
+      errorMsg.value = e instanceof Error ? e.message : t('comune.erroreSalvataggio')
     }
   } finally {
     saving.value = false
@@ -193,7 +196,7 @@ async function save() {
 async function testConnection() {
   const id = props.endpoint?.id
   if (!id) {
-    errorMsg.value = 'Salva l\'endpoint prima di testare la connessione'
+    errorMsg.value = t('endpoint.primaSalva')
     return
   }
   testing.value = true
@@ -209,7 +212,7 @@ async function testConnection() {
       const detail = e.response?.data?.detail
       testMsg.value = typeof detail === 'string' ? detail : e.message
     } else {
-      testMsg.value = e instanceof Error ? e.message : 'Test fallito'
+      testMsg.value = e instanceof Error ? e.message : t('endpoint.provaFallita')
     }
   } finally {
     testing.value = false
@@ -220,16 +223,16 @@ async function testConnection() {
 <template>
   <div class="card mb-4">
     <div class="card-header ep-header">
-      <h3>{{ isEdit ? 'Modifica endpoint' : 'Nuovo endpoint' }}</h3>
-      <button type="button" class="btn btn-sm btn-secondary" @click="emit('cancel')">Chiudi</button>
+      <h3>{{ isEdit ? t('endpoint.modifica') : t('endpoint.nuovo') }}</h3>
+      <button type="button" class="btn btn-sm btn-secondary" @click="emit('cancel')">{{ t('comune.chiudi') }}</button>
     </div>
     <div class="card-body grid-2">
       <div class="form-group">
-        <label>Nome</label>
+        <label>{{ t('comune.nome') }}</label>
         <input v-model="form.name" class="form-input" required />
       </div>
       <div class="form-group">
-        <label>Tipo</label>
+        <label>{{ t('comune.tipo') }}</label>
         <select
           v-model="form.endpoint_type"
           class="form-input"
@@ -238,102 +241,102 @@ async function testConnection() {
         >
           <option value="synology">Synology DSM</option>
           <option value="qnap">QNAP QuTS hero</option>
-          <option value="linux">Linux / VM Linux</option>
+          <option value="linux">{{ t('endpoint.linux') }}</option>
           <option value="windows">Windows (SMB)</option>
         </select>
       </div>
       <div class="form-group">
-        <label>Ruolo</label>
+        <label>{{ t('comune.ruolo') }}</label>
         <select v-model="form.role" class="form-input">
-          <option value="source">Sorgente</option>
-          <option value="destination">Destinazione</option>
-          <option value="both">Entrambi</option>
+          <option value="source">{{ t('endpoint.rOrigine') }}</option>
+          <option value="destination">{{ t('nasEndpoint.rDest') }}</option>
+          <option value="both">{{ t('endpoint.rEntrambi') }}</option>
         </select>
       </div>
       <div class="form-group">
-        <label>Host</label>
+        <label>{{ t('comune.host') }}</label>
         <input v-model="form.host" class="form-input" placeholder="192.168.1.10" required />
-        <small class="text-muted">Deve essere raggiungibile dal server dapx, non solo dal tuo PC.</small>
+        <small class="text-muted">{{ t('endpoint.hostNota') }}</small>
       </div>
       <div class="form-group">
-        <label>Porta</label>
+        <label>{{ t('comune.porta') }}</label>
         <input v-model.number="form.port" type="number" class="form-input" />
         <small v-if="form.endpoint_type === 'qnap'" class="text-muted">
-          QNAP: 8080 = HTTP, 443 = HTTPS (consigliato se accedi al NAS via https).
+          {{ t('endpoint.portaQnap') }}
         </small>
         <small v-else-if="form.endpoint_type === 'synology'" class="text-muted">
-          Porta API DSM (browse/test): 5001 = HTTPS, 5000 = HTTP. Il job rsync via SSH usa porta 22.
+          {{ t('endpoint.portaDsm') }}
         </small>
       </div>
       <div class="form-group">
-        <label>Utente</label>
+        <label>{{ t('endpoint.utente') }}</label>
         <input v-model="form.username" class="form-input" required />
       </div>
       <div class="form-group">
-        <label>Password</label>
+        <label>{{ t('comune.password') }}</label>
         <input
           v-model="form.password"
           type="password"
           class="form-input"
-          :placeholder="isEdit ? 'Lascia vuoto per non cambiare' : ''"
+          :placeholder="isEdit ? t('endpoint.nonCambiare') : ''"
         />
       </div>
       <fieldset v-if="form.endpoint_type !== 'windows'" class="span-2 caps-box">
-        <legend>Accesso SSH (replica diretta e catalogo du)</legend>
+        <legend>{{ t('nasEndpoint.ssh') }}</legend>
         <div class="form-group">
-          <label>Porta SSH</label>
+          <label>{{ t('nasEndpoint.portaSsh') }}</label>
           <input v-model.number="form.ssh_port" type="number" class="form-input" placeholder="22" />
-          <small class="text-muted">Usata da dapx per lanciare rsync/du sulla sorgente.</small>
+          <small class="text-muted">{{ t('nasEndpoint.sshNota') }}</small>
         </div>
       </fieldset>
       <fieldset v-if="form.role !== 'source'" class="span-2 caps-box">
-        <legend>Servizio rsync (per ruolo destinazione — motore diretto)</legend>
+        <legend>{{ t('nasEndpoint.rsync') }}</legend>
         <div class="grid-2">
           <div class="form-group">
-            <label>Modulo rsync</label>
+            <label>{{ t('nasEndpoint.modulo') }}</label>
             <input v-model="form.rsync_module" class="form-input" placeholder="DATI" />
             <small class="text-muted">
-              Nome modulo configurato sul NAS (DSM: Servizi file → rsync; QTS: Rsync Server).
+              {{ t('nasEndpoint.moduloNota') }}
             </small>
           </div>
           <div class="form-group">
-            <label>Porta</label>
+            <label>{{ t('comune.porta') }}</label>
             <input v-model.number="form.rsync_port" type="number" class="form-input" placeholder="873" />
           </div>
           <div class="form-group">
-            <label>Utente rsync</label>
+            <label>{{ t('nasEndpoint.utenteRsync') }}</label>
             <input v-model="form.rsync_user" class="form-input" />
           </div>
           <div class="form-group">
-            <label>Password rsync</label>
+            <label>{{ t('nasEndpoint.passwordRsync') }}</label>
             <input v-model="form.rsync_password" type="password" class="form-input"
-                   :placeholder="isEdit ? 'Lascia vuoto per non cambiare' : ''" />
+                   :placeholder="isEdit ? t('endpoint.nonCambiare') : ''" />
           </div>
         </div>
       </fieldset>
       <div v-if="form.endpoint_type === 'qnap'" class="form-group span-2">
         <label class="checkbox-label">
           <input v-model="form.use_https" type="checkbox" />
-          Usa HTTPS (porta 443 o forza HTTPS su porta custom)
+          {{ t('endpoint.https') }}
         </label>
       </div>
       <div v-if="form.endpoint_type === 'synology' || form.endpoint_type === 'qnap'" class="form-group span-2">
         <label class="checkbox-label">
           <input v-model="form.verify_ssl" type="checkbox" />
-          Verifica certificato SSL (disabilita per certificato auto-firmato del NAS)
+          {{ t('endpoint.verifica') }}
         </label>
       </div>
       <div v-if="form.endpoint_type === 'linux'" class="form-group">
-        <label>Chiave SSH (Linux/OpenSSH)</label>
+        <label>{{ t('endpoint.chiave') }}</label>
         <input v-model="form.ssh_key_path" class="form-input" placeholder="/root/.ssh/id_rsa" />
       </div>
       <div v-if="form.endpoint_type === 'windows'" class="form-group">
-        <label>Dominio SMB</label>
+        <label>{{ t('endpoint.dominio') }}</label>
         <input v-model="form.domain" class="form-input" />
       </div>
       <div class="form-group span-2 ep-actions">
         <button class="btn btn-primary" :disabled="saving" @click="save">
-          {{ saving ? 'Salvataggio…' : isEdit ? 'Salva modifiche' : 'Salva endpoint' }}
+          {{ saving ? t('comune.salvataggio') : isEdit ? t('comune.salvaModifiche') : t('endpoint.salva') }}
         </button>
         <button
           v-if="isEdit"
@@ -342,14 +345,14 @@ async function testConnection() {
           :disabled="testing"
           @click="testConnection"
         >
-          {{ testing ? 'Test…' : 'Test connessione' }}
+          {{ testing ? t('endpoint.provaInCorso') : t('endpoint.prova') }}
         </button>
       </div>
       <p v-if="caps" class="span-2 caps-badges">
         <span class="badge" :class="caps.rsync_source ? 'badge-ok' : 'badge-off'"
-              :title="caps.reasons.rsync_source || ''">rsync sorgente {{ caps.rsync_source ? '✓' : '✗' }}</span>
+              :title="caps.reasons.rsync_source || ''">{{ t('nasEndpoint.rsyncOrigine') }} {{ caps.rsync_source ? '✓' : '✗' }}</span>
         <span class="badge" :class="caps.rsync_dest ? 'badge-ok' : 'badge-off'"
-              :title="caps.reasons.rsync_dest || ''">rsync destinazione {{ caps.rsync_dest ? '✓' : '✗' }}</span>
+              :title="caps.reasons.rsync_dest || ''">{{ t('nasEndpoint.rsyncDest') }} {{ caps.rsync_dest ? '✓' : '✗' }}</span>
         <span class="badge" :class="caps.smb ? 'badge-ok' : 'badge-off'">SMB {{ caps.smb ? '✓' : '✗' }}</span>
       </p>
       <p v-if="errorMsg" class="span-2 text-danger">{{ errorMsg }}</p>

@@ -25,6 +25,8 @@ settembre (scheduler con battito, il job segue la VM), Domarc alla 3.26.0 dal 24
 
 **Ritorno del 3CX di DTS (24/11, 19:33-19:44)**: la 103 «3CX-V20» è di nuovo in produzione su DTS-PX-UP, ripristinata dal backup da spenta della 9103; la 9103 è spenta su DTS-PX-04 e intatta. Job 2 spento finché non si rifà la replica; disco vecchio da parte in `ZFS/vecchio-3cx-103-disk-0-20261124`. Trappola: la conf della replica porta il bridge della destinazione, al ritorno va rimesso quello dell'originale (dettaglio in TASKS.md).
 
+**Interfaccia in due lingue (25/11, non rilasciata)**: `vue-i18n`, `frontend/src/locales/{it,en}.json` (1.596 chiavi), glossario in `docs/glossario-it-en.md`, date e numeri da `frontend/src/utils/formato.ts`, controllo delle chiavi dentro `npm run lint`. Tutte le viste del menu sono tradotte ma **nessuna è stata guardata a schermo**; il selettore di lingua è nascosto (`localStorage['dapx.lang.anteprima']='1'` o `npm run dev`). In italiano cambiano molte etichette (glossario: «Ultima esecuzione», «Origine», «Pianificazione»). Restano: lingua sul profilo utente (zona rossa), messaggi del backend, e-mail; piano in TASKS.md, sezione «traduzione inglese della UI». Un testo nuovo va messo nei due file di lingua, mai scritto a mano nel componente.
+
 **Trappola corrente**: il rilascio si fa solo da `main` e finisce alla
 release di GitHub (`.claude/rules/rilascio.md`): l'8 settembre una versione
 nata su un ramo 35 commit indietro non arrivò mai su `main`.
