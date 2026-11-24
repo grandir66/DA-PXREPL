@@ -4,7 +4,7 @@
       <header class="jlv-head">
         <div>
           <h2 class="jlv-title">
-            <Icon name="terminal" :size="16" /> Log job
+            <Icon name="terminal" :size="16" /> {{ t('logJob.titolo') }}
             <span class="jlv-subtitle" v-if="jobName">— {{ jobName }}</span>
           </h2>
           <div class="jlv-meta">
@@ -14,27 +14,27 @@
               :pulse="progress?.is_running"
             />
             <span v-if="progress?.last_run" class="jlv-meta-item">
-              ultimo run: {{ formatTime(progress.last_run) }}
+              {{ t('logJob.ultima', { quando: formatTime(progress.last_run) }) }}
             </span>
             <span v-if="progress?.last_duration" class="jlv-meta-item">
-              durata: {{ progress.last_duration }}s
+              {{ t('logJob.durata', { s: progress.last_duration }) }}
             </span>
             <span v-if="progress?.last_transferred" class="jlv-meta-item">
-              trasferito: {{ progress.last_transferred }}
+              {{ t('logJob.trasferito', { quanto: progress.last_transferred }) }}
             </span>
             <span v-if="progress?.run_count != null" class="jlv-meta-item">
-              {{ progress.run_count }} run, {{ progress.error_count || 0 }} errori
+              {{ t('logJob.conteggi', { n: progress.run_count, errori: progress.error_count || 0 }) }}
             </span>
           </div>
         </div>
         <div class="jlv-head-actions">
           <label class="jlv-follow">
-            <input type="checkbox" v-model="autoScroll" /> auto-scroll
+            <input type="checkbox" v-model="autoScroll" /> {{ t('logJob.scorrimento') }}
           </label>
           <button class="btn btn-secondary btn-sm" @click="copyOutput" :disabled="!hasOutput">
-            <Icon name="copy" :size="14" /> Copia
+            <Icon name="copy" :size="14" /> {{ t('comune.copia') }}
           </button>
-          <button class="btn-icon" @click="close" aria-label="Chiudi">
+          <button class="btn-icon" @click="close" :aria-label="t('comune.chiudi')">
             <Icon name="x" :size="18" />
           </button>
         </div>
@@ -42,7 +42,7 @@
 
       <div v-if="transferProgress" class="jlv-progress-wrap">
         <div class="jlv-progress-top">
-          <span>Avanzamento replica</span>
+          <span>{{ t('logJob.avanzamento') }}</span>
           <span class="jlv-progress-pct">{{ transferProgress.percent.toFixed(1) }}%</span>
         </div>
         <div class="jlv-progress-bar">
@@ -52,22 +52,20 @@
           />
         </div>
         <div class="jlv-progress-sub">
-          {{ transferProgress.dest_human }} scritti su {{ transferProgress.source_human }} (sorgente)
+          {{ t('logJob.scritti', { fatti: transferProgress.dest_human, totale: transferProgress.source_human }) }}
         </div>
       </div>
 
       <div class="jlv-output" ref="outputRef">
         <div v-if="fatalError" class="jlv-fatal">
           <Icon name="alert-triangle" :size="32" />
-          <h3>Endpoint log non disponibile</h3>
-          <p>
-            Il backend installato non espone <code>/api/sync-jobs/{id}/progress</code>
-            (oppure il servizio non è stato riavviato dopo l'update).
-          </p>
-          <p class="jlv-fatal-hint">
-            Risoluzione: sul container <code>systemctl restart dapx-unified</code>,
-            oppure verifica che la versione installata sia ≥ 3.13.0.
-          </p>
+          <h3>{{ t('logJob.nonDisponibile') }}</h3>
+          <i18n-t keypath="logJob.nonDisponibile1" tag="p">
+            <template #percorso><code>/api/sync-jobs/{id}/progress</code></template>
+          </i18n-t>
+          <i18n-t keypath="logJob.nonDisponibile2" tag="p" class="jlv-fatal-hint">
+            <template #comando><code>systemctl restart dapx-unified</code></template>
+          </i18n-t>
           <p class="jlv-fatal-detail" v-if="fetchError">{{ fetchError }}</p>
         </div>
         <pre v-else-if="output.length"><span
@@ -78,11 +76,11 @@
 </span></pre>
         <EmptyState
           v-else-if="!loading"
-          title="Nessun log"
-          message="Il job non ha ancora prodotto output."
+          :title="t('logJob.vuoto')"
+          :message="t('logJob.vuotoMsg')"
           icon="file-text"
         />
-        <LoadingState v-if="loading && !output.length && !fatalError" message="Caricamento log…" />
+        <LoadingState v-if="loading && !output.length && !fatalError" :message="t('logJob.caricamento')" />
       </div>
 
       <footer class="jlv-foot">
@@ -94,11 +92,11 @@
           <span v-else-if="progress?.log?.message">{{ progress.log.message }}</span>
         </div>
         <div class="jlv-stats">
-          <span v-if="fatalError" class="jlv-error">polling fermo</span>
+          <span v-if="fatalError" class="jlv-error">{{ t('logJob.fermo') }}</span>
           <span v-else-if="progress?.is_running" class="jlv-pulse">
-            <span class="dot" /> in esecuzione
+            <span class="dot" /> {{ t('stato.running') }}
           </span>
-          <span v-else>aggiornato {{ secondsAgo }}s fa</span>
+          <span v-else>{{ t('logJob.aggiornatoFa', { s: secondsAgo }) }}</span>
         </div>
       </footer>
     </div>
@@ -113,6 +111,8 @@ import StatusPill from '../ui/StatusPill.vue'
 import EmptyState from '../ui/EmptyState.vue'
 import LoadingState from '../ui/LoadingState.vue'
 import { useToast, errorMessage } from '../../stores/toast'
+import { useI18n } from 'vue-i18n'
+import { dataOra } from '../../utils/formato'
 
 const props = withDefaults(
   defineProps<{
@@ -128,6 +128,7 @@ const props = withDefaults(
 )
 const emit = defineEmits<{ (e: 'update:visible', v: boolean): void }>()
 const toast = useToast()
+const { t, te } = useI18n()
 
 interface TransferProgress {
   percent: number
@@ -181,17 +182,11 @@ const hasOutput = computed(() => output.value.length > 0)
 const transferProgress = computed(() => progress.value?.transfer_progress ?? null)
 
 const statusLabel = computed(() => {
-  if (progress.value?.is_running) return 'in esecuzione'
+  if (progress.value?.is_running) return t('stato.running')
   const logStatus = (progress.value?.log?.status || '').toLowerCase()
-  if (logStatus === 'started') return 'in esecuzione'
+  if (logStatus === 'started') return t('stato.running')
   const s = (progress.value?.current_status || progress.value?.last_status || 'idle').toLowerCase()
-  return ({
-    success: 'successo',
-    failed: 'fallito',
-    running: 'in esecuzione',
-    started: 'in esecuzione',
-    idle: 'in attesa',
-  } as Record<string, string>)[s] || s
+  return te(`stato.${s}`) ? t(`stato.${s}`) : s
 })
 const statusTone = computed<'success' | 'danger' | 'warning' | 'info' | 'neutral'>(() => {
   if (progress.value?.is_running) return 'warning'
@@ -279,8 +274,8 @@ async function fetchProgress() {
           }
           if (!toastShown) {
             toast.warning(
-              'Modalità log compatibile',
-              "Il backend non espone /progress; uso l'endpoint legacy /logs (no aggiornamento live)."
+              t('logJob.compatibile'),
+              t('logJob.compatibileMsg')
             )
             toastShown = true
           }
@@ -298,14 +293,14 @@ async function fetchProgress() {
       fatalError.value = true
       stopPolling()
       if (!toastShown) {
-        toast.error('Impossibile leggere il log', errorMessage(e))
+        toast.error(t('logJob.erroreLettura'), errorMessage(e))
         toastShown = true
       }
       return
     }
     fetchError.value = errorMessage(e)
     if (!toastShown) {
-      toast.error('Impossibile leggere il log', errorMessage(e))
+      toast.error(t('logJob.erroreLettura'), errorMessage(e))
       toastShown = true
     }
   } finally {
@@ -374,18 +369,14 @@ _onU(() => window.removeEventListener('keydown', onKeydown))
 async function copyOutput() {
   try {
     await navigator.clipboard.writeText(output.value.join('\n'))
-    toast.success('Log copiato negli appunti')
+    toast.success(t('logJob.copiato'))
   } catch (e) {
-    toast.error('Impossibile copiare', errorMessage(e))
+    toast.error(t('comune.impossibileCopiare'), errorMessage(e))
   }
 }
 
 function formatTime(iso: string) {
-  try {
-    return new Date(iso).toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'medium' })
-  } catch {
-    return iso
-  }
+  return dataOra(iso, { dateStyle: 'short', timeStyle: 'medium' }, iso)
 }
 </script>
 

@@ -4,9 +4,9 @@
       <header class="jm-head">
         <div class="jm-head-title">
           <span class="jm-mode" :class="`jm-mode-${form.kind}`">{{ modeLabel }}</span>
-          <h2>{{ isEdit ? 'Modifica' : 'Nuova' }} {{ kindLabel }}</h2>
+          <h2>{{ isEdit ? t('jobModale.modifica', { cosa: kindLabel }) : t('jobModale.nuovo', { cosa: kindLabel }) }}</h2>
         </div>
-        <button class="jm-close" @click="onClose" aria-label="Chiudi">×</button>
+        <button class="jm-close" @click="onClose" :aria-label="t('comune.chiudi')">×</button>
       </header>
 
       <nav class="jm-steps">
@@ -20,69 +20,72 @@
           :disabled="!canJumpTo(i)"
         >
           <span class="jm-step-num">{{ i + 1 }}</span>
-          <span class="jm-step-label">{{ s.label }}</span>
+          <span class="jm-step-label">{{ t(`jobModale.passo.${s.id}`) }}</span>
         </button>
       </nav>
 
       <section class="jm-body">
         <!-- ===== Step 1: Identità & sorgente ===== -->
         <div v-show="currentStep === 0" class="jm-section">
-          <h3>Origine</h3>
+          <h3>{{ t('jobModale.origine') }}</h3>
           <div v-if="presetPvesr && !isEdit" class="jm-note jm-note-warn mb-3">
-            Import da replica Proxmox <code>{{ presetPvesr.id }}</code>:
-            completa storage ZFS destinazione e verifica schedule.
-            Disabilita il job pvesr su Proxmox prima di attivare Syncoid dapx per evitare doppie repliche.
+            <i18n-t keypath="jobModale.importPvesr" tag="span">
+              <template #id><code>{{ presetPvesr.id }}</code></template>
+            </i18n-t>
           </div>
 
           <div class="jm-grid">
             <div class="field field-full">
-              <label>Nome job</label>
+              <label>{{ t('jobModale.nomeJob') }}</label>
               <input
                 v-model="form.name"
                 type="text"
                 class="form-input"
-                placeholder="auto se vuoto"
+                :placeholder="t('jobModale.nomeAuto')"
                 :disabled="isEdit && lockSource"
               />
             </div>
 
             <div class="field" v-if="!isEdit">
-              <label>Modalità</label>
+              <label>{{ t('jobModale.modalita') }}</label>
               <select v-model="form.kind" class="form-input" :disabled="isEdit">
-                <option value="syncoid">Replica ZFS (Syncoid)</option>
-                <option value="pve_native">Replica nativa Proxmox (qualunque storage)</option>
-                <option value="backup_pbs">Backup verso PBS</option>
-                <option value="recovery_pbs">Replica via PBS (backup + restore)</option>
+                <option value="syncoid">{{ t('jobModale.optSyncoid') }}</option>
+                <option value="pve_native">{{ t('jobModale.optPveNative') }}</option>
+                <option value="backup_pbs">{{ t('jobModale.optBackupPbs') }}</option>
+                <option value="recovery_pbs">{{ t('jobModale.optRecoveryPbs') }}</option>
               </select>
               <small v-if="form.kind === 'pve_native'" class="jm-note jm-note-warn">
-                <Icon name="alert-triangle" :size="14" /> Modalità <strong>full ad ogni run</strong> (no incrementale di banda).
-                Per replica incrementale tra cluster usa <em>Replica via PBS</em>.
+                <Icon name="alert-triangle" :size="14" />
+                <i18n-t keypath="jobModale.notaPveNative" tag="span">
+                  <template #completa><strong>{{ t('jobModale.completaOgniVolta') }}</strong></template>
+                  <template #viaPbs><em>{{ t('jobModale.tipoBreve.recovery_pbs') }}</em></template>
+                </i18n-t>
               </small>
             </div>
 
             <div class="field">
-              <label>Nodo sorgente (PVE)</label>
+              <label>{{ t('jobModale.nodoOrigine') }}</label>
               <select
                 v-model.number="form.source_node_id"
                 class="form-input"
                 :disabled="isEdit && lockSource"
                 @change="onSourceNodeChange"
               >
-                <option :value="null">— seleziona —</option>
+                <option :value="null">{{ t('comune.seleziona') }}</option>
                 <option v-for="n in store.pveNodes" :key="n.id" :value="n.id">
-                  {{ n.name }} <span v-if="!n.is_online">(offline)</span>
+                  {{ n.name }} <span v-if="!n.is_online">{{ t('comune.nonInLinea') }}</span>
                 </option>
               </select>
             </div>
 
             <div class="field field-full">
-              <label>Macchina virtuale</label>
+              <label>{{ t('jobModale.vm') }}</label>
               <div class="jm-vm-pick">
                 <input
                   v-model="vmFilter"
                   type="text"
                   class="form-input"
-                  placeholder="cerca per VMID o nome…"
+                  :placeholder="t('jobModale.cercaVm')"
                   :disabled="isEdit && lockSource"
                 />
                 <button
@@ -91,7 +94,7 @@
                   @click="reloadVMs"
                   :disabled="!form.source_node_id"
                 >
-                  ↻ Aggiorna
+                  {{ t('jobModale.aggiorna') }}
                 </button>
               </div>
 
@@ -112,21 +115,21 @@
                 </button>
               </div>
               <div v-else-if="form.source_node_id && !loadingDisks" class="jm-empty">
-                Nessuna VM trovata. Aggiorna o seleziona un altro nodo.
+                {{ t('jobModale.nessunaVm') }}
               </div>
             </div>
 
             <div class="field field-full" v-if="form.vm_id">
-              <label>Dischi da replicare</label>
-              <div v-if="loadingDisks" class="jm-empty">Caricamento dischi…</div>
+              <label>{{ t('jobModale.dischi') }}</label>
+              <div v-if="loadingDisks" class="jm-empty">{{ t('jobModale.caricoDischi') }}</div>
               <table v-else-if="vmDisks.length" class="jm-disks">
                 <thead>
                   <tr>
                     <th class="jm-disk-check"></th>
-                    <th>Disco</th>
+                    <th>{{ t('jobModale.disco') }}</th>
                     <th>Storage</th>
-                    <th>Dataset/Volume</th>
-                    <th class="num">Dimensione</th>
+                    <th>{{ t('jobModale.datasetVolume') }}</th>
+                    <th class="num">{{ t('jobModale.dimensione') }}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -157,7 +160,7 @@
                   </tr>
                 </tbody>
               </table>
-              <div v-else class="jm-empty">Nessun disco rilevato (la VM potrebbe non esistere o avere storage non supportato).</div>
+              <div v-else class="jm-empty">{{ t('jobModale.nessunDisco') }}</div>
               <div
                 v-if="replicationStorageHint && !isEdit"
                 class="jm-note jm-note-warn jm-storage-hint"
@@ -169,11 +172,11 @@
                   class="btn btn-xs btn-secondary ml-2"
                   @click="form.kind = replicationStorageHint.suggestKind!"
                 >
-                  Passa a {{ kindShortLabel(replicationStorageHint.suggestKind) }}
+                  {{ t('jobModale.passaA', { tipo: kindShortLabel(replicationStorageHint.suggestKind) }) }}
                 </button>
               </div>
               <small v-if="form.kind === 'syncoid' && vmDisks.length" class="jm-note">
-                ISO/CD-ROM e cloud-init sono esclusi dalla replica per default.
+                {{ t('jobModale.isoEsclusi') }}
               </small>
             </div>
           </div>
@@ -181,16 +184,16 @@
 
         <!-- ===== Step 2: Destinazione ===== -->
         <div v-show="currentStep === 1" class="jm-section">
-          <h3>Destinazione</h3>
+          <h3>{{ t('jobModale.destinazione') }}</h3>
           <div class="jm-grid">
             <div class="field" v-if="form.kind !== 'backup_pbs'">
-              <label>Nodo destinazione (PVE)</label>
+              <label>{{ t('jobModale.nodoDest') }}</label>
               <select
                 v-model.number="form.dest_node_id"
                 class="form-input"
                 @change="onDestNodeChange"
               >
-                <option :value="null">— seleziona —</option>
+                <option :value="null">{{ t('comune.seleziona') }}</option>
                 <option
                   v-for="n in pveDestNodes"
                   :key="n.id"
@@ -202,9 +205,9 @@
             </div>
 
             <div class="field" v-if="form.kind === 'backup_pbs' || form.kind === 'recovery_pbs'">
-              <label>Server PBS</label>
+              <label>{{ t('jobModale.serverPbs') }}</label>
               <select v-model.number="form.pbs_node_id" class="form-input">
-                <option :value="null">— seleziona —</option>
+                <option :value="null">{{ t('comune.seleziona') }}</option>
                 <option v-for="n in store.pbsNodes" :key="n.id" :value="n.id">
                   {{ n.name }}
                 </option>
@@ -212,7 +215,7 @@
             </div>
 
             <div class="field" v-if="form.kind === 'syncoid'">
-              <label>Storage ZFS destinazione</label>
+              <label>{{ t('jobModale.storageZfsDest') }}</label>
               <StoragePicker
                 v-model="form.dest_pool"
                 :node-id="form.dest_node_id"
@@ -223,7 +226,7 @@
             </div>
 
             <div class="field" v-if="form.kind === 'syncoid'">
-              <label>Sotto-cartella (opzionale)</label>
+              <label>{{ t('jobModale.sottocartella') }}</label>
               <input
                 v-model="form.dest_subfolder"
                 type="text"
@@ -231,23 +234,25 @@
                 placeholder="replica"
               />
               <small>
-                Dataset: <code>{{ syncoidDestPreview.zfsPath }}/vm-XXX-disk-N</code>
-                · Storage Proxmox: <code>{{ syncoidDestPreview.storageName }}</code>
+                <i18n-t keypath="jobModale.anteprimaDest" tag="span">
+                  <template #dataset><code>{{ syncoidDestPreview.zfsPath }}/vm-XXX-disk-N</code></template>
+                  <template #storage><code>{{ syncoidDestPreview.storageName }}</code></template>
+                </i18n-t>
               </small>
             </div>
 
             <div class="field field-full" v-if="form.kind === 'backup_pbs' || form.kind === 'recovery_pbs'">
-              <label>Datastore PBS</label>
+              <label>{{ t('jobModale.datastorePbs') }}</label>
               <input
                 v-model="form.pbs_datastore"
                 type="text"
                 class="form-input"
-                placeholder="lascia vuoto per usare il datastore di default del nodo PBS"
+                :placeholder="t('jobModale.datastoreVuoto')"
               />
             </div>
 
             <div class="field field-full" v-if="form.kind === 'pve_native'">
-              <label>Storage destinazione (restore VM)</label>
+              <label>{{ t('jobModale.storageDestRipristino') }}</label>
               <StoragePicker
                 :model-value="form.registration.dest_storage"
                 :node-id="form.dest_node_id"
@@ -256,31 +261,30 @@
                 @update:model-value="(v: string) => { form.registration.dest_storage = v || null }"
               />
               <small class="jm-note">
-                Storage Proxmox dove verrà ripristinata la VM (ZFS, LVM-thin, dir, NFS, Ceph, …).
+                {{ t('jobModale.storageDestNota') }}
               </small>
             </div>
 
             <!-- recovery_pbs: anche storage di restore lato dest PVE -->
             <div class="field field-full" v-if="form.kind === 'recovery_pbs'">
-              <label>Storage di restore (sul nodo PVE destinazione)</label>
+              <label>{{ t('jobModale.storageRipristino') }}</label>
               <StoragePicker
                 v-model="form.restore_storage"
                 :node-id="form.dest_node_id"
                 :node-name="destNodeName"
                 type="any"
               />
-              <small>Nel restore via PBS lo storage può essere di qualunque tipo (ZFS, LVM, dir, …).</small>
+              <small>{{ t('jobModale.storageRipristinoNota') }}</small>
             </div>
           </div>
         </div>
 
         <!-- ===== Step 3: Registrazione VM ===== -->
         <div v-show="currentStep === 2" class="jm-section">
-          <h3>Registrazione VM sulla destinazione</h3>
-          <p class="jm-help">
-            Dopo ogni replica/backup-restore la VM viene creata sul nodo destinazione.
-            Il valore di default è <strong>attivo</strong>.
-          </p>
+          <h3>{{ t('jobModale.registrazione') }}</h3>
+          <i18n-t keypath="jobModale.registrazioneAiuto" tag="p" class="jm-help">
+            <template #attivo><strong>{{ t('jobModale.attivo') }}</strong></template>
+          </i18n-t>
           <VMRegistrationFields
             v-model="form.registration"
             :dest-node-id="form.dest_node_id"
@@ -296,22 +300,22 @@
 
         <!-- ===== Step 4: Pianificazione ===== -->
         <div v-show="currentStep === 3" class="jm-section">
-          <h3>Pianificazione</h3>
+          <h3>{{ t('jobModale.pianificazione') }}</h3>
           <ScheduleEditor v-model="form.schedule_config" @cron="form.schedule = $event" />
         </div>
 
         <!-- ===== Step 5: Avanzate & Notifiche ===== -->
         <div v-show="currentStep === 4" class="jm-section">
-          <h3>Avanzate</h3>
+          <h3>{{ t('jobModale.avanzate') }}</h3>
           <div class="jm-grid">
             <template v-if="form.kind === 'syncoid'">
               <div class="field">
-                <label>Compressione</label>
+                <label>{{ t('jobModale.compressione') }}</label>
                 <select v-model="form.compress" class="form-input">
-                  <option value="lz4">lz4 (consigliato)</option>
+                  <option value="lz4">lz4 ({{ t('comune.consigliato') }})</option>
                   <option value="zstd">zstd</option>
                   <option value="gzip">gzip</option>
-                  <option value="none">nessuna</option>
+                  <option value="none">{{ t('comune.nessuna') }}</option>
                 </select>
               </div>
               <div class="field">
@@ -321,18 +325,18 @@
               <div class="field field-checkbox">
                 <label class="checkbox-row">
                   <input type="checkbox" v-model="form.recursive" />
-                  <span>Replica ricorsiva (incluse i dataset figli)</span>
+                  <span>{{ t('jobModale.ricorsiva') }}</span>
                 </label>
               </div>
               <div class="field field-checkbox">
                 <label class="checkbox-row">
                   <input type="checkbox" v-model="form.resync_dopo_migrazione" />
-                  <span>Dopo una migrazione della VM riparti da solo con replica completa</span>
+                  <span>{{ t('jobModale.resync') }}</span>
                 </label>
-                <small>Se la VM cambia nodo il job la segue. Dopo una migrazione <em>live</em> i dischi non hanno snapshot in comune con la destinazione: spento (consigliato) la corsa fallisce e chiede conferma; acceso ricrea la destinazione da zero senza chiedere.</small>
+                <i18n-t keypath="jobModale.resyncNota" tag="small"><template #live><em>{{ t('jobModale.live') }}</em></template></i18n-t>
               </div>
               <div class="field">
-                <label>Snapshot da mantenere su destinazione</label>
+                <label>{{ t('jobModale.snapshotDaTenere') }}</label>
                 <input
                   v-model.number="form.keep_snapshots"
                   type="number"
@@ -340,73 +344,74 @@
                   max="365"
                   class="form-input"
                 />
-                <small>0 = solo l'ultima.</small>
+                <small>{{ t('jobModale.soloUltima') }}</small>
               </div>
             </template>
 
             <template v-if="form.kind === 'pve_native'">
               <div class="field">
-                <label>Compressione vzdump</label>
+                <label>{{ t('jobModale.compressioneVzdump') }}</label>
                 <select v-model="form.pve_compress" class="form-input">
-                  <option value="zstd">zstd (consigliato)</option>
-                  <option value="lzo">lzo (veloce)</option>
+                  <option value="zstd">zstd ({{ t('comune.consigliato') }})</option>
+                  <option value="lzo">lzo ({{ t('jobModale.veloce') }})</option>
                   <option value="gzip">gzip</option>
-                  <option value="none">nessuna</option>
+                  <option value="none">{{ t('comune.nessuna') }}</option>
                 </select>
               </div>
               <div class="field">
-                <label>Cartella dump (sul source)</label>
+                <label>{{ t('jobModale.cartellaDump') }}</label>
                 <input v-model="form.dump_dir" class="form-input" placeholder="/var/lib/vz/dump" />
-                <small>Deve essere scrivibile e con spazio sufficiente.</small>
+                <small>{{ t('jobModale.cartellaDumpNota') }}</small>
               </div>
               <div class="field">
-                <label>Bandwidth limit (kbit/s, opzionale)</label>
+                <label>{{ t('jobModale.limiteBanda') }}</label>
                 <input
                   v-model.number="form.bandwidth_limit_kb"
                   type="number"
                   min="0"
                   class="form-input"
-                  placeholder="(nessun limite)"
+                  :placeholder="t('jobModale.nessunLimite')"
                 />
               </div>
               <div class="field field-checkbox">
                 <label class="checkbox-row">
                   <input type="checkbox" v-model="form.replace_existing" />
-                  <span>Sovrascrivi VM esistente sul nodo destinazione</span>
+                  <span>{{ t('jobModale.sovrascrivi') }}</span>
                 </label>
-                <small>Necessario per repliche programmate (run #2 in poi). Stop+destroy+ricrea.</small>
+                <small>{{ t('jobModale.sovrascriviNota') }}</small>
               </div>
               <div class="field field-checkbox">
                 <label class="checkbox-row">
                   <input type="checkbox" v-model="form.cleanup_after" />
-                  <span>Rimuovi archivio sul source dopo restore</span>
+                  <span>{{ t('jobModale.rimuoviArchivio') }}</span>
                 </label>
               </div>
               <div class="field field-full">
                 <small class="jm-note jm-note-warn">
-                  <Icon name="alert-triangle" :size="14" /> <strong>Replica completa ad ogni run</strong> (vzdump + scp + qmrestore):
-                  trasferisce tutto da capo, non c'è risparmio di banda né delta.
-                  Per replica incrementale tra cluster usa "Replica via PBS".
+                  <Icon name="alert-triangle" :size="14" />
+                  <i18n-t keypath="jobModale.notaCompleta" tag="span">
+                    <template #titolo><strong>{{ t('jobModale.notaCompletaTitolo') }}</strong></template>
+                  </i18n-t>
                 </small>
               </div>
             </template>
 
             <template v-if="form.kind === 'backup_pbs' || form.kind === 'recovery_pbs'">
               <div class="field">
-                <label>Modalità backup</label>
+                <label>{{ t('jobModale.modoBackup') }}</label>
                 <select v-model="form.backup_mode" class="form-input">
-                  <option value="snapshot">snapshot (a caldo)</option>
+                  <option value="snapshot">{{ t('jobModale.aCaldo') }}</option>
                   <option value="suspend">suspend</option>
                   <option value="stop">stop</option>
                 </select>
               </div>
               <div class="field">
-                <label>Compressione backup</label>
+                <label>{{ t('jobModale.compressioneBackup') }}</label>
                 <select v-model="form.backup_compress" class="form-input">
                   <option value="zstd">zstd</option>
                   <option value="lzo">lzo</option>
                   <option value="gzip">gzip</option>
-                  <option value="none">nessuna</option>
+                  <option value="none">{{ t('comune.nessuna') }}</option>
                 </select>
               </div>
               <div class="field">
@@ -416,19 +421,19 @@
             </template>
           </div>
 
-          <h3 class="jm-h3-spaced">Notifiche</h3>
+          <h3 class="jm-h3-spaced">{{ t('jobModale.notifiche') }}</h3>
           <div class="jm-grid">
             <div class="field">
-              <label>Quando notificare</label>
+              <label>{{ t('jobModale.quando') }}</label>
               <select v-model="form.notify_mode" class="form-input">
-                <option value="daily">Solo nel riepilogo giornaliero (predefinito)</option>
-                <option value="failure">Riepilogo + mail subito se fallisce</option>
-                <option value="always">Mail a ogni esecuzione</option>
-                <option value="never">Nessuna notifica, escluso dal riepilogo</option>
+                <option value="daily">{{ t('jobModale.nDaily') }}</option>
+                <option value="failure">{{ t('jobModale.nFailure') }}</option>
+                <option value="always">{{ t('jobModale.nAlways') }}</option>
+                <option value="never">{{ t('jobModale.nNever') }}</option>
               </select>
             </div>
             <div class="field">
-              <label>Oggetto email (opzionale)</label>
+              <label>{{ t('jobModale.oggetto') }}</label>
               <input v-model="form.notify_subject" type="text" class="form-input" />
             </div>
           </div>
@@ -438,27 +443,27 @@
       <footer class="jm-foot">
         <div class="jm-foot-left">
           <span v-if="form.schedule" class="jm-summary-chip">
-            <strong>Schedule:</strong>
+            <strong>{{ t('jobModale.riepPianificazione') }}</strong>
             <code>{{ form.schedule }}</code>
           </span>
           <span v-if="form.vm_id" class="jm-summary-chip">
-            <strong>VM:</strong> #{{ form.vm_id }} {{ form.vm_name || '' }}
+            <strong>{{ t('jobModale.riepVm') }}</strong> #{{ form.vm_id }} {{ form.vm_name || '' }}
           </span>
         </div>
         <div class="jm-foot-actions">
-          <button class="btn btn-secondary" @click="onClose">Annulla</button>
-          <button class="btn btn-secondary" :disabled="currentStep === 0" @click="prev">Indietro</button>
+          <button class="btn btn-secondary" @click="onClose">{{ t('comune.annulla') }}</button>
+          <button class="btn btn-secondary" :disabled="currentStep === 0" @click="prev">{{ t('comune.indietro') }}</button>
           <button
             v-if="currentStep < steps.length - 1"
             class="btn btn-primary"
             :disabled="!canAdvance"
             @click="next"
           >
-            Avanti
+            {{ t('comune.avanti') }}
           </button>
           <button v-else class="btn btn-primary" :disabled="!canSubmit || saving" @click="submit">
-            <span v-if="saving">Salvataggio…</span>
-            <span v-else>{{ isEdit ? 'Salva modifiche' : 'Crea job' }}</span>
+            <span v-if="saving">{{ t('comune.salvataggio') }}</span>
+            <span v-else>{{ isEdit ? t('jobModale.salvaModifiche') : t('jobModale.creaJob') }}</span>
           </button>
         </div>
         <p v-if="!canAdvance && advanceBlockReason" class="jm-advance-hint">
@@ -485,6 +490,7 @@ import Icon from '../ui/Icon.vue'
 import StoragePicker from './StoragePicker.vue'
 import VMRegistrationFields, { type VMRegistration } from './VMRegistrationFields.vue'
 import ScheduleEditor from './ScheduleEditor.vue'
+import { useI18n } from 'vue-i18n'
 import { normalizeZfsReplicaDest } from '../../utils/zfsNaming'
 
 interface DiskInfo {
@@ -585,13 +591,9 @@ const isEdit = computed(() => !!props.job)
 const presetPvesr = computed(() => props.presetPvesr)
 const lockSource = computed(() => isEdit.value)
 
-const steps = [
-  { id: 'source', label: 'Origine' },
-  { id: 'dest', label: 'Destinazione' },
-  { id: 'reg', label: 'Registrazione VM' },
-  { id: 'sched', label: 'Pianificazione' },
-  { id: 'adv', label: 'Avanzate' },
-]
+const { t } = useI18n()
+
+const steps = [{ id: 'source' }, { id: 'dest' }, { id: 'reg' }, { id: 'sched' }, { id: 'adv' }]
 const currentStep = ref(0)
 
 const form = ref<FormState>(emptyForm(props.mode))
@@ -613,21 +615,21 @@ const replicationStorageHint = computed(() => {
   if (nonZfs > 0 && form.value.kind === 'syncoid') {
     return {
       message:
-        'Almeno un disco non è su dataset ZFS: Syncoid non può replicarlo. Consigliato: Replica via PBS.',
+        t('jobModale.suggNonZfs'),
       suggestKind: 'recovery_pbs' as JobKind,
     }
   }
   if (zfsDisks.length === disks.length && disks.length > 0 && form.value.kind === 'recovery_pbs') {
     return {
       message:
-        'Tutti i dischi sono su ZFS: per replica incrementale efficiente preferisci Syncoid.',
+        t('jobModale.suggTuttoZfs'),
       suggestKind: 'syncoid' as JobKind,
     }
   }
   if (nonZfs > 0 && form.value.kind === 'pve_native') {
     return {
       message:
-        'Storage non ZFS: la replica PVE-native è full ad ogni run. Valuta Replica via PBS (incrementale).',
+        t('jobModale.suggPveNonZfs'),
       suggestKind: 'recovery_pbs' as JobKind,
     }
   }
@@ -635,10 +637,7 @@ const replicationStorageHint = computed(() => {
 })
 
 function kindShortLabel(k: JobKind): string {
-  if (k === 'syncoid') return 'Syncoid ZFS'
-  if (k === 'recovery_pbs') return 'Replica via PBS'
-  if (k === 'pve_native') return 'PVE-native'
-  return k
+  return t(`jobModale.tipoBreve.${k}`)
 }
 
 const saving = ref(false)
@@ -866,25 +865,19 @@ const destNodeName = computed(
 const modeLabel = computed(() => {
   switch (form.value.kind) {
     case 'syncoid':
-      return 'ZFS / syncoid'
     case 'pve_native':
-      return 'Proxmox nativo'
     case 'backup_pbs':
-      return 'PBS · backup'
     case 'recovery_pbs':
-      return 'PBS · backup + restore'
+      return t(`jobModale.modo.${form.value.kind}`)
   }
 })
 const kindLabel = computed(() => {
   switch (form.value.kind) {
     case 'syncoid':
-      return 'replica ZFS'
     case 'pve_native':
-      return 'replica nativa Proxmox'
     case 'backup_pbs':
-      return 'backup PBS'
     case 'recovery_pbs':
-      return 'replica PBS'
+      return t(`jobModale.tipo.${form.value.kind}`)
   }
 })
 
@@ -914,29 +907,29 @@ const canAdvance = computed(() => {
 const advanceBlockReason = computed(() => {
   if (canAdvance.value) return null
   if (currentStep.value === 0) {
-    if (!form.value.source_node_id) return 'Seleziona il nodo sorgente.'
-    if (!form.value.vm_id) return 'Seleziona la VM da replicare.'
+    if (!form.value.source_node_id) return t('jobModale.selNodoOrigine')
+    if (!form.value.vm_id) return t('jobModale.selVm')
     if (form.value.kind === 'syncoid' && vmDisks.value.length && !loadingDisks.value) {
       const selected = vmDisks.value.filter(
         d => selectedDisks.value.has(d.disk_name) && d.dataset && d.replicable !== false
       )
-      if (!selected.length) return 'Seleziona almeno un disco replicabile (ISO/CD-ROM esclusi).'
+      if (!selected.length) return t('jobModale.selDisco')
     }
     return null
   }
   if (currentStep.value === 1) {
     if (form.value.kind === 'backup_pbs') {
-      return form.value.pbs_node_id ? null : 'Seleziona il server PBS.'
+      return form.value.pbs_node_id ? null : t('jobModale.selPbs')
     }
-    if (!form.value.dest_node_id) return 'Seleziona il nodo destinazione.'
+    if (!form.value.dest_node_id) return t('jobModale.selNodoDest')
     if (form.value.kind === 'syncoid' && !form.value.dest_pool) {
-      return 'Seleziona lo storage ZFS destinazione (o digitalo manualmente).'
+      return t('jobModale.selStorageZfs')
     }
     if (form.value.kind === 'pve_native' && !form.value.registration.dest_storage) {
-      return 'Seleziona lo storage destinazione per il restore.'
+      return t('jobModale.selStorageRipristino')
     }
     if (form.value.kind === 'recovery_pbs' && !form.value.pbs_node_id) {
-      return 'Seleziona il server PBS.'
+      return t('jobModale.selPbs')
     }
   }
   return null
@@ -1027,10 +1020,10 @@ function toggleDisk(name: string, checked: boolean) {
 }
 
 function diskSelectTitle(d: DiskInfo): string {
-  if (d.is_iso) return 'ISO/CD-ROM: escluso dalla replica'
-  if (d.kind === 'cloudinit') return 'Cloud-init: escluso dalla replica'
-  if (!d.dataset) return 'Disco senza dataset ZFS: non replicabile via syncoid'
-  return 'Includi nella replica'
+  if (d.is_iso) return t('jobModale.discoIso')
+  if (d.kind === 'cloudinit') return t('jobModale.discoCloudinit')
+  if (!d.dataset) return t('jobModale.discoNoZfs')
+  return t('jobModale.discoIncludi')
 }
 
 function onSourceNodeChange() {
@@ -1274,7 +1267,7 @@ async function submit() {
     onClose()
   } catch (e: any) {
     submitError.value =
-      e?.response?.data?.detail || e?.message || 'Errore imprevisto durante il salvataggio.'
+      e?.response?.data?.detail || e?.message || t('jobModale.erroreSalvataggio')
   } finally {
     saving.value = false
   }
@@ -1288,10 +1281,10 @@ async function onClose() {
   if (dirty) {
     const { useConfirm } = await import('../../stores/confirm')
     const ok = await useConfirm().ask({
-      title: isEdit.value ? 'Uscire dalla modifica?' : 'Uscire dalla creazione?',
-      message: 'I dati inseriti andranno persi.',
-      confirmText: 'Esci e scarta',
-      cancelText: 'Continua a modificare',
+      title: isEdit.value ? t('jobModale.uscireModifica') : t('jobModale.uscireCreazione'),
+      message: t('jobModale.datiPersi'),
+      confirmText: t('jobModale.esciScarta'),
+      cancelText: t('jobModale.continua'),
       danger: true,
     })
     if (!ok) return
