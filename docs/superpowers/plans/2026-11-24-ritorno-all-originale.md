@@ -33,7 +33,7 @@
 | S2 | [x] | Logica pura del ritorno (piano dei passi, conf ricostruita, nomi) | in linea | S1 | le prove passano dopo essere state viste fallire | pytest del task 2 |
 | S3 | [x] | Passi SSH e rotte «stato», «prepara», «completa» | in linea | S2 | le rotte rispondono e rifiutano i casi vietati | pytest del task 3 |
 | S4 | [x] | Interfaccia in `VMs.vue` | in linea | S3 | lint e build puliti, una schermata a 1920 | `npm run lint`, `npm run build:check` |
-| S5 | [ ] | Prova vera su una VM di test a Domarc | in linea | S4 | ritorno riuscito e ritorno fallito apposta, tutti e due letti | registro del piano |
+| S5 | [~] | Prova vera su una VM di test a Domarc | in linea | S4 | ritorno riuscito e ritorno fallito apposta, tutti e due letti | registro del piano |
 | S6 | [ ] | Documenti e rilascio | in linea | S5 | release su GitHub | `gh release view` |
 
 ## Casi da non dimenticare
@@ -103,7 +103,7 @@ def piano_ritorno(jobs: List[dict], stato_replica: str, stato_originale: str,
 **Commit:** `ritorno: scheda nell'interfaccia`.
 **Verifica (24/11 sera):** `cd frontend && npm run lint` → 0 errori (44 avvisi vecchi); `npm run build:check` → pulito. Schermata a 1920 **non fatta**: in locale non c'è una replica col DR attivo da aprire; si guarda al task 5 su Domarc.
 
-### [ ] Task 5 — Prova vera a Domarc
+### [~] Task 5 — Prova vera a Domarc
 
 **Dove:** Domarc, LXC 332 su `192.168.40.4`, snapshot `pre-pxrepl-ritorno-<data>` prima di aggiornare. Una VM di test nuova, piccola (Debian, 2 dischi da 4 G, agent installato), con un job di replica verso PX-NAS. Nessuna VM vera, mai la 423.
 **Sequenza:** corsa di replica → spegnere la VM di test → «Attiva DR» e accensione della replica → scrivere un file nella replica → «Prepara» → «Completa» → controllare: file presente nell'originale, nome/uuid/bridge/onboot/tag dell'originale, replica spenta con identità di replica, disco vecchio presente col nome datato, corsa successiva del job incrementale e verde. Poi il giro del guasto: conf di ritorno con un bridge inesistente → l'originale non parte → la replica deve tornare accesa da sola.
@@ -121,6 +121,10 @@ def piano_ritorno(jobs: List[dict], stato_replica: str, stato_originale: str,
 - Non provato qui, resta al task 5: syncoid vero a ruoli invertiti (chiavi SSH dal nodo della replica al nodo d'origine), `zfs rename` su uno zvol vero, scrittura della conf in `/etc/pve`, attesa dell'agent.
 - 24/11 sera, task 4: scheda proposta a Riccardo oggetto per oggetto e approvata («Sì, scrivila»). Sta nel dettaglio VM sotto «Identità replica»; si vede sulle repliche col DR attivato, accese, o con un ritorno aperto. `frontend/dist` non è nel commit: si ricostruisce al rilascio (task 6).
 - **Fermo qui**: task 5 (prova vera a Domarc) e task 6 (rilascio) partono solo dopo aver detto a Riccardo cosa si fa su Domarc.
+- 24/11 20:05-20:15, task 5 avviato col sì di Riccardo. Snapshot dell'LXC 332 `pre-pxrepl-ritorno-20261124` su DA-PX-04. `frontend/dist` ricostruito e pubblicato (`afda7c4`), poi `./update.sh -y` nell'LXC 332: codice a `0296e0b`, le quattro colonne aggiunte a `sync_jobs`, `/api/health` healthy (versione ancora 3.26.0: il numero cambia al task 6).
+- 24/11 20:15: VM di test **9801 `dapx-test-ritorno`** su DA-PX-04 (Debian 12 genericcloud, `zfs:vm-9801-disk-0` e `zfs:vm-9801-disk-1` da 4 G, `net0` su `vmbr_int` con `link_down=1`, tag `dapx-test`, onboot 0), accesa. Senza agent: l'immagine cloud non lo porta e la VM è staccata dalla rete, quindi l'attesa usa «running per 30 s» e i dati si confrontano a blocchi (checksum dello snapshot finale sui due lati) invece che con un file scritto nell'ospite. `vmbr_int` su PX-NAS non esiste: la replica nascerà su `vmbr0`, cioè il caso DTS.
+- **Fermo**: per creare il job e premere «Attiva DR», «Prepara», «Completa» serve un accesso all'app di Domarc. Chiesto a Riccardo come.
+- Da togliere a fine prova: VM 9801 e i suoi due dischi su DA-PX-04; replica e `ZFS-LARGE/replica/vm-9801-disk-*` su PX-NAS; dischi `zfs/dapx-vecchio-9801-*`; il job di prova; snapshot `pre-pxrepl-ritorno-20261124` dell'LXC 332.
 
 ## Consuntivo
 ### Fatto
