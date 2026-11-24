@@ -8,6 +8,9 @@ import {
   type VmSnapshotJob,
   type VmTargetRef,
 } from '../../services/vmSnapshots'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   job?: VmSnapshotJob | null
@@ -168,7 +171,7 @@ async function loadIndex() {
   } catch (e: unknown) {
     indexError.value = axios.isAxiosError(e)
       ? String(e.response?.data?.detail || e.message)
-      : 'Errore caricamento VM'
+      : t('snapJob.erroreVm')
   } finally {
     indexLoading.value = false
   }
@@ -240,7 +243,7 @@ async function submit() {
       const detail = e.response?.data?.detail
       errorMsg.value = typeof detail === 'string' ? detail : JSON.stringify(detail || e.message)
     } else {
-      errorMsg.value = e instanceof Error ? e.message : 'Salvataggio fallito'
+      errorMsg.value = e instanceof Error ? e.message : t('snapJob.erroreSalva')
     }
   } finally {
     saving.value = false
@@ -264,28 +267,28 @@ onMounted(loadIndex)
   <div class="modal-overlay" @click.self="$emit('close')">
     <div class="modal-card">
       <header class="modal-head">
-        <h2>{{ isEdit ? 'Modifica job Snapshot VM' : 'Nuovo job Snapshot VM' }}</h2>
+        <h2>{{ isEdit ? t('snapJob.modifica') : t('snapJob.nuovo') }}</h2>
         <button type="button" class="btn btn-sm" @click="$emit('close')">✕</button>
       </header>
 
       <nav class="steps">
-        <span :class="{ active: step === 1 }">1. Selezione VM</span>
-        <span :class="{ active: step === 2 }">2. Politica</span>
-        <span :class="{ active: step === 3 }">3. Schedule</span>
-        <span :class="{ active: step === 4 }">4. Riepilogo</span>
+        <span :class="{ active: step === 1 }">{{ t('snapJob.p1') }}</span>
+        <span :class="{ active: step === 2 }">{{ t('snapJob.p2') }}</span>
+        <span :class="{ active: step === 3 }">{{ t('snapJob.p3') }}</span>
+        <span :class="{ active: step === 4 }">{{ t('snapJob.p4') }}</span>
       </nav>
 
       <div v-show="step === 1" class="modal-body">
         <div class="form-group">
-          <label>Nome job <span class="req">*</span></label>
-          <input v-model="form.name" class="form-input" placeholder="es. Snapshot giornaliero prod" />
+          <label>{{ t('snapJob.nome') }} <span class="req">*</span></label>
+          <input v-model="form.name" class="form-input" :placeholder="t('snapJob.segnNome')" />
         </div>
 
         <p v-if="indexError" class="text-danger">{{ indexError }}</p>
-        <p v-else-if="indexLoading" class="text-muted">Caricamento VM dai cluster…</p>
+        <p v-else-if="indexLoading" class="text-muted">{{ t('snapJob.caricoVm') }}</p>
 
         <div class="form-group">
-          <label>Cerca VM (id / nome / tag)</label>
+          <label>{{ t('snapJob.cerca') }}</label>
           <input v-model="vmFilter" class="form-input" placeholder="filtra…" />
         </div>
 
@@ -298,7 +301,7 @@ onMounted(loadIndex)
                   :checked="vms.every((vm) => selectedKeys.has(`${vm.node_id}:${vm.vmid}`))"
                   @change="toggleNodeAll(vms)"
                 />
-                <strong>{{ nodeName }}</strong> ({{ vms.length }} VM)
+                <strong>{{ nodeName }}</strong> ({{ t('snapJob.nVm', { n: vms.length }) }})
               </label>
             </div>
             <label
@@ -320,130 +323,120 @@ onMounted(loadIndex)
               <span
                 v-if="vm.has_pvesr"
                 class="badge badge-warn"
-                title="Questa VM ha replica pvesr attiva: un eventuale rollback rifà la replica (resync pvesr automatico dopo il rollback)"
+                :title="t('snapJob.pvesrAiuto')"
               ><Icon name="alert-triangle" :size="14" /> pvesr</span>
             </label>
           </div>
         </div>
 
         <fieldset class="sel-box">
-          <legend>Selettori dinamici (le VM nuove che corrispondono entrano da sole nel job)</legend>
+          <legend>{{ t('snapJob.selettori') }}</legend>
           <div class="grid-2">
             <div class="form-group">
-              <label>Tutte le VM con tag</label>
+              <label>{{ t('snapJob.perTag') }}</label>
               <select v-model="form.sel_tags" multiple class="form-input" size="4">
                 <option v-for="tag in allTags" :key="tag" :value="tag">{{ tag }}</option>
               </select>
             </div>
             <div class="form-group">
-              <label>Tutte le VM dei nodi</label>
+              <label>{{ t('snapJob.perNodo') }}</label>
               <select v-model="form.sel_node_ids" multiple class="form-input" size="4">
                 <option v-for="node in allNodes" :key="node.id" :value="node.id">{{ node.name }}</option>
               </select>
             </div>
           </div>
           <div class="form-group">
-            <label>Escludi VMID (separati da virgola)</label>
+            <label>{{ t('snapJob.escludi') }}</label>
             <input v-model="form.sel_exclude" class="form-input" placeholder="105, 210" />
           </div>
         </fieldset>
 
         <p class="text-muted preview-line">
-          <template v-if="previewLoading">Calcolo anteprima…</template>
+          <template v-if="previewLoading">{{ t('snapJob.anteprima') }}</template>
           <template v-else-if="hasSelection">
-            <strong>{{ preview.length }}</strong> VM verranno processate da questo job.
+            <i18n-t keypath="snapJob.processate" tag="span"><template #n><strong>{{ preview.length }}</strong></template></i18n-t>
             <span v-if="preview.some((vm) => vm.warning === 'not_found')" class="text-danger">
-              Alcune VM selezionate non esistono più.
+              {{ t('snapJob.sparite') }}
             </span>
           </template>
-          <template v-else>Seleziona VM con le checkbox oppure con i selettori dinamici.</template>
+          <template v-else>{{ t('snapJob.scegli') }}</template>
         </p>
       </div>
 
       <div v-show="step === 2" class="modal-body">
         <div class="grid-2">
           <div class="form-group">
-            <label>Label (classe snapshot)</label>
+            <label>{{ t('snapJob.label') }}</label>
             <input v-model="form.label" class="form-input" placeholder="daily" />
             <small class="text-muted">
-              Minuscolo, solo lettere/cifre (es. hourly, daily, weekly). Nome snapshot:
-              <code>auto{{ labelValid ? form.label : '…' }}_AAAAMMGG_HHMMSS</code>
+              <i18n-t keypath="snapJob.labelNota" tag="span"><template #nome><code>auto{{ labelValid ? form.label : '…' }}_AAAAMMGG_HHMMSS</code></template></i18n-t>
             </small>
-            <small v-if="form.label && !labelValid" class="text-danger d-block">Label non valido.</small>
+            <small v-if="form.label && !labelValid" class="text-danger d-block">{{ t('snapJob.labelNo') }}</small>
             <small v-if="labelConflict.length" class="text-warning d-block">
-              <Icon name="alert-triangle" :size="14" /> Label già usato dai job: {{ labelConflict.join(', ') }}. Se i job condividono VM,
-              le retention si cancelleranno gli snapshot a vicenda.
+              <Icon name="alert-triangle" :size="14" /> {{ t('snapJob.labelConflitto', { job: labelConflict.join(', ') }) }}
             </small>
           </div>
           <div class="form-group">
-            <label>Copie da mantenere (keep)</label>
+            <label>{{ t('snapJob.keep') }}</label>
             <input v-model.number="form.keep" type="number" min="1" max="100" class="form-input" />
             <small class="text-muted">
-              A ogni run, gli snapshot <code>auto{{ form.label }}_*</code> oltre le {{ form.keep }}
-              copie più recenti vengono eliminati. Snapshot manuali e di Sanoid non vengono mai toccati.
+              <i18n-t keypath="snapJob.keepNota" tag="span"><template #modello><code>auto{{ form.label }}_*</code></template><template #n>{{ form.keep }}</template></i18n-t>
             </small>
           </div>
         </div>
         <label class="checkbox-label mt-2">
           <input v-model="form.include_vmstate" type="checkbox" />
-          Includi RAM (vmstate) per le VM qemu accese
+          {{ t('snapJob.ram') }}
         </label>
         <p class="text-muted">
-          Default consigliato: OFF. Con RAM lo snapshot è più lento e occupa più spazio;
-          i container LXC non supportano vmstate (per loro è ignorato).
+          {{ t('snapJob.ramNota') }}
         </p>
         <div class="form-group mt-2">
-          <label>Descrizione (opzionale)</label>
+          <label>{{ t('snapJob.descr') }}</label>
           <input v-model="form.description" class="form-input" />
         </div>
       </div>
 
       <div v-show="step === 3" class="modal-body">
         <div class="form-group">
-          <label>Cron schedule (vuoto = solo manuale)</label>
+          <label>{{ t('snapJob.cron') }}</label>
           <input v-model="form.schedule" class="form-input" placeholder="0 3 * * *" />
-          <small class="text-muted">Esempi: <code>0 * * * *</code> ogni ora · <code>0 3 * * *</code> ogni notte alle 3 · <code>0 3 * * 0</code> ogni domenica.</small>
+          <small class="text-muted"><i18n-t keypath="snapJob.esempi" tag="span"><template #a><code>0 * * * *</code></template><template #b><code>0 3 * * *</code></template><template #c><code>0 3 * * 0</code></template></i18n-t></small>
         </div>
         <div class="preset-row">
-          <button type="button" class="btn btn-sm btn-secondary" @click="form.schedule = '0 * * * *'">Ogni ora</button>
-          <button type="button" class="btn btn-sm btn-secondary" @click="form.schedule = '0 3 * * *'">Ogni notte</button>
-          <button type="button" class="btn btn-sm btn-secondary" @click="form.schedule = '0 3 * * 0'">Settimanale</button>
-          <button type="button" class="btn btn-sm btn-secondary" @click="form.schedule = ''">Solo manuale</button>
+          <button type="button" class="btn btn-sm btn-secondary" @click="form.schedule = '0 * * * *'">{{ t('snapJob.oOra') }}</button>
+          <button type="button" class="btn btn-sm btn-secondary" @click="form.schedule = '0 3 * * *'">{{ t('snapJob.oNotte') }}</button>
+          <button type="button" class="btn btn-sm btn-secondary" @click="form.schedule = '0 3 * * 0'">{{ t('snapJob.oSett') }}</button>
+          <button type="button" class="btn btn-sm btn-secondary" @click="form.schedule = ''">{{ t('snapJob.oManuale') }}</button>
         </div>
         <div class="form-group mt-3">
-          <label>Notifiche email</label>
+          <label>{{ t('snapJob.notifiche') }}</label>
           <select v-model="form.notify_mode" class="form-input">
-            <option value="failure">Solo fallimenti o esiti parziali (consigliato)</option>
-            <option value="daily">Riepilogo giornaliero + errori</option>
-            <option value="always">Ogni esecuzione</option>
-            <option value="never">Mai</option>
+            <option value="failure">{{ t('snapJob.nFail') }}</option>
+            <option value="daily">{{ t('snapJob.nDaily') }}</option>
+            <option value="always">{{ t('snapJob.nAlways') }}</option>
+            <option value="never">{{ t('comune.mai') }}</option>
           </select>
         </div>
         <div class="form-group">
-          <label>Oggetto email (opzionale)</label>
-          <input v-model="form.notify_subject" class="form-input" placeholder="Snapshot VM prod" />
+          <label>{{ t('snapJob.oggetto') }}</label>
+          <input v-model="form.notify_subject" class="form-input" :placeholder="t('snapJob.segnOggetto')" />
         </div>
       </div>
 
       <div v-show="step === 4" class="modal-body">
         <ul class="summary-list">
-          <li><strong>{{ preview.length }}</strong> VM selezionate
-            ({{ form.targets.length }} esplicite<span v-if="form.sel_tags.length || form.sel_node_ids.length">
-              + selettori {{ form.sel_tags.length ? 'tag: ' + form.sel_tags.join(', ') : '' }}
-              {{ form.sel_node_ids.length ? 'nodi selezionati' : '' }}</span>)
+          <li><strong>{{ preview.length }}</strong> {{ t('snapJob.rSelezionate', { n: form.targets.length }) }}<span v-if="form.sel_tags.length || form.sel_node_ids.length"> {{ t('snapJob.rSelettori') }} {{ form.sel_tags.length ? 'tag: ' + form.sel_tags.join(', ') : '' }} {{ form.sel_node_ids.length ? t('snapJob.rNodi') : '' }}</span>
           </li>
-          <li>Label <code>{{ form.label }}</code> — mantieni <strong>{{ form.keep }}</strong> copie</li>
-          <li>RAM/vmstate: <strong>{{ form.include_vmstate ? 'Sì (solo qemu)' : 'No' }}</strong></li>
-          <li>Schedule: <code>{{ form.schedule || 'solo manuale' }}</code></li>
+          <li><i18n-t keypath="snapJob.rLabel" tag="span"><template #label><code>{{ form.label }}</code></template><template #n><strong>{{ form.keep }}</strong></template></i18n-t></li>
+          <li>RAM/vmstate: <strong>{{ form.include_vmstate ? t('snapJob.siQemu') : 'No' }}</strong></li>
+          <li>{{ t('snapJob.rPianificazione') }} <code>{{ form.schedule || t('snapJob.soloManuale') }}</code></li>
           <li v-if="preview.some((vm) => vm.has_pvesr)" class="text-warning">
-            <Icon name="alert-triangle" :size="14" /> {{ preview.filter((vm) => vm.has_pvesr).length }} VM hanno replica pvesr attiva:
-            gli snapshot convivono senza problemi; solo un eventuale <strong>rollback</strong> rifà la replica (resync pvesr automatico).
+            <Icon name="alert-triangle" :size="14" /> {{ t('snapJob.rPvesr', { n: preview.filter((vm) => vm.has_pvesr).length }) }}
           </li>
         </ul>
         <p class="text-muted">
-          Gli snapshot sono nativi Proxmox: visibili anche nella UI Proxmox e ripristinabili
-          da qui col pulsante «Snapshot» del job. Nessuna interferenza con Sanoid/Syncoid
-          (prefisso <code>auto{{ form.label }}_</code> ≠ <code>autosnap_</code>).
+          <i18n-t keypath="snapJob.rNota" tag="span"><template #a><code>auto{{ form.label }}_</code></template><template #b><code>autosnap_</code></template></i18n-t>
         </p>
       </div>
 
@@ -451,19 +444,16 @@ onMounted(loadIndex)
 
       <footer class="modal-foot">
         <small v-if="step === 1 && (!form.name || !hasSelection)" class="foot-hint">
-          Per proseguire:
-          <template v-if="!form.name">compila il <strong>Nome job</strong></template>
-          <template v-if="!form.name && !hasSelection"> e </template>
-          <template v-if="!hasSelection">seleziona almeno una <strong>VM</strong> (o un selettore)</template>
+          {{ !form.name && !hasSelection ? t('snapJob.serveEntrambi') : (!form.name ? t('snapJob.serveNome') : t('snapJob.serveVm')) }}
         </small>
-        <button v-if="step > 1" type="button" class="btn btn-secondary" @click="step--">Indietro</button>
+        <button v-if="step > 1" type="button" class="btn btn-secondary" @click="step--">{{ t('comune.indietro') }}</button>
         <button
           v-if="step < 4"
           type="button"
           class="btn btn-primary"
           :disabled="step === 1 && (!form.name || !hasSelection)"
           @click="step++"
-        >Avanti</button>
+        >{{ t('comune.avanti') }}</button>
         <button
           v-else
           type="button"
@@ -471,7 +461,7 @@ onMounted(loadIndex)
           :disabled="saving || !form.name || !labelValid || !hasSelection"
           @click="submit"
         >
-          {{ saving ? 'Salvataggio…' : isEdit ? 'Salva modifiche' : 'Crea job' }}
+          {{ saving ? t('comune.salvataggio') : isEdit ? t('comune.salvaModifiche') : t('snapJob.crea') }}
         </button>
       </footer>
     </div>

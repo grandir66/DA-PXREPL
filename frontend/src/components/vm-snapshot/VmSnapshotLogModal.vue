@@ -2,6 +2,9 @@
 import axios from 'axios'
 import { onMounted, ref } from 'vue'
 import { vmSnapshotsApi, type VmSnapshotJob } from '../../services/vmSnapshots'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 interface LogEntry {
   id: number
@@ -45,7 +48,7 @@ async function load() {
   } catch (e: unknown) {
     errorMsg.value = axios.isAxiosError(e)
       ? String(e.response?.data?.detail || e.message)
-      : 'Errore caricamento log'
+      : t('snapLog.erroreCarico')
   } finally {
     loading.value = false
   }
@@ -58,13 +61,13 @@ onMounted(load)
   <div class="modal-overlay" @click.self="emit('close')">
     <div class="modal-card">
       <header class="modal-head">
-        <h2>Log — {{ job.name }}</h2>
+        <h2>{{ t('snapLog.titolo', { nome: job.name }) }}</h2>
         <button type="button" class="btn btn-sm" @click="emit('close')">✕</button>
       </header>
       <div class="modal-body">
         <p v-if="errorMsg" class="text-danger">{{ errorMsg }}</p>
-        <p v-else-if="loading" class="text-muted">Caricamento…</p>
-        <p v-else-if="!logs.length" class="text-muted">Nessuna esecuzione registrata.</p>
+        <p v-else-if="loading" class="text-muted">{{ t('comune.caricamento') }}</p>
+        <p v-else-if="!logs.length" class="text-muted">{{ t('snapLog.nessuna') }}</p>
         <div v-for="log in logs" :key="log.id" class="log-entry">
           <button type="button" class="log-head" @click="expanded = expanded === log.id ? null : log.id">
             <span :class="statusClass(log.status)">●</span>

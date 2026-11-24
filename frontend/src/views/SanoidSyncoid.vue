@@ -1,14 +1,14 @@
 <template>
   <div class="sanoid-syncoid-page">
     <PageHeader
-      title="Sanoid / Syncoid"
-      subtitle="Versioni installate sui nodi PVE e confronto con l'ultima release GitHub"
+      :title="t('menu.sanoid')"
+      :subtitle="t('sanoid.sottotitolo')"
       icon="archive"
     >
       <template #actions>
         <button class="btn btn-secondary btn-sm" @click="loadToolStatus(true)" :disabled="toolsLoading">
           <Icon name="refresh" :size="14" :class="{ spin: toolsLoading }" />
-          {{ toolsLoading ? 'Verifica…' : 'Verifica versioni' }}
+          {{ toolsLoading ? t('sanoid.verificaInCorso') : t('sanoid.verifica') }}
         </button>
         <button
           v-if="authStore.isOperator && toolStatus && (toolStatus.summary.outdated + toolStatus.summary.missing) > 0"
@@ -16,56 +16,56 @@
           @click="updateAllOutdated"
           :disabled="bulkUpdating"
         >
-          {{ bulkUpdating ? 'Aggiornamento…' : `Aggiorna tutti (${toolStatus.summary.outdated + toolStatus.summary.missing})` }}
+          {{ bulkUpdating ? t('sanoid.aggInCorso') : t('sanoid.aggiornaTutti', { n: toolStatus.summary.outdated + toolStatus.summary.missing }) }}
         </button>
       </template>
     </PageHeader>
 
     <div class="card upstream-card">
       <div class="card-header">
-        <h3>Release upstream</h3>
+        <h3>{{ t('sanoid.upstream') }}</h3>
       </div>
       <div class="card-body">
-        <div v-if="toolsLoading && !toolStatus" class="loading-msg">Recupero versioni…</div>
+        <div v-if="toolsLoading && !toolStatus" class="loading-msg">{{ t('sanoid.recupero') }}</div>
         <div v-else-if="toolStatus?.upstream?.version" class="upstream-info">
           <div>
-            <span class="label">Ultima versione GitHub:</span>
+            <span class="label">{{ t('sanoid.ultima') }}</span>
             <a :href="toolStatus.upstream.release_url" target="_blank" rel="noopener" class="version-link">
               v{{ toolStatus.upstream.version }}
             </a>
           </div>
           <div class="text-secondary text-sm">
-            Repository:
+            {{ t('sanoid.repo') }}
             <a :href="toolStatus.upstream.source_url" target="_blank" rel="noopener">jimsalterjrs/sanoid</a>
-            · aggiornato {{ formatUpstreamTime(toolStatus.upstream.fetched_at) }}
+            {{ t('sanoid.lettoIl', { quando: formatUpstreamTime(toolStatus.upstream.fetched_at) }) }}
           </div>
         </div>
         <div v-else-if="toolStatus?.upstream?.error" class="error-msg">{{ toolStatus.upstream.error }}</div>
-        <div v-else class="text-secondary">Premi «Verifica versioni» per controllare GitHub e i nodi.</div>
+        <div v-else class="text-secondary">{{ t('sanoid.premi') }}</div>
       </div>
     </div>
 
     <div v-if="toolStatus" class="summary-grid">
-      <div class="summary-card ok"><span class="num">{{ toolStatus.summary.ok }}</span><span class="lbl">Aggiornati</span></div>
-      <div class="summary-card warn"><span class="num">{{ toolStatus.summary.outdated }}</span><span class="lbl">Obsoleti</span></div>
-      <div class="summary-card danger"><span class="num">{{ toolStatus.summary.missing }}</span><span class="lbl">Mancanti</span></div>
-      <div class="summary-card muted"><span class="num">{{ toolStatus.summary.offline }}</span><span class="lbl">Offline</span></div>
+      <div class="summary-card ok"><span class="num">{{ toolStatus.summary.ok }}</span><span class="lbl">{{ t('sanoid.aggiornati') }}</span></div>
+      <div class="summary-card warn"><span class="num">{{ toolStatus.summary.outdated }}</span><span class="lbl">{{ t('sanoid.obsoleti') }}</span></div>
+      <div class="summary-card danger"><span class="num">{{ toolStatus.summary.missing }}</span><span class="lbl">{{ t('sanoid.mancanti') }}</span></div>
+      <div class="summary-card muted"><span class="num">{{ toolStatus.summary.offline }}</span><span class="lbl">{{ t('sanoid.offline') }}</span></div>
     </div>
 
     <div class="card" v-if="toolStatus">
       <div class="card-header">
-        <h3>Nodi PVE</h3>
+        <h3>{{ t('sanoid.nodi') }}</h3>
       </div>
       <div class="table-container">
         <table class="data-table">
           <thead>
             <tr>
-              <th>Nodo</th>
+              <th>{{ t('comune.nodo') }}</th>
               <th>Hostname</th>
               <th>Sanoid</th>
               <th>Syncoid</th>
-              <th>Stato</th>
-              <th v-if="authStore.isOperator">Azioni</th>
+              <th>{{ t('comune.stato') }}</th>
+              <th v-if="authStore.isOperator">{{ t('comune.azioni') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -85,7 +85,7 @@
                   @click="updateNodeTools(row.node_id)"
                   :disabled="updatingNodeId === row.node_id"
                 >
-                  {{ updatingNodeId === row.node_id ? '…' : (row.status === 'missing' ? 'Installa' : 'Aggiorna') }}
+                  {{ updatingNodeId === row.node_id ? '…' : (row.status === 'missing' ? t('comune.installa') : t('comune.aggiorna')) }}
                 </button>
                 <span v-else class="text-secondary">—</span>
               </td>
@@ -104,6 +104,9 @@ import Icon from '../components/ui/Icon.vue'
 import nodesService, { type SanoidSyncoidStatusResponse } from '../services/nodes'
 import { useAuthStore } from '../stores/auth'
 import { useToast, errorMessage } from '../stores/toast'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const authStore = useAuthStore()
 const toast = useToast()
@@ -121,7 +124,7 @@ const loadToolStatus = async (refresh = false) => {
     const res = await nodesService.getSanoidSyncoidStatus(refresh)
     toolStatus.value = res.data
   } catch (e) {
-    toast.error('Errore verifica Sanoid/Syncoid', errorMessage(e))
+    toast.error(t('sanoid.erroreVerifica'), errorMessage(e))
   } finally {
     toolsLoading.value = false
   }
@@ -154,11 +157,11 @@ const toolStatusClass = (status: string) => {
 
 const toolStatusLabel = (status: string) => {
   const labels: Record<string, string> = {
-    ok: 'Aggiornato',
-    outdated: 'Obsoleto',
-    missing: 'Mancante',
-    offline: 'Offline',
-    error: 'Errore',
+    ok: t('sanoid.sOk'),
+    outdated: t('sanoid.sOutdated'),
+    missing: t('sanoid.sMissing'),
+    offline: t('sanoid.offline'),
+    error: t('comune.errore'),
     skipped: 'N/A',
   }
   return labels[status] || status
@@ -166,14 +169,14 @@ const toolStatusLabel = (status: string) => {
 
 const updateNodeTools = async (nodeId: number) => {
   updatingNodeId.value = nodeId
-  toast.info('Aggiornamento in corso…', 'Può richiedere alcuni minuti')
+  toast.info(t('sanoid.inCorso'), t('sanoid.minuti'))
   try {
     const res = await nodesService.updateSanoid(nodeId)
     const v = res.data.sanoid_version || res.data.target_version
-    toast.success(v ? `Aggiornato a ${v}` : 'Sanoid/Syncoid aggiornato')
+    toast.success(v ? t('sanoid.aggiornatoA', { v }) : t('sanoid.fatto'))
     await loadToolStatus(true)
   } catch (e) {
-    toast.error('Errore aggiornamento', errorMessage(e))
+    toast.error(t('sanoid.erroreAgg'), errorMessage(e))
   } finally {
     updatingNodeId.value = null
   }
@@ -183,23 +186,23 @@ const updateAllOutdated = async () => {
   const n = (toolStatus.value?.summary.outdated || 0) + (toolStatus.value?.summary.missing || 0)
   if (!n) return
   bulkUpdating.value = true
-  toast.info('Aggiornamento bulk avviato…', 'Può richiedere diversi minuti')
+  toast.info(t('sanoid.tuttiAvviato'), t('sanoid.diversiMinuti'))
   try {
     const res = await nodesService.updateOutdatedSanoidSyncoid()
     const ok = res.data.updated
     const failed = res.data.results.filter(r => !r.success)
     if (ok > 0) {
-      toast.success(`Aggiornati ${ok} nodi`)
+      toast.success(t('sanoid.nAggiornati', { n: ok }))
     }
     if (failed.length) {
-      toast.error(`${failed.length} nodi non aggiornati`, failed.map(f => f.node_name).join(', '))
+      toast.error(t('sanoid.nFalliti', { n: failed.length }), failed.map(f => f.node_name).join(', '))
     }
     if (!ok && !failed.length) {
-      toast.warning('Nessun nodo da aggiornare')
+      toast.warning(t('sanoid.niente'))
     }
     await loadToolStatus(true)
   } catch (e) {
-    toast.error('Errore aggiornamento bulk', errorMessage(e))
+    toast.error(t('sanoid.erroreTutti'), errorMessage(e))
   } finally {
     bulkUpdating.value = false
   }

@@ -8,6 +8,9 @@ import {
   type VmSnapshotJob,
   type VmSnapshotVmEntry,
 } from '../../services/vmSnapshots'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{ job: VmSnapshotJob }>()
 const emit = defineEmits<{ close: [] }>()
@@ -32,7 +35,7 @@ async function load() {
   } catch (e: unknown) {
     errorMsg.value = axios.isAxiosError(e)
       ? String(e.response?.data?.detail || e.message)
-      : 'Errore caricamento snapshot'
+      : t('snapSfoglia.erroreCarico')
   } finally {
     loading.value = false
   }
@@ -40,12 +43,10 @@ async function load() {
 
 async function rollback(vm: VmSnapshotVmEntry, snapname: string) {
   const confirmed = window.confirm(
-    `Rollback di ${vm.vm_name || vm.vmid} allo snapshot «${snapname}»?\n\n` +
-    'ATTENZIONE: lo stato attuale della VM (dopo lo snapshot) verrà perso.' +
-    (vm.has_pvesr ? '\nQuesta VM ha replica pvesr: dopo il rollback la replica verrà rilanciata automaticamente (resync).' : ''),
+    t('snapSfoglia.confRollback', { vm: vm.vm_name || vm.vmid, nome: snapname }) + (vm.has_pvesr ? '\n' + t('snapSfoglia.confRollbackPvesr') : ''),
   )
   if (!confirmed) return
-  const startVm = window.confirm('Avviare la VM dopo il rollback?')
+  const startVm = window.confirm(t('snapSfoglia.avviare'))
   busyKey.value = `${vm.vmid}:${snapname}`
   actionMsg.value = ''
   try {
@@ -55,32 +56,31 @@ async function rollback(vm: VmSnapshotVmEntry, snapname: string) {
     if (resync.length) {
       const okc = resync.filter((r) => r.ok).length
       extra = okc === resync.length
-        ? ' Replica pvesr rilanciata (resync in corso).'
-        : ` Attenzione: resync pvesr non avviato per ${resync.length - okc} job — verifica la replica.`
+        ? ' ' + t('snapSfoglia.resyncOk') : ' ' + t('snapSfoglia.resyncNo', { n: resync.length - okc })
     }
-    actionMsg.value = `Rollback di ${vm.vm_name || vm.vmid} a «${snapname}» completato.${extra}`
+    actionMsg.value = t('snapSfoglia.rollbackFatto', { vm: vm.vm_name || vm.vmid, nome: snapname }) + extra
     await load()
   } catch (e: unknown) {
     actionMsg.value = axios.isAxiosError(e)
-      ? `Errore rollback: ${e.response?.data?.detail || e.message}`
-      : 'Errore rollback'
+      ? `${t('snapSfoglia.erroreRollback')}: ${e.response?.data?.detail || e.message}`
+      : t('snapSfoglia.erroreRollback')
   } finally {
     busyKey.value = ''
   }
 }
 
 async function removeSnapshot(vm: VmSnapshotVmEntry, snapname: string) {
-  if (!window.confirm(`Eliminare lo snapshot «${snapname}» di ${vm.vm_name || vm.vmid}?`)) return
+  if (!window.confirm(t('snapSfoglia.confElimina', { nome: snapname, vm: vm.vm_name || vm.vmid }))) return
   busyKey.value = `${vm.vmid}:${snapname}`
   actionMsg.value = ''
   try {
     await vmsService.deleteSnapshot(vm.node_id, vm.vmid, snapname, vm.vm_type)
-    actionMsg.value = `Snapshot «${snapname}» eliminato.`
+    actionMsg.value = t('snapSfoglia.eliminato', { nome: snapname })
     await load()
   } catch (e: unknown) {
     actionMsg.value = axios.isAxiosError(e)
-      ? `Errore eliminazione: ${e.response?.data?.detail || e.message}`
-      : 'Errore eliminazione'
+      ? `${t('comune.erroreEliminazione')}: ${e.response?.data?.detail || e.message}`
+      : t('comune.erroreEliminazione')
   } finally {
     busyKey.value = ''
   }
@@ -93,10 +93,10 @@ onMounted(load)
   <div class="modal-overlay" @click.self="emit('close')">
     <div class="modal-card">
       <header class="modal-head">
-        <h2>Snapshot — {{ job.name }}</h2>
+        <h2>{{ t('snapSfoglia.titolo', { nome: job.name }) }}</h2>
         <div>
           <button type="button" class="btn btn-sm btn-secondary mr-2" :disabled="loading" @click="load">
-            Aggiorna
+            {{ t('comune.aggiorna') }}
           </button>
           <button type="button" class="btn btn-sm" @click="emit('close')">✕</button>
         </div>
@@ -105,26 +105,26 @@ onMounted(load)
       <div class="modal-body">
         <p v-if="errorMsg" class="text-danger">{{ errorMsg }}</p>
         <p v-if="actionMsg" class="action-msg">{{ actionMsg }}</p>
-        <p v-if="loading" class="text-muted">Interrogo i nodi Proxmox…</p>
+        <p v-if="loading" class="text-muted">{{ t('snapSfoglia.carico') }}</p>
 
         <div v-for="vm in entries" :key="`${vm.node_id}:${vm.vmid}`" class="vm-block">
           <div class="vm-block-head">
             <strong><code>{{ vm.vmid }}</code> {{ vm.vm_name }}</strong>
             <span class="badge vm-type">{{ vm.vm_type === 'lxc' ? 'CT' : 'VM' }}</span>
             <span class="text-muted">@ {{ vm.node_name }}</span>
-            <span v-if="vm.has_pvesr" class="badge badge-warn" title="Replica pvesr attiva"><Icon name="alert-triangle" :size="14" /> pvesr</span>
+            <span v-if="vm.has_pvesr" class="badge badge-warn" :title="t('snapSfoglia.pvesr')"><Icon name="alert-triangle" :size="14" /> pvesr</span>
           </div>
           <p v-if="vm.error" class="text-danger">{{ vm.error }}</p>
-          <p v-else-if="!vm.snapshots.length" class="text-muted">Nessuno snapshot.</p>
+          <p v-else-if="!vm.snapshots.length" class="text-muted">{{ t('snapSfoglia.nessuno') }}</p>
           <table v-else class="data-table snap-table">
             <thead>
               <tr>
-                <th>Snapshot</th>
-                <th>Data</th>
-                <th>Descrizione</th>
+                <th>{{ t('snapSfoglia.snapshot') }}</th>
+                <th>{{ t('comune.data') }}</th>
+                <th>{{ t('comune.descrizione') }}</th>
                 <th>RAM</th>
-                <th>Origine</th>
-                <th>Azioni</th>
+                <th>{{ t('snapSfoglia.origine') }}</th>
+                <th>{{ t('comune.azioni') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -132,12 +132,12 @@ onMounted(load)
                 <td><code>{{ snap.name }}</code></td>
                 <td>{{ fmtDate(snap.snaptime) }}</td>
                 <td class="snap-desc">{{ snap.description || '—' }}</td>
-                <td>{{ snap.vmstate ? 'Sì' : '—' }}</td>
+                <td>{{ snap.vmstate ? t('comune.si') : '—' }}</td>
                 <td>
-                  <span v-if="snap.is_module" class="badge badge-ok" :title="`Creato da questo modulo (label ${snap.label})`">
-                    modulo · {{ snap.label }}
+                  <span v-if="snap.is_module" class="badge badge-ok" :title="t('snapSfoglia.moduloAiuto', { label: snap.label })">
+                    {{ t('snapSfoglia.modulo', { label: snap.label }) }}
                   </span>
-                  <span v-else class="badge badge-off" title="Snapshot manuale o di altro strumento: mai toccato dalla retention">
+                  <span v-else class="badge badge-off" :title="t('snapSfoglia.esterno')">
                     esterno
                   </span>
                 </td>
@@ -146,12 +146,12 @@ onMounted(load)
                     class="btn btn-sm btn-warning"
                     :disabled="busyKey === `${vm.vmid}:${snap.name}`"
                     @click="rollback(vm, snap.name)"
-                  >Rollback</button>
+                  >{{ t('vm.rollback') }}</button>
                   <button
                     class="btn btn-sm btn-danger"
                     :disabled="busyKey === `${vm.vmid}:${snap.name}`"
                     @click="removeSnapshot(vm, snap.name)"
-                  >Elimina</button>
+                  >{{ t('comune.elimina') }}</button>
                 </td>
               </tr>
             </tbody>
