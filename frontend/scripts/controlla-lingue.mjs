@@ -60,6 +60,10 @@ for (const p of file(src)) {
       errori.push(`${relative(radice, p)}:${riga} usa «${m[2]}», che non è in it.json`)
     }
   }
+  for (const m of testo.matchAll(/keypath="([A-Za-z0-9_.-]+)"/g)) {
+    usate.add(m[1])
+    if (!(m[1] in lingue.it)) errori.push(`${relative(radice, p)} usa keypath «${m[1]}», che non è in it.json`)
+  }
   for (const m of testo.matchAll(USO_PREFISSO)) {
     prefissi.add(m[1])
     if (!Object.keys(lingue.it).some((k) => k.startsWith(m[1]))) {

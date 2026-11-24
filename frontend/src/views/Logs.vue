@@ -1,19 +1,19 @@
 <template>
   <div class="logs-page">
-    <PageHeader title="Log" subtitle="Registro eventi, backup e sistema" icon="file-text" />
+    <PageHeader :title="t('registri.titolo')" :subtitle="t('registri.sottotitolo')" icon="file-text" />
 
     <div class="tabs-header">
         <button
             class="tab-btn"
             :class="{ active: activeTab === 'jobs' }"
             @click="activeTab = 'jobs'">
-            <Icon name="refresh" :size="14" /> Job History
+            <Icon name="refresh" :size="14" /> {{ t('registri.schedaJob') }}
         </button>
         <button
             class="tab-btn"
             :class="{ active: activeTab === 'system' }"
             @click="activeTab = 'system'; loadSystemFiles()">
-            <Icon name="server" :size="14" /> System Logs
+            <Icon name="server" :size="14" /> {{ t('registri.schedaSistema') }}
         </button>
     </div>
 
@@ -22,16 +22,16 @@
         <div class="controls-bar">
             <button class="btn btn-secondary btn-sm" @click="loadLogs(1)" :disabled="loading">
                 <span v-if="loading" class="spinner-sm"></span>
-                <span v-else><Icon name="refresh" :size="14" /> Aggiorna</span>
+                <span v-else><Icon name="refresh" :size="14" /> {{ t('comune.aggiorna') }}</span>
             </button>
             <button class="btn btn-danger btn-sm" @click="clearLogs">
-                <Icon name="trash" :size="14" /> Pulisci Log
+                <Icon name="trash" :size="14" /> {{ t('registri.pulisci') }}
             </button>
             <select v-model="filterLevel" @change="loadLogs(1)" class="form-input" style="width: auto;">
-                <option value="">Tutti gli stati</option>
-                <option value="success">Success</option>
-                <option value="failed">Failed</option>
-                <option value="running">Running</option>
+                <option value="">{{ t('registri.tuttiGliStati') }}</option>
+                <option value="success">{{ t('stato.success') }}</option>
+                <option value="failed">{{ t('stato.failed') }}</option>
+                <option value="running">{{ t('stato.running') }}</option>
             </select>
         </div>
 
@@ -40,11 +40,11 @@
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th>Timestamp</th>
-                            <th>Job Type</th>
-                            <th>Stato</th>
-                            <th>Job Info</th>
-                            <th>Messaggio</th>
+                            <th>{{ t('registri.dataOra') }}</th>
+                            <th>{{ t('registri.tipoJob') }}</th>
+                            <th>{{ t('comune.stato') }}</th>
+                            <th>{{ t('registri.infoJob') }}</th>
+                            <th>{{ t('comune.messaggio') }}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -57,12 +57,12 @@
                             </td>
                             <td>
                                 <span class="badge" :class="getStatusClass(log.status)">
-                                    {{ log.status }}
+                                    {{ te(`stato.${log.status}`) ? t(`stato.${log.status}`) : log.status }}
                                 </span>
                             </td>
                             <td class="text-sm">
                                 <div v-if="log.node_name || log.dataset" class="font-bold">{{ log.node_name }} / {{ log.dataset }}</div>
-                                <div v-if="log.job_id" class="text-xs text-secondary">Job #{{ log.job_id }}</div>
+                                <div v-if="log.job_id" class="text-xs text-secondary">{{ t('registri.jobNumero', { id: log.job_id }) }}</div>
                             </td>
                             <td class="text-sm">
                                 {{ log.message }}
@@ -72,16 +72,16 @@
                             </td>
                         </tr>
                         <tr v-if="logs.length === 0 && !loading">
-                            <td colspan="5" class="empty-state-cell">Nessun log trovato</td>
+                            <td colspan="5" class="empty-state-cell">{{ t('registri.nessuno') }}</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
             
             <div class="pagination" v-if="pages > 1">
-                <button class="btn btn-secondary btn-sm" :disabled="page <= 1" @click="loadLogs(page - 1)">← Prev</button>
-                <span class="page-info">Pagina {{ page }} di {{ pages }}</span>
-                <button class="btn btn-secondary btn-sm" :disabled="page >= pages" @click="loadLogs(page + 1)">Next →</button>
+                <button class="btn btn-secondary btn-sm" :disabled="page <= 1" @click="loadLogs(page - 1)">{{ t('registri.precedente') }}</button>
+                <span class="page-info">{{ t('registri.paginaDi', { pagina: page, pagine: pages }) }}</span>
+                <button class="btn btn-secondary btn-sm" :disabled="page >= pages" @click="loadLogs(page + 1)">{{ t('registri.successiva') }}</button>
             </div>
         </div>
     </div>
@@ -91,7 +91,7 @@
         <div class="controls-bar">
             <button class="btn btn-secondary btn-sm" @click="loadSystemLogs" :disabled="sysLoading">
                 <span v-if="sysLoading" class="spinner-sm"></span>
-                <span v-else><Icon name="refresh" :size="14" /> Aggiorna</span>
+                <span v-else><Icon name="refresh" :size="14" /> {{ t('comune.aggiorna') }}</span>
             </button>
             
             <select v-model="selectedFile" @change="loadSystemLogs" class="form-input" style="width: auto; min-width: 200px;">
@@ -101,17 +101,17 @@
             </select>
 
             <select v-model="sysLines" @change="loadSystemLogs" class="form-input" style="width: auto;">
-                <option :value="100">100 righe</option>
-                <option :value="500">500 righe</option>
-                <option :value="1000">1000 righe</option>
-                <option :value="2000">2000 righe</option>
+                <option :value="100">{{ t('registri.righe', { n: 100 }) }}</option>
+                <option :value="500">{{ t('registri.righe', { n: 500 }) }}</option>
+                <option :value="1000">{{ t('registri.righe', { n: 1000 }) }}</option>
+                <option :value="2000">{{ t('registri.righe', { n: 2000 }) }}</option>
             </select>
 
             <input 
                 type="text" 
                 v-model="sysSearch" 
                 @keyup.enter="loadSystemLogs"
-                placeholder="Cerca..." 
+                :placeholder="t('comune.cerca')" 
                 class="form-input" 
                 style="width: 200px;"
             >
@@ -123,7 +123,7 @@
                     <div class="spinner"></div>
                 </div>
                 <div v-if="systemLogs.length === 0 && !sysLoading" class="empty-logs">
-                    Nessun log trovato nel file {{ selectedFile }}
+                    {{ t('registri.nessunoNelFile', { file: selectedFile }) }}
                 </div>
                 <div v-for="(line, idx) in systemLogs" :key="idx" class="log-line">
                     <span class="log-ts">{{ extractTime(line.timestamp) }}</span>
@@ -136,7 +136,7 @@
             </div>
         </div>
         <div class="text-xs text-secondary mt-2">
-            Visualizzazione ultimi {{ systemLogs.length }} eventi da {{ selectedFile }}.
+            {{ t('registri.ultimiEventi', { n: systemLogs.length, file: selectedFile }) }}
         </div>
     </div>
   </div>
@@ -149,6 +149,10 @@ import { useToast, errorMessage } from '../stores/toast';
 import logsService, { type LogEntry } from '../services/logs';
 import PageHeader from '../components/ui/PageHeader.vue';
 import Icon from '../components/ui/Icon.vue';
+import { useI18n } from 'vue-i18n';
+import { dataOra } from '../utils/formato';
+
+const { t, te } = useI18n();
 
 const activeTab = ref('jobs');
 const toast = useToast();
@@ -201,17 +205,17 @@ const loadLogs = async (p = 1) => {
 };
 
 const clearLogs = async () => {
-    if (!await confirmDangerous('Eliminare i log job più vecchi di 30 giorni?')) return;
+    if (!await confirmDangerous(t('registri.confermaPulizia'))) return;
     try {
         const res = await logsService.clearLogs(30);
-        toast.success('Log puliti', res.data?.message || 'Operazione completata');
+        toast.success(t('registri.puliti'), res.data?.message || t('comune.operazioneCompletata'));
         loadLogs();
     } catch (e) {
-        toast.error('Errore pulizia log', errorMessage(e));
+        toast.error(t('registri.errorePulizia'), errorMessage(e));
     }
 };
 
-const formatDate = (dateStr: string) => new Date(dateStr).toLocaleString();
+const formatDate = (dateStr: string) => dataOra(dateStr, { dateStyle: 'short', timeStyle: 'medium' }, dateStr);
 
 const getStatusClass = (status: string) => {
     switch (status?.toLowerCase()) {

@@ -2,48 +2,47 @@
   <div class="repl-view">
     <header class="repl-head">
       <div class="repl-head-left">
-        <h1>Repliche &amp; Backup</h1>
-        <p class="repl-sub">
-          Replica ZFS (Syncoid), replica nativa PVE e replica via PBS quando lo storage non è ZFS.
-          I backup di protezione su PBS sono in <router-link :to="{ name: 'pbs-backup' }">PBS Backup</router-link>.
-        </p>
+        <h1>{{ t('repliche.titolo') }}</h1>
+        <i18n-t keypath="repliche.sottotitolo" tag="p" class="repl-sub">
+          <template #link><router-link :to="{ name: 'pbs-backup' }">{{ t('menu.pbsBackup') }}</router-link></template>
+        </i18n-t>
       </div>
       <div class="repl-head-actions">
         <router-link :to="{ name: 'pbs-backup' }" class="btn btn-secondary mr-2">
-          PBS Backup
+          {{ t('menu.pbsBackup') }}
         </router-link>
         <div class="repl-new-wrap" v-click-outside="closeNewMenu">
           <button class="btn btn-primary" @click="newMenuOpen = !newMenuOpen">
-            + Nuovo job
+            {{ t('repliche.nuovoJob') }}
             <span class="caret">▾</span>
           </button>
           <ul v-if="newMenuOpen" class="repl-new-menu">
             <li @click="openCreate('syncoid')">
               <span class="kind-dot zfs"></span>
               <div>
-                <strong>Replica ZFS (Syncoid)</strong>
-                <small>send/receive ZFS tra due nodi PVE</small>
+                <strong>{{ t('repliche.zfs') }}</strong>
+                <small>{{ t('repliche.zfsSotto') }}</small>
               </div>
             </li>
             <li @click="openCreate('pve_native')">
               <span class="kind-dot zfs"></span>
               <div>
-                <strong>Replica nativa Proxmox</strong>
-                <small>vzdump+scp+qmrestore — qualunque storage (full ad ogni run)</small>
+                <strong>{{ t('repliche.pveNativa') }}</strong>
+                <small>{{ t('repliche.pveNativaSotto') }}</small>
               </div>
             </li>
             <li @click="openCreate('recovery_pbs')">
               <span class="kind-dot pbs"></span>
               <div>
-                <strong>Replica via PBS</strong>
-                <small>backup + restore su nodo dest — ideale senza ZFS (LVM, local, NFS…)</small>
+                <strong>{{ t('repliche.viaPbs') }}</strong>
+                <small>{{ t('repliche.viaPbsSotto') }}</small>
               </div>
             </li>
             <li class="repl-new-menu-link" @click="goPbsBackup">
               <span class="kind-dot pbs"></span>
               <div>
-                <strong>Backup verso PBS</strong>
-                <small>protezione/retention su PBS → apri PBS Backup</small>
+                <strong>{{ t('repliche.backupPbs') }}</strong>
+                <small>{{ t('repliche.backupPbsSotto') }}</small>
               </div>
             </li>
           </ul>
@@ -53,45 +52,44 @@
 
     <section class="repl-stats">
       <div class="repl-stat">
-        <span class="repl-stat-label">Job totali</span>
+        <span class="repl-stat-label">{{ t('repliche.jobTotali') }}</span>
         <span class="repl-stat-val">{{ replicationJobs.length }}</span>
       </div>
       <div class="repl-stat">
-        <span class="repl-stat-label">Attivi</span>
+        <span class="repl-stat-label">{{ t('comune.attivi') }}</span>
         <span class="repl-stat-val text-success">{{ activeCount }}</span>
       </div>
       <div class="repl-stat">
-        <span class="repl-stat-label">In esecuzione</span>
+        <span class="repl-stat-label">{{ t('repliche.inEsecuzione') }}</span>
         <span class="repl-stat-val text-warning">{{ runningCount }}</span>
       </div>
       <div class="repl-stat">
-        <span class="repl-stat-label">Falliti (ultimo run)</span>
+        <span class="repl-stat-label">{{ t('repliche.falliti') }}</span>
         <span class="repl-stat-val text-danger">{{ failedCount }}</span>
       </div>
     </section>
 
     <nav class="repl-tabs">
       <button
-        v-for="t in tabs"
-        :key="t.id"
+        v-for="tab in tabs"
+        :key="tab.id"
         class="repl-tab"
-        :class="{ active: activeTab === t.id }"
-        @click="activeTab = t.id"
+        :class="{ active: activeTab === tab.id }"
+        @click="activeTab = tab.id"
       >
-        {{ t.label }}
-        <span v-if="t.count != null" class="repl-tab-count">{{ t.count }}</span>
+        {{ t(`repliche.scheda.${tab.id}`) }}
+        <span v-if="tab.count != null" class="repl-tab-count">{{ tab.count }}</span>
       </button>
     </nav>
 
     <div v-if="activeTab === 'recovery_pbs'" class="info-banner mb-4">
       <div class="icon"><Icon name="refresh" :size="20" /></div>
       <div class="content">
-        <strong>Replica via PBS</strong>
-        <p>
-          Pipeline backup → restore → registrazione VM sul nodo destinazione.
-          Usala quando sorgente e destinazione <em>non</em> condividono dataset ZFS (LVM-thin, local, NFS, Ceph…).
-          Con ZFS preferisci la tab <strong>Repliche ZFS</strong>.
-        </p>
+        <strong>{{ t('repliche.viaPbs') }}</strong>
+        <i18n-t keypath="repliche.avvisoPbs" tag="p">
+          <template #non><em>{{ t('repliche.non') }}</em></template>
+          <template #scheda><strong>{{ t('repliche.scheda.syncoid') }}</strong></template>
+        </i18n-t>
       </div>
     </div>
 
@@ -142,9 +140,11 @@ import syncJobsService from '../services/syncJobs'
 import recoveryJobsService from '../services/recoveryJobs'
 import { pveReplicationService, type PVEReplicationJob, type PVEReplicationSummary } from '../services/pveReplication'
 import Icon from '../components/ui/Icon.vue'
+import { useI18n } from 'vue-i18n'
 
 const store = useReplicationStore()
 const toast = useToast()
+const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 
@@ -164,12 +164,12 @@ const presetPvesr = ref<PVEReplicationJob | null>(null)
 
 const replicationJobs = computed(() => store.jobs.filter(j => j.kind !== 'backup_pbs'))
 
-const tabs = computed<{ id: 'all' | 'syncoid' | 'pve_native' | 'recovery_pbs' | 'pve'; label: string; count: number | null }[]>(() => [
-  { id: 'all', label: 'Tutti', count: replicationJobs.value.length },
-  { id: 'syncoid', label: 'Repliche ZFS', count: replicationJobs.value.filter(j => j.kind === 'syncoid').length },
-  { id: 'pve_native', label: 'Replica PVE-native', count: replicationJobs.value.filter(j => j.kind === 'pve_native').length },
-  { id: 'recovery_pbs', label: 'Replica via PBS', count: replicationJobs.value.filter(j => j.kind === 'recovery_pbs').length },
-  { id: 'pve', label: 'Replica Proxmox (pvesr)', count: pvesrSummary.value?.total ?? null },
+const tabs = computed<{ id: 'all' | 'syncoid' | 'pve_native' | 'recovery_pbs' | 'pve'; count: number | null }[]>(() => [
+  { id: 'all', count: replicationJobs.value.length },
+  { id: 'syncoid', count: replicationJobs.value.filter(j => j.kind === 'syncoid').length },
+  { id: 'pve_native', count: replicationJobs.value.filter(j => j.kind === 'pve_native').length },
+  { id: 'recovery_pbs', count: replicationJobs.value.filter(j => j.kind === 'recovery_pbs').length },
+  { id: 'pve', count: pvesrSummary.value?.total ?? null },
 ])
 
 const filteredJobs = computed(() => {
@@ -252,7 +252,7 @@ function onEdit(j: UnifiedJob) {
 
 function onShowLog(j: UnifiedJob) {
   if (j.kind === 'backup_pbs' || j.kind === 'recovery_pbs') {
-    toast.info('Log PBS', 'Apri la tab Job History in System Logs per i dettagli completi.')
+    toast.info(t('repliche.logPbs'), t('repliche.logPbsDett'))
     return
   }
   if (j.kind !== 'syncoid' && j.kind !== 'pve_native') return
@@ -269,10 +269,9 @@ async function onRun(j: UnifiedJob, group?: { jobs: UnifiedJob[] }) {
   let replicaCompleta = false
   if (chiedeCompleta && (j.kind === 'syncoid' || j.kind === 'pve_native')) {
     replicaCompleta = await confirmDangerous(
-      `"${j.name}": l'ultima corsa ha chiesto una REPLICA COMPLETA (VM migrata senza snapshot in comune con la destinazione). ` +
-      `Eseguire ricreando la destinazione da zero? Trasferisce tutti i dati del disco.`,
+      t('repliche.chiedeCompleta', { nome: j.name }),
       undefined,
-      'Replica completa'
+      t('repliche.replicaCompleta')
     )
     if (!replicaCompleta) return
   }
@@ -291,16 +290,16 @@ async function onRun(j: UnifiedJob, group?: { jobs: UnifiedJob[] }) {
     setTimeout(reload, 800)
   } catch (e) {
     const msg = (e as any)?.response?.data?.detail || (e as any)?.message
-    ;(window as any).alert?.('Errore avvio job: ' + msg)
+    ;(window as any).alert?.(t('repliche.erroreAvvio', { msg }))
   }
 }
 
 async function onToggleActive(j: UnifiedJob) {
   const newActive = j.is_active === false
   if (!await confirmDangerous(
-    `${newActive ? 'Attivare' : 'Disattivare'} il job "${j.name}"?`,
+    newActive ? t('repliche.attivare', { nome: j.name }) : t('repliche.disattivare', { nome: j.name }),
     undefined,
-    newActive ? 'Attiva' : 'Disattiva'
+    newActive ? t('comune.attiva') : t('comune.disattiva')
   )) return
   try {
     if (j.kind === 'syncoid' || j.kind === 'pve_native') {
@@ -308,21 +307,21 @@ async function onToggleActive(j: UnifiedJob) {
     } else if (j.kind === 'recovery_pbs') {
       await recoveryJobsService.updateJob(String(j.id), { is_active: newActive })
     }
-    toast.success(newActive ? 'Job attivato' : 'Job disattivato')
+    toast.success(newActive ? t('repliche.attivato') : t('repliche.disattivato'))
     await reload()
   } catch (e) {
-    toast.error('Errore modifica stato job', errorMessage(e))
+    toast.error(t('repliche.erroreStato'), errorMessage(e))
   }
 }
 
 async function onDelete(j: UnifiedJob) {
-  if (!await confirmDangerous(`Eliminare il job "${j.name}"?`)) return
+  if (!await confirmDangerous(t('repliche.eliminare', { nome: j.name }))) return
   try {
     if (j.kind === 'syncoid' || j.kind === 'pve_native') await syncJobsService.deleteJob(String(j.id))
     else if (j.kind === 'recovery_pbs') await recoveryJobsService.deleteJob(String(j.id))
     await reload()
   } catch (e) {
-    toast.error('Errore eliminazione', errorMessage(e))
+    toast.error(t('comune.erroreEliminazione'), errorMessage(e))
   }
 }
 

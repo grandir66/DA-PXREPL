@@ -5,36 +5,36 @@
         v-model="filter"
         type="text"
         class="form-input jl-search"
-        placeholder="Filtra per VM, nodo, nome…"
+        :placeholder="t('elencoJob.filtro')"
       />
       <select v-model="statusFilter" class="form-input jl-status">
-        <option value="all">Tutti gli stati</option>
-        <option value="active">Solo attivi</option>
-        <option value="paused">Disattivati</option>
-        <option value="failed">Falliti</option>
-        <option value="success">Successo</option>
-        <option value="running">In esecuzione</option>
+        <option value="all">{{ t('elencoJob.tuttiGliStati') }}</option>
+        <option value="active">{{ t('elencoJob.soloAttivi') }}</option>
+        <option value="paused">{{ t('elencoJob.disattivati') }}</option>
+        <option value="failed">{{ t('elencoJob.falliti') }}</option>
+        <option value="success">{{ t('elencoJob.riusciti') }}</option>
+        <option value="running">{{ t('elencoJob.inCorso') }}</option>
       </select>
       <button class="btn btn-secondary btn-sm" @click="$emit('refresh')" :disabled="loading">
-        <span v-if="loading">Aggiorno…</span>
-        <span v-else>↻ Aggiorna</span>
+        <span v-if="loading">{{ t('comune.aggiornoInCorso') }}</span>
+        <span v-else>{{ t('elencoJob.aggiorna') }}</span>
       </button>
     </div>
 
-    <div v-if="loading && groups.length === 0" class="jl-empty">Caricamento…</div>
+    <div v-if="loading && groups.length === 0" class="jl-empty">{{ t('comune.caricamento') }}</div>
     <div v-else-if="groups.length === 0" class="jl-empty">
-      Nessun job da mostrare con i filtri attuali.
+      {{ t('elencoJob.nessuno') }}
     </div>
 
     <table v-else class="jl-table">
       <thead>
         <tr>
-          <th class="jl-col-vm">VM / Job</th>
-          <th class="jl-col-route">Sorgente → Destinazione</th>
-          <th>Schedule</th>
-          <th>Ultimo run</th>
-          <th>Stato</th>
-          <th class="jl-col-actions">Azioni</th>
+          <th class="jl-col-vm">{{ t('elencoJob.vmJob') }}</th>
+          <th class="jl-col-route">{{ t('elencoJob.percorso') }}</th>
+          <th>{{ t('elencoJob.pianificazione') }}</th>
+          <th>{{ t('elencoJob.ultima') }}</th>
+          <th>{{ t('comune.stato') }}</th>
+          <th class="jl-col-actions">{{ t('comune.azioni') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -63,7 +63,7 @@
                   :class="`type-${g.vm_type}`"
                 >{{ g.vm_type }}</span>
                 <span class="jl-job-count" v-if="g.jobs.length > 1">
-                  {{ g.jobs.length }} job
+                  {{ t('elencoJob.nJob', { n: g.jobs.length }) }}
                 </span>
               </div>
             </td>
@@ -84,11 +84,11 @@
               <div v-if="groupIsLive(g)" class="jl-progress-cell">
                 <div class="jl-progress-row">
                   <span class="jl-status s-running">
-                    <span class="status-dot" /> In esecuzione
+                    <span class="status-dot" /> {{ t('elencoJob.stato.running') }}
                   </span>
                   <span v-if="groupProgress(g)" class="jl-progress-pct">{{ groupProgress(g)!.percent.toFixed(1) }}%</span>
                   <span v-else-if="g.primary?.group_disks_total && g.primary.group_disks_total > 1" class="jl-progress-pct subtle">
-                    {{ g.jobs.filter(j => jobStatus(j) === 'success').length }}/{{ g.primary.group_disks_total }} dischi
+                    {{ t('elencoJob.dischi', { fatti: g.jobs.filter(j => jobStatus(j) === 'success').length, totale: g.primary.group_disks_total }) }}
                   </span>
                 </div>
                 <div class="jl-progress-bar">
@@ -103,36 +103,36 @@
                 <span class="jl-status" :class="`s-${groupStatus(g)}`">
                   <span class="status-dot" /> {{ statusLabel(groupStatus(g)) }}
                 </span>
-                <span v-if="g.jobs.some(j => !j.is_active)" class="badge badge-outline">disattivato</span>
-                <span v-if="g.jobs.some(j => j.raw?.richiede_replica_completa)" class="badge badge-warning" title="VM migrata senza snapshot in comune con la destinazione: «Esegui» propone la replica completa">replica completa richiesta</span>
+                <span v-if="g.jobs.some(j => !j.is_active)" class="badge badge-outline">{{ t('elencoJob.disattivato') }}</span>
+                <span v-if="g.jobs.some(j => j.raw?.richiede_replica_completa)" class="badge badge-warning" :title="t('elencoJob.completaRichiestaAiuto')">{{ t('elencoJob.completaRichiesta') }}</span>
               </template>
             </td>
             <td class="jl-actions" @click.stop>
               <button
                 class="btn btn-secondary btn-sm"
-                :title="g.primary.is_active ? 'Disattiva job' : 'Attiva job'"
+                :title="g.primary.is_active ? t('elencoJob.disattivaJob') : t('elencoJob.attivaJob')"
                 @click="$emit('toggle-active', g.primary)"
               >{{ g.primary.is_active !== false ? '⏸' : '▶' }}</button>
               <button
                 class="btn btn-secondary btn-sm"
                 @click="$emit('run', g.primary, g)"
-                :title="g.jobs.length > 1 ? `Esegui tutti i ${g.jobs.length} job di questa VM` : 'Esegui ora'"
+                :title="g.jobs.length > 1 ? t('elencoJob.eseguiTutti', { n: g.jobs.length }) : t('elencoJob.eseguiOra')"
               >▶</button>
               <button
                 v-if="g.primary.kind === 'syncoid' || g.primary.kind === 'pve_native'"
                 class="btn btn-secondary btn-sm"
                 @click="$emit('show-log', g.primary)"
-                title="Mostra log live"
+                :title="t('elencoJob.logDalVivo')"
               >…</button>
               <button
                 class="btn btn-secondary btn-sm"
                 @click="$emit('edit', g.primary)"
-                title="Modifica"
+                :title="t('comune.modifica')"
               >✎</button>
               <button
                 class="btn btn-danger btn-sm"
                 @click="$emit('delete', g.primary)"
-                title="Elimina"
+                :title="t('comune.elimina')"
               >×</button>
             </td>
           </tr>
@@ -156,7 +156,7 @@
                 <div v-if="jobIsLive(j)" class="jl-progress-cell">
                   <div class="jl-progress-row">
                     <span class="jl-status s-running">
-                      <span class="status-dot" /> In esecuzione
+                      <span class="status-dot" /> {{ t('elencoJob.stato.running') }}
                     </span>
                     <span v-if="jobProgress(j)" class="jl-progress-pct">{{ jobProgress(j)!.percent.toFixed(1) }}%</span>
                   </div>
@@ -175,13 +175,13 @@
               <td class="jl-actions">
                 <button
                   class="btn btn-secondary btn-sm"
-                  :title="j.is_active ? 'Disattiva job' : 'Attiva job'"
+                  :title="j.is_active ? t('elencoJob.disattivaJob') : t('elencoJob.attivaJob')"
                   @click="$emit('toggle-active', j)"
                 >{{ j.is_active !== false ? '⏸' : '▶' }}</button>
-                <button class="btn btn-secondary btn-sm" @click="$emit('run', j, g)" title="Esegui">▶</button>
-                <button v-if="j.kind === 'syncoid' || j.kind === 'pve_native'" class="btn btn-secondary btn-sm" @click="$emit('show-log', j)" title="Log live">…</button>
-                <button class="btn btn-secondary btn-sm" @click="$emit('edit', j)" title="Modifica">✎</button>
-                <button class="btn btn-danger btn-sm" @click="$emit('delete', j)" title="Elimina">×</button>
+                <button class="btn btn-secondary btn-sm" @click="$emit('run', j, g)" :title="t('elencoJob.esegui')">▶</button>
+                <button v-if="j.kind === 'syncoid' || j.kind === 'pve_native'" class="btn btn-secondary btn-sm" @click="$emit('show-log', j)" :title="t('elencoJob.logDalVivo')">…</button>
+                <button class="btn btn-secondary btn-sm" @click="$emit('edit', j)" :title="t('comune.modifica')">✎</button>
+                <button class="btn btn-danger btn-sm" @click="$emit('delete', j)" :title="t('comune.elimina')">×</button>
               </td>
             </tr>
           </template>
@@ -194,6 +194,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { UnifiedJob, JobKind } from '../../stores/replication'
+import { useI18n } from 'vue-i18n'
+import { dataOra } from '../../utils/formato'
 
 interface JobGroup {
   key: string
@@ -203,6 +205,8 @@ interface JobGroup {
   jobs: UnifiedJob[]
   primary: UnifiedJob  // primo job del gruppo (sempre presente): evita jobs[0] possibly undefined
 }
+
+const { t, te, locale } = useI18n()
 
 const props = withDefaults(
   defineProps<{
@@ -326,19 +330,14 @@ function groupStatus(g: JobGroup): 'success' | 'failed' | 'running' | 'idle' {
 }
 
 function statusLabel(s: string): string {
-  return {
-    success: 'Successo',
-    failed: 'Fallito',
-    running: 'In esecuzione',
-    idle: 'In attesa',
-  }[s] || s
+  return te(`elencoJob.stato.${s}`) ? t(`elencoJob.stato.${s}`) : s
 }
 
 const humanCache = new Map<string, string>()
 function humanSchedule(j: UnifiedJob) {
   const cfg = j.schedule_config
   if (cfg && cfg.kind) {
-    const key = JSON.stringify(cfg)
+    const key = locale.value + JSON.stringify(cfg)
     if (humanCache.has(key)) return humanCache.get(key)!
     // best-effort sincrono: uso una traduzione locale leggera
     const out = humanizeLocal(cfg)
@@ -346,46 +345,36 @@ function humanSchedule(j: UnifiedJob) {
     return out
   }
   if (j.schedule) return j.schedule
-  return 'Manuale'
+  return t('elencoJob.pian.manuale')
 }
 
 function humanizeLocal(cfg: any): string {
   switch (cfg.kind) {
     case 'manual':
-      return 'Manuale'
+      return t('elencoJob.pian.manuale')
     case 'hourly':
-      return `Ogni ora :${String(cfg.minute ?? 0).padStart(2, '0')}`
+      return t('elencoJob.pian.ogniOra', { mm: String(cfg.minute ?? 0).padStart(2, '0') })
     case 'every_n_hours':
-      return `Ogni ${cfg.hours}h :${String(cfg.minute ?? 0).padStart(2, '0')}`
+      return t('elencoJob.pian.ogniNOre', { n: cfg.hours, mm: String(cfg.minute ?? 0).padStart(2, '0') })
     case 'daily':
-      return `Giornaliero · ${cfg.time}`
+      return t('elencoJob.pian.giornaliero', { ora: cfg.time })
     case 'every_n_days':
-      return `Ogni ${cfg.days}g · ${cfg.time}`
+      return t('elencoJob.pian.ogniNGiorni', { n: cfg.days, ora: cfg.time })
     case 'weekly': {
-      const labels: Record<string, string> = { mon: 'Lun', tue: 'Mar', wed: 'Mer', thu: 'Gio', fri: 'Ven', sat: 'Sab', sun: 'Dom' }
-      const days = (cfg.weekdays || []).map((d: string) => labels[d] || d).join(', ')
-      return `Settim. (${days}) · ${cfg.time}`
+      const days = (cfg.weekdays || []).map((d: string) => (te(`giorni.brevi.${d}`) ? t(`giorni.brevi.${d}`) : d)).join(', ')
+      return t('elencoJob.pian.settimanale', { giorni: days, ora: cfg.time })
     }
     case 'monthly':
-      return `Mensile · giorno ${cfg.day_of_month} · ${cfg.time}`
+      return t('elencoJob.pian.mensile', { giorno: cfg.day_of_month, ora: cfg.time })
     case 'advanced':
-      return `Avanzato: ${cfg.cron}`
+      return t('elencoJob.pian.avanzato', { cron: cfg.cron })
   }
   return cfg.cron || '—'
 }
 
 function formatRun(iso?: string | null) {
-  if (!iso) return 'mai'
-  try {
-    return new Date(iso).toLocaleString('it-IT', {
-      day: '2-digit',
-      month: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  } catch {
-    return iso
-  }
+  if (!iso) return t('comune.maiMinuscolo')
+  return dataOra(iso, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }, iso)
 }
 
 function routeSrc(j: UnifiedJob) {

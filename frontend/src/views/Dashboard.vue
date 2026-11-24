@@ -1,14 +1,14 @@
 <template>
   <div class="dashboard">
     <PageHeader
-      title="Dashboard"
-      subtitle="Riepilogo job di replica, backup e metriche dei nodi."
+      :title="t('cruscotto.titolo')"
+      :subtitle="t('cruscotto.sottotitolo')"
       icon="home"
     >
       <template #actions>
         <button class="btn btn-secondary btn-sm" :disabled="loading" @click="refreshData()">
           <Icon name="refresh" :size="14" :class="{ spin: loading }" />
-          {{ loading ? 'Aggiorno…' : 'Aggiorna' }}
+          {{ loading ? t('comune.aggiornoInCorso') : t('comune.aggiorna') }}
         </button>
       </template>
     </PageHeader>
@@ -33,9 +33,9 @@
     >
       <div class="card-head">
         <div>
-          <h2 class="card-title">Salute replica</h2>
+          <h2 class="card-title">{{ t('cruscotto.salute') }}</h2>
           <p class="card-sub">
-            Job schedulati in ritardo rispetto all'ultimo slot cron (UTC).
+            {{ t('cruscotto.saluteSotto') }}
           </p>
         </div>
         <span
@@ -43,47 +43,46 @@
           :class="replicationHealth.overdue_count > 0 ? 'health-badge-warn' : 'health-badge-ok'"
         >
           {{ replicationHealth.overdue_count > 0
-            ? `${replicationHealth.overdue_group_count || replicationHealth.overdue_count} in ritardo`
-            : 'Tutto ok' }}
+            ? t('cruscotto.inRitardoN', { n: replicationHealth.overdue_group_count || replicationHealth.overdue_count })
+            : t('cruscotto.tuttoOk') }}
         </span>
         <RouterLink v-if="replicationHealth.overdue_count > 0" to="/replication" class="btn btn-secondary btn-sm">
-          Vai a Repliche
+          {{ t('cruscotto.vaiRepliche') }}
         </RouterLink>
       </div>
 
       <div v-if="replicationHealth.overdue_count === 0 && !runningJobs.length" class="health-ok">
-        {{ replicationHealth.healthy_count }} job schedulati aggiornati
-        <span v-if="scheduleGroups.length"> · {{ scheduleGroups.length }} VM/gruppi monitorati</span>.
+        {{ t('cruscotto.aggiornati', { n: replicationHealth.healthy_count }) }}<span v-if="scheduleGroups.length">{{ t('cruscotto.monitorati', { n: scheduleGroups.length }) }}</span>.
       </div>
 
       <div v-if="runningJobs.length" class="health-running">
-        <strong>{{ runningJobs.length }} replica in corso</strong>
+        <strong>{{ t('cruscotto.inCorsoN', { n: runningJobs.length }) }}</strong>
         <ul class="running-list">
           <li v-for="job in runningJobs" :key="job.id">
             {{ job.vm_name || job.name }}
             <span v-if="job.vm_id" class="health-sub">VMID {{ job.vm_id }}</span>
           </li>
         </ul>
-        <RouterLink to="/replication" class="btn btn-secondary btn-sm">Apri Repliche</RouterLink>
+        <RouterLink to="/replication" class="btn btn-secondary btn-sm">{{ t('cruscotto.apriRepliche') }}</RouterLink>
       </div>
 
       <table v-if="replicationHealth.overdue_count > 0" class="health-table">
         <thead>
           <tr>
-            <th>VM / gruppo</th>
-            <th>Ultima run</th>
-            <th>Prossima run</th>
-            <th>Slot saltati</th>
-            <th>Ritardo</th>
-            <th>Stato</th>
+            <th>{{ t('cruscotto.vmGruppo') }}</th>
+            <th>{{ t('cruscotto.ultima') }}</th>
+            <th>{{ t('cruscotto.prossima') }}</th>
+            <th>{{ t('cruscotto.saltate') }}</th>
+            <th>{{ t('cruscotto.ritardo') }}</th>
+            <th>{{ t('comune.stato') }}</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="group in overdueGroups" :key="group.key">
             <td>
               <strong>{{ group.vm_name || group.key }}</strong>
-              <div v-if="group.vm_id" class="health-sub">VMID {{ group.vm_id }} · {{ group.job_count }} job</div>
-              <div v-else-if="group.job_count > 1" class="health-sub">{{ group.job_count }} dischi</div>
+              <div v-if="group.vm_id" class="health-sub">{{ t('cruscotto.vmidJob', { vmid: group.vm_id, n: group.job_count }) }}</div>
+              <div v-else-if="group.job_count > 1" class="health-sub">{{ t('cruscotto.dischi', { n: group.job_count }) }}</div>
             </td>
             <td>{{ formatLastRun(group.last_run) }}</td>
             <td>{{ formatLastRun(group.next_run) }}</td>
@@ -91,7 +90,7 @@
             <td>{{ formatDelay(group.hours_since_last_run) }}</td>
             <td>
               <span class="badge badge-warning">
-                {{ group.last_status === 'failed' ? 'Ultimo fallito' : 'Run mancata' }}
+                {{ group.last_status === 'failed' ? t('cruscotto.ultimoFallito') : t('cruscotto.mancata') }}
               </span>
             </td>
           </tr>
@@ -99,15 +98,15 @@
       </table>
 
       <details v-if="scheduleGroups.length" class="schedule-details">
-        <summary>Pianificazione VM/gruppi ({{ scheduleGroups.length }})</summary>
+        <summary>{{ t('cruscotto.pianificazione', { n: scheduleGroups.length }) }}</summary>
         <table class="health-table health-table-compact">
           <thead>
             <tr>
-              <th>VM / gruppo</th>
-              <th>Ultima run</th>
-              <th>Prossima run</th>
-              <th>Slot saltati</th>
-              <th>Stato</th>
+              <th>{{ t('cruscotto.vmGruppo') }}</th>
+              <th>{{ t('cruscotto.ultima') }}</th>
+              <th>{{ t('cruscotto.prossima') }}</th>
+              <th>{{ t('cruscotto.saltate') }}</th>
+              <th>{{ t('comune.stato') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -120,8 +119,8 @@
               <td>{{ formatLastRun(group.next_run) }}</td>
               <td>{{ group.overdue ? (group.missed_slots || 0) : '—' }}</td>
               <td>
-                <span v-if="group.overdue" class="badge badge-warning">In ritardo</span>
-                <span v-else class="badge badge-success">Ok</span>
+                <span v-if="group.overdue" class="badge badge-warning">{{ t('cruscotto.inRitardo') }}</span>
+                <span v-else class="badge badge-success">{{ t('comune.ok') }}</span>
               </td>
             </tr>
           </tbody>
@@ -132,29 +131,29 @@
     <section class="card">
       <div class="card-head">
         <div>
-          <h2 class="card-title">Performance nodi</h2>
-          <p class="card-sub">Snapshot CPU/RAM/load corrente.</p>
+          <h2 class="card-title">{{ t('cruscotto.prestazioni') }}</h2>
+          <p class="card-sub">{{ t('cruscotto.prestazioniSotto') }}</p>
         </div>
         <button class="btn btn-secondary btn-sm" :disabled="loadingMetrics" @click="loadNodesMetrics">
           <Icon name="refresh" :size="14" :class="{ spin: loadingMetrics }" />
-          Aggiorna
+          {{ t('comune.aggiorna') }}
         </button>
       </div>
 
-      <LoadingState v-if="loadingMetrics && !nodesMetrics.length" message="Caricamento metriche…" />
+      <LoadingState v-if="loadingMetrics && !nodesMetrics.length" :message="t('cruscotto.caricoMetriche')" />
       <EmptyState
         v-else-if="!nodesMetrics.length"
-        title="Nessun nodo online"
-        message="Le metriche non sono al momento disponibili. Verifica la connettività SSH ai nodi."
+        :title="t('cruscotto.nessunNodo')"
+        :message="t('cruscotto.nessunNodoMsg')"
         icon="server"
       />
       <table v-else class="metrics-table">
         <thead>
           <tr>
-            <th>Nodo</th>
+            <th>{{ t('comune.nodo') }}</th>
             <th>CPU</th>
             <th>RAM</th>
-            <th>Load (1/5/15)</th>
+            <th>{{ t('cruscotto.carico') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -205,9 +204,12 @@ import PageHeader from '../components/ui/PageHeader.vue'
 import Icon from '../components/ui/Icon.vue'
 import LoadingState from '../components/ui/LoadingState.vue'
 import EmptyState from '../components/ui/EmptyState.vue'
+import { useI18n } from 'vue-i18n'
+import { dataOra } from '../utils/formato'
 
 const toast = useToast()
 
+const { t } = useI18n()
 const loading = ref(false)
 const loadingMetrics = ref(false)
 const jobStats = ref<JobStats | null>(null)
@@ -248,12 +250,12 @@ interface Kpi {
 const kpis = computed<Kpi[]>(() => {
   const s = (jobStats.value || {}) as any
   return [
-    { id: 'zfs',  label: 'Replica ZFS',   value: s.replica_zfs   || 0, detail: 'syncoid',     icon: 'archive',          tone: 'zfs' },
-    { id: 'btr',  label: 'Replica BTRFS', value: s.replica_btrfs || 0, detail: 'btrfs send',  icon: 'archive',          tone: 'zfs' },
-    { id: 'pbsB', label: 'Backup PBS',    value: s.backup_pbs    || 0, detail: 'pbs backup',  icon: 'database',         tone: 'pbs' },
-    { id: 'pbsR', label: 'Replica PBS',   value: s.replica_pbs   || 0, detail: 'pbs restore', icon: 'database',         tone: 'pbs' },
-    { id: 'mig',  label: 'Migrazioni',    value: s.migration     || 0, detail: 'migrations',  icon: 'arrow-right-left', tone: 'info' },
-    { id: 'tot',  label: 'Totale',        value: s.total         || 0, detail: 'job conf.',   icon: 'list',             tone: 'neutral' },
+    { id: 'zfs',  label: t('cruscotto.kpi.zfs'), value: s.replica_zfs   || 0, detail: 'syncoid',     icon: 'archive',          tone: 'zfs' },
+    { id: 'btr',  label: t('cruscotto.kpi.btrfs'), value: s.replica_btrfs || 0, detail: 'btrfs send',  icon: 'archive',          tone: 'zfs' },
+    { id: 'pbsB', label: t('cruscotto.kpi.backupPbs'), value: s.backup_pbs    || 0, detail: 'pbs backup',  icon: 'database',         tone: 'pbs' },
+    { id: 'pbsR', label: t('cruscotto.kpi.replicaPbs'), value: s.replica_pbs   || 0, detail: 'pbs restore', icon: 'database',         tone: 'pbs' },
+    { id: 'mig',  label: t('cruscotto.kpi.migrazioni'), value: s.migration     || 0, detail: t('cruscotto.kpi.migrazioniDett'), icon: 'arrow-right-left', tone: 'info' },
+    { id: 'tot',  label: t('cruscotto.kpi.totale'), value: s.total         || 0, detail: t('cruscotto.kpi.totaleDett'), icon: 'list',             tone: 'neutral' },
   ]
 })
 
@@ -273,7 +275,7 @@ async function loadReplicationHealth() {
     const r = await dashboardService.getReplicationHealth()
     replicationHealth.value = r.data
   } catch (e) {
-    toast.error('Impossibile caricare salute replica', errorMessage(e))
+    toast.error(t('cruscotto.erroreSalute'), errorMessage(e))
   }
 }
 
@@ -282,7 +284,7 @@ async function loadJobStats() {
     const r = await dashboardService.getJobStats()
     jobStats.value = r.data
   } catch (e) {
-    toast.error('Impossibile caricare le statistiche', errorMessage(e))
+    toast.error(t('cruscotto.erroreStatistiche'), errorMessage(e))
   }
 }
 
@@ -292,7 +294,7 @@ async function loadNodesMetrics() {
     const r = await dashboardService.getNodesMetrics()
     nodesMetrics.value = r.data
   } catch (e) {
-    toast.error('Errore metriche nodi', errorMessage(e))
+    toast.error(t('cruscotto.erroreMetriche'), errorMessage(e))
   } finally {
     loadingMetrics.value = false
   }
@@ -309,15 +311,15 @@ function barStyle(val: number, danger = 80, warning = 60) {
 }
 
 function formatLastRun(iso?: string | null): string {
-  if (!iso) return 'Mai'
+  if (!iso) return t('comune.mai')
   const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString()
+  return Number.isNaN(d.getTime()) ? iso : dataOra(d, { dateStyle: 'short', timeStyle: 'medium' })
 }
 
 function formatDelay(hours?: number | null): string {
   if (hours == null) return '—'
-  if (hours < 24) return `${hours.toFixed(1)} h`
-  return `${(hours / 24).toFixed(1)} gg`
+  if (hours < 24) return t('cruscotto.oreAbbr', { n: hours.toFixed(1) })
+  return t('cruscotto.giorniAbbr', { n: (hours / 24).toFixed(1) })
 }
 </script>
 
