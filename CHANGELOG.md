@@ -11,7 +11,7 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
   tutte le viste raggiungibili dal menu: Dashboard, Repliche, job, registri, Nodi, Macchine
   virtuali (con «Ritorno all'originale», «Riallinea identità» e «Attiva DR»), impostazioni,
   snapshot VM, PBS, backup host, repliche file dati, migrazioni, Sanoid e Cluster. La vista
-  Cluster, che era tutta in inglese, in italiano è ora in italiano. In italiano le
+  Cluster, che era tutta in inglese, ora in italiano è in italiano davvero. In italiano le
   varianti dello stesso termine diventano una forma sola, come da `docs/glossario-it-en.md`:
   «Ultimo run»/«Ultima run» → «Ultima esecuzione», «Sorgente» → «Origine», «Schedule» →
   «Pianificazione», «Successo» → «Riuscito», «System Logs» → «Registri di sistema».
