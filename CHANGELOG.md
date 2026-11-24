@@ -5,6 +5,10 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.27.0] - 2026-11-24
+
+Ritorno all'originale dalla replica, e primo pezzo dell'interfaccia in due lingue.
+
 ### Aggiunte
 
 - **Impianto per l'interfaccia in due lingue** (italiano e inglese; Riccardo, 24/11: «serve

@@ -34,7 +34,7 @@
 | S3 | [x] | Passi SSH e rotte «stato», «prepara», «completa» | in linea | S2 | le rotte rispondono e rifiutano i casi vietati | pytest del task 3 |
 | S4 | [x] | Interfaccia in `VMs.vue` | in linea | S3 | lint e build puliti, una schermata a 1920 | `npm run lint`, `npm run build:check` |
 | S5 | [x] | Prova vera su una VM di test a Domarc | in linea | S4 | ritorno riuscito e ritorno fallito apposta, tutti e due letti | registro del piano |
-| S6 | [ ] | Documenti e rilascio | in linea | S5 | release su GitHub | `gh release view` |
+| S6 | [x] | Documenti e rilascio | in linea | S5 | release su GitHub | `gh release view` |
 
 ## Casi da non dimenticare
 
@@ -109,7 +109,7 @@ def piano_ritorno(jobs: List[dict], stato_replica: str, stato_originale: str,
 **Sequenza:** corsa di replica → spegnere la VM di test → «Attiva DR» e accensione della replica → scrivere un file nella replica → «Prepara» → «Completa» → controllare: file presente nell'originale, nome/uuid/bridge/onboot/tag dell'originale, replica spenta con identità di replica, disco vecchio presente col nome datato, corsa successiva del job incrementale e verde. Poi il giro del guasto: conf di ritorno con un bridge inesistente → l'originale non parte → la replica deve tornare accesa da sola.
 **Verifica:** esiti scritti nel Registro, con comandi e ore. Alla fine VM di test, replica e dischi vecchi tolti a mano, elencati per nome.
 
-### [ ] Task 6 — Documenti e rilascio
+### [x] Task 6 — Documenti e rilascio
 
 `docs/identita-replica.md` (sezione «Ritorno all'originale»), `CHANGELOG.md`, `CONTEXT.md`, `TASKS.md`, `docs/scheda-mappa.md`; cancello completo una volta; rilascio da `main` secondo `.claude/rules/rilascio.md` (5 versioni, `frontend/dist`, tag, `gh release create`). DTS si aggiorna solo col sì di Riccardo.
 
@@ -133,9 +133,24 @@ def piano_ritorno(jobs: List[dict], stato_replica: str, stato_originale: str,
 - Non provato sul vero: attesa con `qm agent ping` (VM senza agent), originale sparita dal nodo, riavvio del servizio a metà, guardia della corsa normale su un job attivo (qui i job erano spenti). Coperti solo dalle prove automatiche, tranne la guardia.
 - Schermata a 1920 non fatta: Chrome si ferma sull'avviso del certificato di `https://192.168.4.199` e non lo scavalco. La prova è lasciata in piedi (29801 accesa col DR attivo, ritorno `fallito`) perché Riccardo possa aprire la scheda.
 - LXC 332 a `110d2e1` (20:30), healthy.
+- 24/11 sera, pulizia col sì di Riccardo («Pulisci e rilascia»). Tolti: job 17 e 18 (`DELETE /api/sync-jobs/vm-group/e5489efa`, `jobs_deleted: 2`); su PX-NAS la VM 29801 (`qm destroy --purge`) e `ZFS-LARGE/replica/vm-9801-disk-0` e `-1` coi loro snapshot; su DA-PX-04 la VM 9801 coi suoi due dischi, i sei dataset `zfs/dapx-vecchio-9801-disk-0-20261124-{1915,1920,1924}` e `zfs/dapx-vecchio-9801-disk-1-20261124-{1916,1920,1925}`, le tre copie `/root/dapx-bak-20261124/9801.conf.pre-ritorno-{191659,192058,192533}` e la cartella vuota. Verifica: `qm list` e `zfs list -t all` sui due nodi senza niente che contenga 9801.
+- 24/11 sera, task 6: cancello una volta (esito nel Consuntivo), 3.27.0 rilasciata da `main`, Domarc aggiornata. **Verifica:** `gh release view v3.27.0`, `/api/health` dell'LXC 332.
 
 ## Consuntivo
 ### Fatto
+I sei task. La funzione è in `backend/services/ritorno_originale.py` con tre rotte in `routers/vms.py` e la scheda in `VMs.vue`; 31 prove più una per «Attiva DR». Provata sul vero a Domarc, giro buono e giro del guasto, su una VM di test a due dischi. Rilasciata nella 3.27.0.
 ### Mancante
+- DTS non aggiornata (aspetta il sì di Riccardo).
+- Non provato sul vero: attesa con `qm agent ping`, originale sparita dal nodo, riavvio del servizio a metà, guardia della corsa normale su un job attivo.
+- La scheda non è stata guardata resa a schermo (avviso di certificato in Chrome).
 ### Scostamenti dal piano
+- «Prepara» spegne i job del gruppo e «Completa» li riaccende; il piano non lo diceva.
+- La replica si riaccende anche se falliscono l'ultimo syncoid o la scrittura della conf, non solo l'avvio.
+- La fotografia è un passo a sé dopo ogni corsa riuscita, non dentro la registrazione della VM.
+- VM di test senza agent e senza rete: dati confrontati col guid dello snapshot finale, non con un file scritto nell'ospite.
+- Corretto a parte un difetto vecchio di «Attiva DR» (description ricodificata).
 ### Consigli di sviluppo
+- Un «Annulla ritorno» per uscire da `fallito`/`pronto` senza completare (oggi i job restano spenti finché non si completa).
+- Togliere gli snapshot `syncoid_<nodo replica>_…` della copia inversa a ritorno confermato.
+- Un elenco dei dischi `dapx-vecchio-…` con età e spazio, perché qualcuno si ricordi di toglierli.
+- Provare l'attesa con l'agent su una VM che ce l'ha, alla prima occasione.

@@ -127,3 +127,49 @@ porta «DR ATTIVATO», o se la sorgente non si legge. API:
 
 Lo scheduler controlla ogni 6 ore che nessuna replica registrata abbia `onboot: 1`
 (`services/repliche_onboot.py`) e avvisa; non corregge da solo.
+
+## Ritorno all'originale (dalla 3.27.0)
+
+Quando una replica è stata accesa al posto dell'originale, la scheda **Ritorno
+all'originale** (dettaglio VM della replica, sotto «Identità replica») riporta la
+produzione sulla VM originale coi dati aggiornati della replica. Vale per le VM
+qemu, anche con più dischi, replicate con syncoid. Si fa in due tempi.
+
+**Prepara ritorno**, a replica accesa, senza fermo:
+
+- l'originale deve essere spenta; i suoi dischi vengono rinominati in
+  `<pool>/dapx-vecchio-<vmid>-disk-<n>-<data>-<ora>` e **non si cancellano mai**:
+  li toglie una persona quando il ritorno è confermato;
+- syncoid copia per intero i dischi della replica sul nodo d'origine, col nome
+  di prima;
+- i job di replica di quella VM vengono spenti: una corsa normale riporterebbe
+  indietro il disco della replica che sta lavorando.
+
+**Completa ritorno**, con fermo breve (alla prova, 47 secondi su due dischi da 4 G):
+
+1. spegnimento della replica;
+2. ultimo syncoid incrementale;
+3. configurazione dell'originale riscritta: nome, rete, `onboot`, tag, uuid e
+   vmgenid sono quelli dell'originale, presi dalla fotografia che il job salva a
+   ogni corsa riuscita (`sync_jobs.source_config_snapshot`); la copia di quella
+   che c'era va in `/root/dapx-bak-<data>/` sul nodo d'origine;
+4. accensione dell'originale e controllo (agent, oppure «accesa da 30 secondi»
+   dove l'agent non c'è);
+5. la replica torna «replica» (uuid derivato, `onboot 0`, description) e i job si
+   riaccendono: la corsa successiva è incrementale.
+
+Se l'ultimo syncoid, la scrittura della configurazione o l'accensione falliscono,
+l'originale viene spenta e **la replica riaccesa da sola**; lo stato diventa
+«Non riuscito» col motivo, i job restano spenti e «Prepara» si può rilanciare.
+
+Perché la fotografia: la configurazione della replica porta il bridge della
+destinazione. A DTS il 24/11 il ritorno del 3CX fatto a mano ha lasciato la VM
+isolata tre minuti per questo.
+
+API (ruolo operatore, accesso ai due nodi, `confirm: "RITORNA"` sulle due POST):
+`GET /api/vms/node/{node_id}/vm/{vmid}/ritorno`, `POST …/ritorno/prepara`,
+`POST …/ritorno/completa`. Codice in `backend/services/ritorno_originale.py`.
+
+Limiti noti: non c'è un «Annulla ritorno»; gli snapshot `syncoid_<nodo replica>_…`
+della copia inversa restano sui due lati; un ritorno rimasto a metà per un
+riavvio del servizio si riprende rilanciando «Prepara».
