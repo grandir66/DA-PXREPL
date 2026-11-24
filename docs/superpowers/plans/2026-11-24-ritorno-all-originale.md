@@ -29,8 +29,8 @@
 
 | ID | Stato | Passo | Agente | Dipende da | Fatto quando | Verifica |
 | --- | --- | --- | --- | --- | --- | --- |
-| S1 | [ ] | Fotografia della configurazione dell'originale a ogni corsa | in linea | — | la colonna si riempie dopo una corsa | pytest del task 1 |
-| S2 | [ ] | Logica pura del ritorno (piano dei passi, conf ricostruita, nomi) | in linea | S1 | le prove passano dopo essere state viste fallire | pytest del task 2 |
+| S1 | [x] | Fotografia della configurazione dell'originale a ogni corsa | in linea | — | la colonna si riempie dopo una corsa | pytest del task 1 |
+| S2 | [x] | Logica pura del ritorno (piano dei passi, conf ricostruita, nomi) | in linea | S1 | le prove passano dopo essere state viste fallire | pytest del task 2 |
 | S3 | [ ] | Passi SSH e rotte «stato», «prepara», «completa» | in linea | S2 | le rotte rispondono e rifiutano i casi vietati | pytest del task 3 |
 | S4 | [ ] | Interfaccia in `VMs.vue` | in linea | S3 | lint e build puliti, una schermata a 1920 | `npm run lint`, `npm run build:check` |
 | S5 | [ ] | Prova vera su una VM di test a Domarc | in linea | S4 | ritorno riuscito e ritorno fallito apposta, tutti e due letti | registro del piano |
@@ -44,15 +44,16 @@
 4. VM con due dischi: tutti i dischi allo stesso istante (replica spenta) prima di accendere. — Task 3 e 5.
 5. L'originale accesa non risponde: spegnimento dell'originale e riaccensione della replica, con messaggio chiaro. — Task 3 e 5.
 
-### [ ] Task 1 — Fotografia della configurazione dell'originale
+### [x] Task 1 — Fotografia della configurazione dell'originale
 
 **File:** `backend/database.py` (modello `SyncJob`: colonne `source_config_snapshot` Text, `source_config_at` DateTime, `ritorno_stato` String(30), `ritorno_dettaglio` Text); `backend/update_db_schema.py` (quattro `_ensure_column(conn, "sync_jobs", …)`); `backend/services/sync_job_execution.py` (dove oggi legge la conf della sorgente prima di `register_vm`, righe ~250-280 e ~780); prova `backend/tests/test_ritorno_originale.py`.
 **Cosa fare:** quando il job legge la configurazione della sorgente, salvarla intera in `source_config_snapshot` (sezione principale, senza le sezioni snapshot: `rimuovi_sezioni_snapshot` di `replica_identity`) con l'ora in `source_config_at`. Si salva **solo** se la sorgente non porta il segno `dapx-replica` nella description e se la corsa non è un ritorno: altrimenti una replica promossa sovrascriverebbe la fotografia buona. Per i job gemelli di un `vm_group_id` si scrive su tutti.
 **Produce:** `job.source_config_snapshot: Optional[str]`.
 **Verifica:** `cd backend && python -m pytest tests/test_ritorno_originale.py -q` → verde; la prova «conf con dapx-replica non sovrascrive» vista fallire prima del codice.
 **Commit:** `ritorno: fotografia della configurazione dell'originale`.
+**Verifica (24/11 sera):** `cd backend && .venv/bin/python -m pytest tests/test_ritorno_originale.py -q` → 15 rosse prima del codice, 15 verdi dopo (4 del task 1).
 
-### [ ] Task 2 — Logica pura
+### [x] Task 2 — Logica pura
 
 **File:** crea `backend/services/ritorno_originale.py`; prove nello stesso file di prova.
 **Interfacce (funzioni pure, nessun SSH):**
@@ -78,6 +79,7 @@ def piano_ritorno(jobs: List[dict], stato_replica: str, stato_originale: str,
 **Regole di `piano_ritorno`:** impossibile se la replica non porta il segno `dapx-replica`, se l'originale è `running`, se un job del gruppo non è syncoid; `rinomina=True` per ogni disco il cui dataset d'origine esiste.
 **Verifica:** pytest → verde; viste fallire prima: bridge dell'originale rimesso (caso DTS, conf vere di 103 e 9103 copiate da `/root/dapx-bak-20261124` come dati di prova, senza segreti), nome senza suffisso, nome del disco vecchio che non combacia con `^vm-\d+-disk-\d+$`.
 **Commit:** `ritorno: logica pura e prove`.
+**Verifica (24/11 sera):** stesso comando, 11 prove del task 2 rosse prima e verdi dopo.
 
 ### [ ] Task 3 — Passi SSH e rotte
 
@@ -110,6 +112,9 @@ def piano_ritorno(jobs: List[dict], stato_replica: str, stato_originale: str,
 `docs/identita-replica.md` (sezione «Ritorno all'originale»), `CHANGELOG.md`, `CONTEXT.md`, `TASKS.md`, `docs/scheda-mappa.md`; cancello completo una volta; rilascio da `main` secondo `.claude/rules/rilascio.md` (5 versioni, `frontend/dist`, tag, `gh release create`). DTS si aggiorna solo col sì di Riccardo.
 
 ## Registro
+
+- 24/11 sera, task 1: fotografia salvata in `_try_register_vm_after_sync` (dove il job legge la conf della sorgente), quindi solo per i job con «Registra VM». Aggiunta una guardia in `execute_sync_job_task`: con un ritorno aperto (`preparazione`, `pronto`, `scambio`, `fallito`) la corsa normale non parte, perché `zfs receive -F` riporterebbe indietro il disco della replica che sta lavorando.
+- 24/11 sera, task 2: le conf di prova hanno la forma di 103 e 9103 ma sono scritte a mano dai dati di `TASKS.md` (nome, bridge `vmbr_vm`/`vmbr1`, tag), non copiate da `/root/dapx-bak-20261124`: quel percorso sta su DTS-PX-04 e DTS non si tocca. `config_originale_per_ritorno` e `piano_ritorno` hanno parametri in più rispetto al piano (`vmid_replica`, `suffisso_nome`; `replica_segnata`, `fotografia_presente`, e `source_esiste`/`vm_type` nei dict dei job): senza, le regole scritte non erano calcolabili. La nota dell'originale (righe `#` del `.conf`) resta, con la riga «Ripristinata da replica…» in testa.
 
 ## Consuntivo
 ### Fatto
