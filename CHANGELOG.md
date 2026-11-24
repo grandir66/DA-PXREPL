@@ -5,6 +5,14 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+### Modifiche
+
+- **Interfaccia in due lingue, seconda parte** (selettore ancora nascosto): tradotte
+  Dashboard, Repliche, elenco e finestra dei job, visore dei log e registri. In italiano le
+  varianti dello stesso termine diventano una forma sola, come da `docs/glossario-it-en.md`:
+  «Ultimo run»/«Ultima run» → «Ultima esecuzione», «Sorgente» → «Origine», «Schedule» →
+  «Pianificazione», «Successo» → «Riuscito», «System Logs» → «Registri di sistema».
+
 ## [3.27.0] - 2026-11-24
 
 Ritorno all'originale dalla replica, e primo pezzo dell'interfaccia in due lingue.
@@ -21,10 +29,7 @@ Ritorno all'originale dalla replica, e primo pezzo dell'interfaccia in due lingu
   non cambia quasi niente: `lang="it"` nella pagina (prima dichiarava inglese) e tre voci
   di menu uniformate all'italiano («Macchine virtuali», «Registri di sistema», «Backup
   configurazione»). Tradotti finora menu, accesso, finestre di conferma, notifiche ed
-  editor della pianificazione, Dashboard, Repliche, elenco e finestra dei job, registri; il
-  glossario è in `docs/glossario-it-en.md`. In italiano le varianti («Ultimo run», «Sorgente»,
-  «Schedule», «Successo») diventano una forma sola («Ultima esecuzione», «Origine»,
-  «Pianificazione», «Riuscito»).
+  editor della pianificazione; il glossario è in `docs/glossario-it-en.md`.
 
 - **Ritorno all'originale** (scheda nel dettaglio VM della replica, sotto «Identità
   replica»). Quando una replica è stata accesa al posto dell'originale, il sistema riporta la
