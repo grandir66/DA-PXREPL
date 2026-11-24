@@ -9,6 +9,10 @@ Da decidere prima di tutto (Riccardo):
 - [x] Riccardo, 24/11: «Serve l'inglese». Si fa la traduzione vera (P0-P8, 8-12 giorni); l'alternativa «solo italiano» in fondo decade.
 - [x] Riccardo, 24/11: «Sì, parti così» → lingua **per utente**, e-mail nella lingua **dell'appliance**. Nessun rilascio e selettore nascosto finché menu, login e viste quotidiane non sono tradotti.
 
+- [x] **3.28.0 rilasciata il 25/11** (Riccardo: «fai uno snapshot aggiorna 199»): selettore di lingua visibile a tutti in fondo al menu, release su GitHub. **Domarc alla 3.28.0** (snapshot LXC 332 `pre-pxrepl-3280-20261125` su DA-PX-04; health 3.28.0 healthy, scheduler running; il JS servito contiene selettore e testi inglesi). DTS resta alla 3.27.0 finché Riccardo non lo dice.
+- [ ] Riccardo sta guardando a schermo sulla `.199`: raccogliere qui quello che trova (testi sbagliati, etichette che non stanno).
+- [ ] Snapshot `pre-pxrepl-3280-20261125` dell'LXC 332 da togliere quando l'interfaccia è confermata.
+
 Lavoro, in ordine di priorità (solo se si decide per l'inglese; stima totale 8-12 giorni):
 - [x] P0 — Glossario approvato da Riccardo il 24/11 («Glossario ok, continua»): `docs/glossario-it-en.md`.
 - [x] P1 — Impianto (24/11): `vue-i18n` 11, `frontend/src/i18n/index.ts`, `frontend/src/locales/{it,en}.json`, italiano predefinito e di ripiego, `lang="it"` in `index.html`, `frontend/src/utils/formato.ts` (date e numeri), cancello `frontend/scripts/controlla-lingue.mjs` dentro `npm run lint`. Selettore in `MainLayout.vue` **nascosto**: si vede in `npm run dev` o con `localStorage['dapx.lang.anteprima']='1'`. Verifica: `npm run lint` 0 errori, `vue-tsc -b` 0, cancello visto fallire con una chiave tolta da `en.json` (esito 1) e tornare a 0. Non verificato: resa a schermo del selettore; `frontend/dist/` non ricostruito (si fa al rilascio).
