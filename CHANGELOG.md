@@ -5,6 +5,22 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+### Aggiunte
+
+- **Ritorno all'originale** (backend; l'interfaccia arriva nello stesso rilascio).
+  Quando una replica è stata accesa al posto dell'originale, il sistema riporta la
+  produzione sulla VM originale coi dati aggiornati della replica, in due tempi:
+  «Prepara» a replica accesa (disco vecchio dell'originale rinominato in
+  `dapx-vecchio-…`, mai cancellato, e copia syncoid replica → origine) e «Completa»
+  con fermo breve (spegnimento della replica, ultimo syncoid, configurazione
+  dell'originale riscritta, accensione e controllo; se l'originale non risponde la
+  si spegne e si riaccende la replica). A DTS il 24/11 il ritorno del 3CX fatto a
+  mano ha lasciato la VM isolata tre minuti, perché la configurazione della replica
+  portava il bridge della destinazione: per questo a ogni corsa il job ora salva la
+  configurazione dell'originale (nome, rete, onboot, tag, uuid) e al ritorno
+  valgono quei valori. Con un ritorno aperto la replica normale di quella VM non
+  parte: riporterebbe indietro il disco della replica che sta lavorando.
+
 ## [3.26.0] - 2026-11-24
 
 Migliorie dopo la verifica delle due installazioni del 24/11.

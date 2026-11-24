@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from pydantic import BaseModel
 import json # Missing import
+import asyncio
 import logging
 
 from database import get_db, Node, VMRegistry, User, NodeType
@@ -791,6 +792,121 @@ async def activate_dr(
         "forzato": body.force,
         "avviso": "La VM non e' stata avviata: lo start e' un'azione separata.",
     }
+
+
+# ── Ritorno all'originale (3.27.0): due tempi, sempre con syncoid ──
+
+class RitornoRequest(BaseModel):
+    confirm: str = ""
+    attesa_avvio_s: int = 180
+
+
+def _contesto_ritorno(db: Session, user: User, node_id: int, vmid: int):
+    """Nodo della replica, job del gruppo, nodo d'origine; permessi su tutti e due."""
+    from services import ritorno_originale
+
+    node = db.query(Node).filter(Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    if not check_node_access(user, node):
+        raise HTTPException(status_code=403, detail="Accesso negato a questo nodo")
+    jobs = ritorno_originale.jobs_del_ritorno(db, node.id, vmid)
+    if not jobs:
+        raise HTTPException(status_code=404, detail=f"VM {vmid} non e' la destinazione di un job di replica")
+    origine = db.query(Node).filter(Node.id == jobs[0].source_node_id).first()
+    if not origine:
+        raise HTTPException(status_code=409, detail="Il job non ha un nodo sorgente")
+    if not check_node_access(user, origine):
+        raise HTTPException(status_code=403, detail=f"Accesso negato al nodo d'origine {origine.name}")
+    return node, jobs, origine
+
+
+@router.get("/node/{node_id}/vm/{vmid}/ritorno")
+async def ritorno_stato(
+    node_id: int,
+    vmid: int,
+    user: User = Depends(require_operator),
+    db: Session = Depends(get_db)
+):
+    """Stato del ritorno all'originale e piano di cosa farebbe. Non scrive niente."""
+    from services import ritorno_originale
+
+    node, jobs, origine = _contesto_ritorno(db, user, node_id, vmid)
+    return await ritorno_originale.stato_ritorno(db, jobs, origine, node)
+
+
+@router.post("/node/{node_id}/vm/{vmid}/ritorno/prepara")
+async def ritorno_prepara(
+    node_id: int,
+    vmid: int,
+    body: RitornoRequest,
+    request: Request,
+    user: User = Depends(require_operator),
+    db: Session = Depends(get_db)
+):
+    """Primo tempo, a replica accesa: disco vecchio dell'originale da parte
+    (rinominato, mai cancellato) e copia syncoid replica -> origine. Parte in
+    sottofondo; lo stato si legge da GET .../ritorno."""
+    from services import ritorno_originale
+
+    node, jobs, origine = _contesto_ritorno(db, user, node_id, vmid)
+    if body.confirm != "RITORNA":
+        raise HTTPException(status_code=400, detail="Conferma mancante: scrivere RITORNA")
+    stato = await ritorno_originale.stato_ritorno(db, jobs, origine, node)
+    if stato["in_corso"]:
+        raise HTTPException(status_code=409, detail="Un ritorno per questa VM e' gia' in corso")
+    if not stato["piano"]["possibile"]:
+        raise HTTPException(status_code=409, detail=stato["piano"]["motivo"])
+    log_audit(
+        db, user.id, "vm_ritorno_prepara", "vm", resource_id=vmid,
+        details=f"Prepara ritorno: replica {vmid} ({node.name}) -> originale {jobs[0].vm_id} ({origine.name})",
+        ip_address=request.client.host if request.client else None,
+    )
+    asyncio.create_task(ritorno_originale.prepara([j.id for j in jobs], user.id, user.username))
+    return {"success": True, "stato": "preparazione", "messaggio": "Preparazione avviata"}
+
+
+@router.post("/node/{node_id}/vm/{vmid}/ritorno/completa")
+async def ritorno_completa(
+    node_id: int,
+    vmid: int,
+    body: RitornoRequest,
+    request: Request,
+    user: User = Depends(require_operator),
+    db: Session = Depends(get_db)
+):
+    """Secondo tempo, con fermo breve: spegne la replica, ultimo syncoid,
+    riscrive la conf dell'originale e la accende. Se non risponde, la spegne
+    e riaccende la replica."""
+    from services import ritorno_originale
+
+    node, jobs, origine = _contesto_ritorno(db, user, node_id, vmid)
+    if body.confirm != "RITORNA":
+        raise HTTPException(status_code=400, detail="Conferma mancante: scrivere RITORNA")
+    if not 30 <= body.attesa_avvio_s <= 1800:
+        raise HTTPException(status_code=400, detail="attesa_avvio_s deve stare tra 30 e 1800 secondi")
+    if (jobs[0].ritorno_stato or "nessuno") != "pronto":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Il ritorno non e' pronto (stato: {jobs[0].ritorno_stato or 'nessuno'}): prima «Prepara ritorno»",
+        )
+    stato = await ritorno_originale.stato_ritorno(db, jobs, origine, node)
+    if stato["in_corso"]:
+        raise HTTPException(status_code=409, detail="Un ritorno per questa VM e' gia' in corso")
+    if stato["originale"]["stato"] not in ("stopped", "assente"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"La VM originale {jobs[0].vm_id} e' in stato «{stato['originale']['stato']}»: deve essere spenta",
+        )
+    log_audit(
+        db, user.id, "vm_ritorno_completa", "vm", resource_id=vmid,
+        details=f"Completa ritorno: replica {vmid} ({node.name}) -> originale {jobs[0].vm_id} ({origine.name})",
+        ip_address=request.client.host if request.client else None,
+    )
+    asyncio.create_task(
+        ritorno_originale.completa([j.id for j in jobs], user.id, user.username, attesa_avvio_s=body.attesa_avvio_s)
+    )
+    return {"success": True, "stato": "scambio", "messaggio": "Scambio avviato"}
 
 
 @router.post("/node/{node_id}/vm/{vmid}/snapshot")

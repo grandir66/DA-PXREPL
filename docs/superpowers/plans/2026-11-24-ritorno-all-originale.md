@@ -31,7 +31,7 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | S1 | [x] | Fotografia della configurazione dell'originale a ogni corsa | in linea | — | la colonna si riempie dopo una corsa | pytest del task 1 |
 | S2 | [x] | Logica pura del ritorno (piano dei passi, conf ricostruita, nomi) | in linea | S1 | le prove passano dopo essere state viste fallire | pytest del task 2 |
-| S3 | [ ] | Passi SSH e rotte «stato», «prepara», «completa» | in linea | S2 | le rotte rispondono e rifiutano i casi vietati | pytest del task 3 |
+| S3 | [x] | Passi SSH e rotte «stato», «prepara», «completa» | in linea | S2 | le rotte rispondono e rifiutano i casi vietati | pytest del task 3 |
 | S4 | [ ] | Interfaccia in `VMs.vue` | in linea | S3 | lint e build puliti, una schermata a 1920 | `npm run lint`, `npm run build:check` |
 | S5 | [ ] | Prova vera su una VM di test a Domarc | in linea | S4 | ritorno riuscito e ritorno fallito apposta, tutti e due letti | registro del piano |
 | S6 | [ ] | Documenti e rilascio | in linea | S5 | release su GitHub | `gh release view` |
@@ -81,7 +81,7 @@ def piano_ritorno(jobs: List[dict], stato_replica: str, stato_originale: str,
 **Commit:** `ritorno: logica pura e prove`.
 **Verifica (24/11 sera):** stesso comando, 11 prove del task 2 rosse prima e verdi dopo.
 
-### [ ] Task 3 — Passi SSH e rotte
+### [x] Task 3 — Passi SSH e rotte
 
 **File:** `backend/services/ritorno_originale.py` (funzioni `async`), `backend/routers/vms.py` (tre rotte dopo `activate_dr`), prove con `ssh_service.execute` e `syncoid_service.run_sync` sostituiti da doppi.
 **Rotte:**
@@ -93,6 +93,7 @@ def piano_ritorno(jobs: List[dict], stato_replica: str, stato_originale: str,
 **«Completa»:** richiede `pronto`. (1) `qm shutdown <replica> --timeout 300`, poi `qm status` deve dare `stopped`, altrimenti stop con errore e nessun'altra azione. (2) `run_sync` incrementale per ogni disco. (3) Copia della conf attuale dell'originale, se c'è, in `/root/dapx-bak-<AAAAMMGG>/` sul nodo; scrittura della conf da `config_originale_per_ritorno` in `/etc/pve/qemu-server/<vmid>.conf` (stesso modo di `register_vm`: heredoc, non `qm set`). (4) `qm start <vmid>`; attesa fino a `attesa_avvio_s` di `qm agent <vmid> ping` se `agent: 1`, altrimenti di `qm status` = `running` per 30 s di fila. (5a) Riuscito: replica riportata a replica (`applica_identita_replica`, `onboot 0`), job del gruppo con `is_active=True` e nodo/dataset sorgente aggiornati, `ritorno_stato="completato"`; la prossima corsa normale è incrementale perché lo snapshot dell'ultimo syncoid è comune. (5b) Fallito: `qm stop <vmid>` dell'originale, `qm start <replica>`, `ritorno_stato="fallito"` col motivo; il disco nuovo dell'originale resta dov'è.
 **Verifica:** pytest → verde. Viste fallire prima: «completa» senza `pronto` rifiutata; replica non spenta → nessun `qm start` dell'originale tra i comandi registrati dal doppio; avvio fallito → `qm start <replica>` tra i comandi; nessun comando contiene `destroy`.
 **Commit:** `ritorno: prepara e completa con syncoid`.
+**Verifica (24/11 sera):** `cd backend && .venv/bin/python -m pytest tests/test_ritorno_originale.py -q` → 14 prove del task 3 in errore prima del codice, 29 verdi dopo; suite intera `pytest tests -q` → 564 verdi.
 
 ### [ ] Task 4 — Interfaccia
 
@@ -115,6 +116,8 @@ def piano_ritorno(jobs: List[dict], stato_replica: str, stato_originale: str,
 
 - 24/11 sera, task 1: fotografia salvata in `_try_register_vm_after_sync` (dove il job legge la conf della sorgente), quindi solo per i job con «Registra VM». Aggiunta una guardia in `execute_sync_job_task`: con un ritorno aperto (`preparazione`, `pronto`, `scambio`, `fallito`) la corsa normale non parte, perché `zfs receive -F` riporterebbe indietro il disco della replica che sta lavorando.
 - 24/11 sera, task 2: le conf di prova hanno la forma di 103 e 9103 ma sono scritte a mano dai dati di `TASKS.md` (nome, bridge `vmbr_vm`/`vmbr1`, tag), non copiate da `/root/dapx-bak-20261124`: quel percorso sta su DTS-PX-04 e DTS non si tocca. `config_originale_per_ritorno` e `piano_ritorno` hanno parametri in più rispetto al piano (`vmid_replica`, `suffisso_nome`; `replica_segnata`, `fotografia_presente`, e `source_esiste`/`vm_type` nei dict dei job): senza, le regole scritte non erano calcolabili. La nota dell'originale (righe `#` del `.conf`) resta, con la riga «Ripristinata da replica…» in testa.
+- 24/11 sera, task 3. Scostamenti: (a) «Prepara» spegne i job del gruppo (`is_active=False`) e «Completa» li riaccende: dopo la preparazione origine e replica hanno uno snapshot in comune, e una corsa normale farebbe `zfs receive -F` sul disco della replica accesa. (b) Se fallisce l'ultimo syncoid o la scrittura della conf, a replica già spenta, la replica viene riaccesa (il piano lo diceva solo per l'avvio fallito); non la si riaccende se era già spenta prima, né se l'originale non risulta spenta. (c) Un «Prepara» fallito lascia lo stato `fallito` e si rilancia: i dischi già messi da parte sono scritti in `ritorno_dettaglio`, non si rinominano due volte. (d) Stato rimasto a `preparazione`/`scambio` dopo un riavvio del servizio: la rotta di stato risponde `interrotto: true` e «Prepara» si può rilanciare. (e) La prova a due dischi ha trovato un difetto: il servizio lavorava solo sui job ricevuti; ora allarga sempre a tutto il `vm_group_id`. (f) Tempo massimo di syncoid nel ritorno: 24 ore (la corsa normale ne ha una, una copia completa non ci sta).
+- Non provato qui, resta al task 5: syncoid vero a ruoli invertiti (chiavi SSH dal nodo della replica al nodo d'origine), `zfs rename` su uno zvol vero, scrittura della conf in `/etc/pve`, attesa dell'agent.
 
 ## Consuntivo
 ### Fatto
