@@ -27,6 +27,9 @@
  <div class="nav-item" :class="{ active: activeTab === 'ssh' }" @click="activeTab = 'ssh'" v-if="isAdmin">
  <Icon name="key" :size="14" /> Chiavi SSH
  </div>
+ <div class="nav-item" :class="{ active: activeTab === 'syslog' }" @click="activeTab = 'syslog'" v-if="isAdmin">
+ <Icon name="file-text" :size="14" /> Syslog remoto
+ </div>
  </div>
 
  <!-- Content Area -->
@@ -178,6 +181,11 @@
  <div v-if="activeTab === 'ssh'" class="card">
  <SSHKeys />
  </div>
+
+ <!-- SYSLOG TAB -->
+ <div v-if="activeTab === 'syslog'" class="card">
+ <SyslogRemoto />
+ </div>
  </div>
  </div>
  </div>
@@ -195,6 +203,7 @@ import UserManagement from './settings/UserManagement.vue';
 import UserProfile from './settings/UserProfile.vue';
 import Certificates from './settings/Certificates.vue';
 import SSHKeys from './settings/SSHKeys.vue';
+import SyslogRemoto from './settings/SyslogRemoto.vue';
 
 const toast = useToast()
 

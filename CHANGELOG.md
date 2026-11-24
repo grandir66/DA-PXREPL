@@ -5,6 +5,26 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.25.0] - 2026-11-24
+
+Richieste di Riccardo del 24/11 dopo la verifica delle due installazioni.
+
+### Aggiunte
+
+- **Syslog remoto** (Impostazioni → Syslog remoto, solo amministratori). Manda tutto
+  il log tecnico a un collettore come Wazuh: indirizzo, porta, UDP o TCP, una riga
+  JSON per evento. Nasce spento, si applica senza riavvio, e un collettore spento o
+  lento non ferma il servizio: gli errori di invio si contano e si leggono nella
+  stessa scheda. «Invia riga di prova» funziona anche prima di salvare.
+- **«Riallinea identità»** nella scheda Info di una replica registrata prima della
+  3.22.0. Quelle repliche hanno ancora l'UUID SMBIOS della sorgente (a Domarc 9 su
+  9) e possono avere l'avvio automatico: il comando scrive UUID e vmgenid derivati,
+  avvio automatico spento e gli originali nella descrizione. Solo a replica spenta e
+  con il DR non attivato; se la sorgente non si legge non scrive niente.
+- **Avviso «repliche con avvio automatico attivo»**, ogni 6 ore, una mail al giorno
+  per le stesse VM. Una replica che parte da sola al riavvio del nodo sale con MAC
+  e IP della produzione.
+
 ## [3.24.5] - 2026-11-24
 
 Correzioni nate dalla verifica delle due installazioni (Domarc e DTS) del 24/11.

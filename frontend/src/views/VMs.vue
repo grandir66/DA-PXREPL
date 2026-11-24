@@ -533,6 +533,22 @@
  </div>
  </div>
 
+ <!-- Replica registrata prima della 3.22.0: stessa identita' della sorgente -->
+ <div v-else-if="vmInfoData.replica_identity?.da_riallineare" class="detail-card full-width">
+ <h4><Icon name="shield" :size="20" /> Identità replica</h4>
+ <p class="text-sm">
+ <span class="badge badge-warning">Da riallineare</span>
+ Replica della VM <strong>{{ vmInfoData.replica_identity.source_vmid }}</strong> registrata con le regole vecchie:
+ può avere lo stesso UUID della sorgente e l'avvio automatico attivo.
+ </p>
+ <div class="mt-3 flex items-center gap-3">
+ <button class="btn btn-sm btn-primary" :disabled="riallineaBusy || vmInfoData.status === 'running'" @click="riallineaIdentita">
+ <Icon name="shield" :size="14" /> {{ riallineaBusy ? 'In corso…' : 'Riallinea identità' }}
+ </button>
+ <span class="text-xs text-secondary">Scrive UUID derivato e avvio automatico spento. Solo a replica spenta; non la avvia.</span>
+ </div>
+ </div>
+
  <!-- Snapshots Summary -->
  <div class="detail-card">
  <h4><Icon name="camera" :size="20" /> Snapshots</h4>
@@ -610,6 +626,7 @@
 </template>
 
 <script setup lang="ts">
+import apiClient from '../services/api';
 import { useToast, errorMessage } from '../stores/toast';
 import { ref, onMounted, computed } from 'vue';
 import { confirmDangerous } from '../stores/confirm';
@@ -823,6 +840,22 @@ const openVMInfoModal = async (vm: VM) => {
  vmInfoData.value = null;
  } finally {
  vmInfoLoading.value = false;
+ }
+};
+
+// --- Riallinea identita' (repliche pre-3.22.0, 3.25.0) ---
+const riallineaBusy = ref(false);
+const riallineaIdentita = async () => {
+ if (!selectedVM.value) return;
+ riallineaBusy.value = true;
+ try {
+ const res = await apiClient.post(`/vms/node/${selectedVM.value.node_id}/vm/${selectedVM.value.vmid}/riallinea-identita`);
+ toast.success('Identità riallineata', res.data.messaggio);
+ await openVMInfoModal(selectedVM.value);
+ } catch (e) {
+ toast.error('Riallineo rifiutato', errorMessage(e));
+ } finally {
+ riallineaBusy.value = false;
  }
 };
 

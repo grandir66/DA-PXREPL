@@ -1144,6 +1144,12 @@ def init_default_config(db_session):
         ("daily_summary_hour", "8", "int", "notifications", "Ora invio riepilogo giornaliero (0-23, UTC)"),
         ("daily_summary_enabled", "true", "bool", "notifications", "Abilita riepilogo giornaliero"),
         
+        # Syslog remoto (3.25.0): nasce spento
+        ("syslog_enabled", "false", "bool", "syslog", "Invia tutto il log a un syslog remoto"),
+        ("syslog_host", "", "string", "syslog", "Indirizzo del syslog remoto (es. Wazuh)"),
+        ("syslog_port", "514", "int", "syslog", "Porta del syslog remoto"),
+        ("syslog_protocol", "udp", "string", "syslog", "Protocollo: udp o tcp"),
+
         # UI
         ("ui_theme", "dark", "string", "ui", "Tema interfaccia"),
         ("ui_refresh_interval", "30", "int", "ui", "Intervallo refresh in secondi"),

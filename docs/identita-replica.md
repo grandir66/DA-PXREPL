@@ -114,3 +114,16 @@ qm set <vmid replica> --smbios1 uuid=<derivato> --onboot 0 \
 I MAC restano quelli della sorgente (continuità di IP al DR); le VM sorgente
 non si toccano; le repliche già corrette a mano non si migrano (sono già nella
 forma nuova).
+
+## Repliche registrate prima della 3.22.0 («Riallinea identità», dalla 3.25.0)
+
+Una replica nata con le regole vecchie non ha la description `dapx-replica` e può
+portare l'uuid della sorgente e `onboot: 1`. La pagina **Virtual Machines → Info**
+la riconosce dal job che la alimenta e mostra **Riallinea identità**: legge la
+config della sorgente dal suo nodo, scrive sulla replica uuid e vmgenid derivati,
+`onboot 0` e la description con gli originali. Rifiuta se la replica è accesa, se
+porta «DR ATTIVATO», o se la sorgente non si legge. API:
+`POST /api/vms/node/{node_id}/vm/{vmid}/riallinea-identita` (ruolo operatore).
+
+Lo scheduler controlla ogni 6 ore che nessuna replica registrata abbia `onboot: 1`
+(`services/repliche_onboot.py`) e avvisa; non corregge da solo.

@@ -84,6 +84,15 @@ async def lifespan(app: FastAPI):
     db = SessionLocal()
     try:
         init_default_config(db)
+        # Syslog remoto: se e' configurato si riaccende a ogni avvio. Un
+        # errore qui non deve impedire al servizio di partire.
+        try:
+            from services import syslog_remoto
+            db.commit()
+            if syslog_remoto.applica_da_db(db):
+                logger.info("Syslog remoto attivo")
+        except Exception as _exc:  # noqa: BLE001
+            logger.warning(f"Syslog remoto non avviato: {_exc}")
     finally:
         db.close()
     
@@ -107,7 +116,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="DAPX-backandrepl",
     description="Sistema centralizzato di backup e replica per Proxmox VE. Supporta ZFS (Sanoid/Syncoid), BTRFS (btrfs send/receive) e PBS (Proxmox Backup Server).",
-    version="3.24.5",
+    version="3.25.0",
     lifespan=lifespan
 )
 
@@ -193,7 +202,7 @@ async def health_check():
     from datetime import datetime as _dt
     payload: dict = {
         "status": "healthy",
-        "version": "3.24.5",
+        "version": "3.25.0",
         "auth_enabled": True,
         "mode": dapx_mode,
         "checks": {},

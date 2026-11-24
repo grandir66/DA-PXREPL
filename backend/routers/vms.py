@@ -510,7 +510,146 @@ async def get_vm_full_details_endpoint(
         details["replica_identity"] = identita_replica_da_config_viva(details.get("config") or {})
     except Exception:
         details["replica_identity"] = {"is_replica": False}
+    # Replica registrata prima della 3.22.0: nessuna description, quindi la
+    # scheda non comparirebbe. La riconosce il job che la alimenta (3.25.0).
+    if not details["replica_identity"].get("is_replica"):
+        try:
+            job = _job_della_replica(db, node.id, vmid)
+            if job:
+                details["replica_identity"] = {
+                    "is_replica": False, "da_riallineare": True, "source_vmid": job.vm_id,
+                }
+        except Exception:
+            pass
     return details
+
+
+def _job_della_replica(db: Session, node_id: int, vmid: int):
+    """Il job di replica che ha questa VM come destinazione, o None."""
+    from sqlalchemy import or_, and_
+    from database import SyncJob
+    return (
+        db.query(SyncJob)
+        .filter(
+            SyncJob.dest_node_id == node_id,
+            SyncJob.register_vm == True,  # noqa: E712
+            or_(SyncJob.dest_vm_id == vmid, and_(SyncJob.dest_vm_id.is_(None), SyncJob.vm_id == vmid)),
+        )
+        .first()
+    )
+
+
+@router.post("/node/{node_id}/vm/{vmid}/riallinea-identita")
+async def riallinea_identita(
+    node_id: int,
+    vmid: int,
+    request: Request,
+    user: User = Depends(require_operator),
+    db: Session = Depends(get_db)
+):
+    """Porta una replica gia' registrata all'identita' che avrebbe se nascesse oggi.
+
+    Le repliche registrate prima della 3.22.0 hanno ancora l'uuid SMBIOS della
+    sorgente (a Domarc 9 su 9, misurato il 24/11/2026) e possono avere
+    `onboot: 1`. Qui: uuid e vmgenid derivati, onboot 0, originali nella
+    description. Solo su una replica SPENTA e con il DR non attivato; la
+    sorgente si legge dal suo nodo, e se non si legge non si scrive niente.
+    """
+    import shlex
+    from datetime import datetime
+    from database import SyncJob, JobLog
+    from services.replica_identity import identita_replica, descrizione_replica
+
+    node = db.query(Node).filter(Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    if not check_node_access(user, node):
+        raise HTTPException(status_code=403, detail="Accesso negato a questo nodo")
+    job = _job_della_replica(db, node.id, vmid)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"VM {vmid} non e' la destinazione di un job di replica con «Registra VM»")
+    if (job.vm_type or "qemu") != "qemu":
+        raise HTTPException(status_code=400, detail="Solo le VM qemu hanno un uuid SMBIOS")
+    source_node = db.query(Node).filter(Node.id == job.source_node_id).first()
+    if not source_node:
+        raise HTTPException(status_code=409, detail="Il job non ha un nodo sorgente")
+
+    conn = dict(port=node.ssh_port, username=node.ssh_user, key_path=node.ssh_key_path)
+    stato = await ssh_service.execute(hostname=node.hostname, command=f"qm status {int(vmid)} 2>&1", timeout=15, **conn)
+    if not stato.success:
+        raise HTTPException(status_code=502, detail=f"Stato della VM {vmid} non leggibile su {node.name}")
+    if "stopped" not in (stato.stdout or ""):
+        raise HTTPException(status_code=409, detail=f"La VM {vmid} non e' spenta: l'identita' si cambia solo a replica ferma")
+
+    ok, config_txt = await proxmox_service.get_vm_config(hostname=node.hostname, vmid=vmid, vm_type="qemu", **conn)
+    if not ok or not (config_txt or "").strip():
+        raise HTTPException(status_code=502, detail=f"Config della VM {vmid} non leggibile su {node.name}")
+    descr = valore_config(config_txt, "description") or ""
+    if "DR ATTIVATO" in descr:
+        raise HTTPException(status_code=409, detail=f"Sulla VM {vmid} il DR e' stato attivato: sta al posto della sorgente, non si tocca")
+
+    ok, config_src = await proxmox_service.get_vm_config(
+        hostname=source_node.hostname, vmid=int(job.vm_id), vm_type="qemu",
+        port=source_node.ssh_port, username=source_node.ssh_user, key_path=source_node.ssh_key_path,
+    )
+    if not ok or not (config_src or "").strip():
+        raise HTTPException(
+            status_code=502,
+            detail=f"Config della sorgente VM {job.vm_id} non leggibile su {source_node.name}: niente da cui derivare, non scrivo niente",
+        )
+    ident = identita_replica(config_src, source_hostname=source_node.hostname, source_vmid=job.vm_id, vmid_replica=vmid)
+
+    smbios_attuale = valore_config(config_txt, "smbios1") or ""
+    uuid_attuale = uuid_da_smbios1(smbios_attuale)
+    onboot_attuale = (valore_config(config_txt, "onboot") or "0").strip()
+    if uuid_attuale == ident["replica_smbios_uuid"] and onboot_attuale == "0" and "dapx-replica" in descr:
+        return {"success": True, "cambiato": False, "vmid": vmid, "messaggio": "Identita' gia' allineata"}
+
+    if uuid_attuale:
+        smbios_nuovo = smbios_attuale.replace(f"uuid={uuid_attuale}", f"uuid={ident['replica_smbios_uuid']}", 1)
+    else:
+        smbios_nuovo = f"uuid={ident['replica_smbios_uuid']}"
+    descr_nuova = descrizione_replica(
+        source_vmid=job.vm_id, source_hostname=source_node.hostname,
+        source_smbios_uuid=ident["source_smbios_uuid"], source_vmgenid=ident["source_vmgenid"],
+    )
+    if descr and "dapx-replica" not in descr:
+        descr_nuova = f"{descr_nuova} | {descr}"
+    cmd = (
+        f"qm set {int(vmid)} --smbios1 {shlex.quote(smbios_nuovo)} "
+        f"--vmgenid {shlex.quote(ident['replica_vmgenid'])} --onboot 0 "
+        f"--description {shlex.quote(descr_nuova)}"
+    )
+    esito = await ssh_service.execute(hostname=node.hostname, command=cmd, timeout=30, **conn)
+    if not esito.success:
+        raise HTTPException(status_code=502, detail=f"qm set fallito: {(esito.stderr or esito.stdout or '').strip()[:300]}")
+
+    gruppo = db.query(SyncJob).filter(SyncJob.vm_group_id == job.vm_group_id).all() if job.vm_group_id else [job]
+    for j in gruppo:
+        j.source_smbios_uuid = ident["source_smbios_uuid"]
+        j.source_vmgenid = ident["source_vmgenid"]
+        j.replica_smbios_uuid = ident["replica_smbios_uuid"]
+    messaggio = (
+        f"Riallinea identita' su VM {vmid} ({node.name}), replica di VM {job.vm_id}: "
+        f"uuid {uuid_attuale} -> {ident['replica_smbios_uuid']}, onboot {onboot_attuale} -> 0"
+    )
+    adesso = datetime.utcnow()
+    db.add(JobLog(
+        job_type="riallinea_identita", job_id=job.id, node_name=node.name,
+        status="success", message=messaggio, output=(esito.stdout or "")[:2000],
+        started_at=adesso, completed_at=adesso, triggered_by=user.id, trigger_source="manual",
+    ))
+    log_audit(
+        db, user.id, "vm_identita_riallineata", "vm", resource_id=vmid, details=messaggio,
+        ip_address=request.client.host if request.client else None,
+    )
+    db.commit()
+    logger.info(messaggio)
+    return {
+        "success": True, "cambiato": True, "vmid": vmid,
+        "uuid_prima": uuid_attuale, "uuid_dopo": ident["replica_smbios_uuid"],
+        "onboot_prima": onboot_attuale, "messaggio": messaggio,
+    }
 
 
 @router.post("/node/{node_id}/vm/{vmid}/activate-dr")

@@ -304,6 +304,7 @@ class SchedulerService:
         ("riepilogo", "_check_daily_summary", 180),
         ("in_ritardo", "_check_replication_overdue", 120),
         ("uuid_duplicati", "_check_uuid_duplicati", 300),
+        ("repliche_onboot", "_check_repliche_onboot", 300),
         ("host_info", "_check_host_info_updates", 600),
         ("cache_vm", "_refresh_vm_cache", 600),
         ("pulizia_log", "_daily_log_cleanup", 300),
@@ -619,6 +620,80 @@ class SchedulerService:
             logger.info("Alert uuid duplicati inviato: %s", result.get("channels", {}))
         except Exception as e:
             logger.error(f"Errore check uuid duplicati: {e}")
+        finally:
+            db.close()
+
+    async def _check_repliche_onboot(self):
+        """Alert se una replica registrata ha l'avvio automatico attivo (ogni 6 h).
+
+        Riccardo, 24/11/2026: una replica che parte da sola al riavvio del nodo
+        DR sale con MAC e IP della produzione. La registrazione scrive gia'
+        `onboot 0`; questa e' la guardia contro chi lo riaccende a mano o
+        contro le repliche nate prima della 3.22.0. Una volta al giorno per
+        le stesse VM, subito per una nuova. Non corregge: avvisa.
+        """
+        now = datetime.utcnow()
+        ultimo = getattr(self, "_last_onboot_check", None)
+        if ultimo and (now - ultimo).total_seconds() < 6 * 3600:
+            return
+        self._last_onboot_check = now
+
+        db = SessionLocal()
+        try:
+            from services.ssh_service import ssh_service
+            from services.repliche_onboot import comando_onboot, repliche_con_onboot
+
+            per_nodo: dict = {}
+            for job in db.query(SyncJob).filter(SyncJob.register_vm == True, SyncJob.is_active == True).all():  # noqa: E712
+                vmid = job.dest_vm_id or job.vm_id
+                if vmid:
+                    per_nodo.setdefault(job.dest_node_id, set()).add(int(vmid))
+            trovate = []
+            for node_id, vmids in per_nodo.items():
+                nodo = db.query(Node).filter(Node.id == node_id).first()
+                if not nodo:
+                    continue
+                esito = await ssh_service.execute(
+                    hostname=nodo.hostname, command=comando_onboot(vmids),
+                    port=nodo.ssh_port, username=nodo.ssh_user, key_path=nodo.ssh_key_path, timeout=20,
+                )
+                if not esito.success:
+                    logger.debug("repliche onboot: %s non risponde", nodo.name)
+                    continue
+                trovate += [(nodo.name, v) for v in repliche_con_onboot(esito.stdout)]
+            if not trovate:
+                return
+
+            chiave = ",".join(f"{n}:{v}" for n, v in sorted(trovate))
+            cfg = db.query(SystemConfig).filter(SystemConfig.key == "repliche_onboot_last_alert").first()
+            if cfg and cfg.value:
+                quando, _, vecchia = cfg.value.partition("|")
+                try:
+                    if vecchia == chiave and (now - datetime.fromisoformat(quando)).total_seconds() < 24 * 3600:
+                        return
+                except ValueError:
+                    pass
+            logger.warning("Repliche con avvio automatico attivo: %s — invio alert", chiave)
+            result = await notification_service.send_job_notification(
+                job_name=f"Repliche con avvio automatico attivo — {len(trovate)} VM",
+                status="warning", source="Scheduler DAPX", destination="—",
+                details="\n".join(
+                    f"- VM {v} su {n}: onboot 1. Al riavvio del nodo partirebbe da sola con MAC e IP "
+                    f"della produzione. Spegnere l'avvio automatico o usare «Riallinea identita'»."
+                    for n, v in sorted(trovate)
+                ),
+                is_scheduled=True, notify_mode="always", job_type="sync",
+            )
+            if not result.get("sent"):
+                return
+            valore = f"{now.isoformat()}|{chiave}"
+            if cfg:
+                cfg.value = valore
+            else:
+                db.add(SystemConfig(key="repliche_onboot_last_alert", value=valore))
+            db.commit()
+        except Exception as e:
+            logger.error(f"Errore check onboot repliche: {e}")
         finally:
             db.close()
 

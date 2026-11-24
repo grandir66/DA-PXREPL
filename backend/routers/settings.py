@@ -272,6 +272,105 @@ async def update_system_config(
     return {"key": key, "value": update.value}
 
 
+# ============== Syslog remoto ==============
+
+class SyslogConfig(BaseModel):
+    enabled: bool = False
+    host: str = ""
+    port: int = 514
+    protocol: str = "udp"
+
+    @field_validator("protocol")
+    @classmethod
+    def _protocollo(cls, v: str) -> str:
+        v = (v or "udp").lower()
+        if v not in ("udp", "tcp"):
+            raise ValueError("protocollo: udp o tcp")
+        return v
+
+    @field_validator("port")
+    @classmethod
+    def _porta(cls, v: int) -> int:
+        if not 1 <= int(v) <= 65535:
+            raise ValueError("porta fuori intervallo")
+        return int(v)
+
+    @field_validator("host")
+    @classmethod
+    def _host(cls, v: str) -> str:
+        v = (v or "").strip()
+        if v and not all(c.isalnum() or c in ".-:_" for c in v):
+            raise ValueError("indirizzo non valido")
+        return v
+
+
+@router.get("/syslog")
+async def get_syslog_config(
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Configurazione e stato dell'invio a syslog remoto."""
+    from services import syslog_remoto
+    init_default_config(db)
+    db.commit()
+    return {**syslog_remoto.leggi_config(db), "stato": syslog_remoto.stato()}
+
+
+@router.put("/syslog")
+async def update_syslog_config(
+    cfg: SyslogConfig,
+    request: Request,
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Salva e applica subito, senza riavvio."""
+    from services import syslog_remoto
+    if cfg.enabled and not cfg.host:
+        raise HTTPException(status_code=400, detail="Per accendere l'invio serve l'indirizzo del syslog")
+    init_default_config(db)
+    valori = {
+        "syslog_enabled": "true" if cfg.enabled else "false",
+        "syslog_host": cfg.host,
+        "syslog_port": str(cfg.port),
+        "syslog_protocol": cfg.protocol,
+    }
+    for chiave, valore in valori.items():
+        riga = db.query(SystemConfig).filter(SystemConfig.key == chiave).first()
+        if riga:
+            riga.value = valore
+            riga.updated_at = datetime.utcnow()
+        else:
+            db.add(SystemConfig(key=chiave, value=valore, category="syslog"))
+    log_audit(
+        db, user.id, "syslog_config_updated", "settings",
+        details=f"Syslog remoto: {'acceso' if cfg.enabled else 'spento'} {cfg.protocol}://{cfg.host}:{cfg.port}",
+        ip_address=request.client.host if request.client else None,
+    )
+    db.commit()
+    attivo = syslog_remoto.applica(cfg.enabled, cfg.host, cfg.port, cfg.protocol)
+    if attivo:
+        logger.info(f"Syslog remoto acceso verso {cfg.protocol}://{cfg.host}:{cfg.port} da {user.username}")
+    return {**syslog_remoto.leggi_config(db), "stato": syslog_remoto.stato()}
+
+
+@router.post("/syslog/test")
+async def test_syslog(
+    cfg: SyslogConfig,
+    user: User = Depends(require_admin),
+):
+    """Manda una riga di prova all'indirizzo indicato (anche non ancora salvato)."""
+    from services import syslog_remoto
+    if not cfg.host:
+        raise HTTPException(status_code=400, detail="Manca l'indirizzo del syslog")
+    try:
+        await asyncio.to_thread(syslog_remoto.prova, cfg.host, cfg.port, cfg.protocol)
+    except OSError as e:
+        raise HTTPException(status_code=502, detail=f"Invio fallito verso {cfg.host}:{cfg.port}: {e}")
+    if cfg.protocol == "udp":
+        return {"success": True, "message": "Riga di prova spedita. In UDP non c'e' conferma di arrivo: controllare sul collettore."}
+    return {"success": True, "message": "Riga di prova consegnata (connessione TCP riuscita)."}
+
+
 # ============== Auth Config Endpoints ==============
 
 @router.get("/auth/config")
