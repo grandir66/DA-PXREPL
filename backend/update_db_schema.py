@@ -224,7 +224,7 @@ def cleanup_old_logs(days_jobs: int = 30, days_audit: int = 90) -> dict:
         try:
             cutoff_audit = (datetime.utcnow() - timedelta(days=days_audit)).isoformat()
             r = conn.execute(
-                text("DELETE FROM audit_logs WHERE timestamp < :c"),
+                text("DELETE FROM audit_logs WHERE created_at < :c"),
                 {"c": cutoff_audit},
             )
             counts["audits_deleted"] = r.rowcount or 0

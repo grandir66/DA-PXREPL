@@ -107,7 +107,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="DAPX-backandrepl",
     description="Sistema centralizzato di backup e replica per Proxmox VE. Supporta ZFS (Sanoid/Syncoid), BTRFS (btrfs send/receive) e PBS (Proxmox Backup Server).",
-    version="3.24.4",
+    version="3.24.5",
     lifespan=lifespan
 )
 
@@ -193,7 +193,7 @@ async def health_check():
     from datetime import datetime as _dt
     payload: dict = {
         "status": "healthy",
-        "version": "3.24.4",
+        "version": "3.24.5",
         "auth_enabled": True,
         "mode": dapx_mode,
         "checks": {},
@@ -230,6 +230,28 @@ async def health_check():
     except Exception as e:
         payload["checks"]["scheduler"] = f"error: {type(e).__name__}"
         healthy = False
+    # Job che falliscono: solo il conto, non cambia lo stato (un job rotto non
+    # e' un servizio rotto), ma chi guarda da fuori lo vede. A Domarc un job
+    # falliva da 50 giorni con «healthy» (24/11/2026).
+    try:
+        db = SessionLocal()
+        try:
+            riga = db.execute(_sql_text(
+                "SELECT COUNT(*), COALESCE(MAX(consecutive_failures), 0) FROM sync_jobs "
+                "WHERE is_active = 1 AND last_status = 'failed'"
+            )).fetchone()
+            ultima = db.execute(_sql_text(
+                "SELECT MAX(started_at) FROM job_logs WHERE status = 'success'"
+            )).scalar()
+            payload["jobs"] = {
+                "repliche_fallite": int(riga[0] or 0),
+                "fallimenti_di_fila_max": int(riga[1] or 0),
+                "ultima_corsa_riuscita": (str(ultima).replace(" ", "T") + "Z") if ultima else None,
+            }
+        finally:
+            db.close()
+    except Exception as e:
+        payload["jobs"] = {"errore": type(e).__name__}
     # Schema DB: se la migrazione allo startup è fallita, segnalalo (C-09).
     schema_err = getattr(app.state, "schema_error", None)
     payload["checks"]["schema"] = "ok" if not schema_err else f"error: {schema_err[:120]}"
@@ -292,13 +314,20 @@ if frontend_path:
             raise HTTPException(status_code=404, detail="API endpoint not found")
 
         # Anti path-traversal: il file risolto deve stare sotto frontend_path.
-        file_path = os.path.realpath(os.path.join(frontend_path, full_path))
-        _fp_root = os.path.realpath(frontend_path)
-        if (
-            os.path.commonpath([_fp_root, file_path]) == _fp_root
-            and os.path.exists(file_path)
-            and os.path.isfile(file_path)
-        ):
+        # Un percorso che il sistema non sa leggere (byte nullo, nome troppo
+        # lungo) e' un 404, non un 500 con traceback: a Domarc uno scanner ne
+        # produceva 36 a settimana (24/11/2026).
+        try:
+            file_path = os.path.realpath(os.path.join(frontend_path, full_path))
+            _fp_root = os.path.realpath(frontend_path)
+            e_un_file = (
+                os.path.commonpath([_fp_root, file_path]) == _fp_root
+                and os.path.exists(file_path)
+                and os.path.isfile(file_path)
+            )
+        except (ValueError, OSError):
+            raise HTTPException(status_code=404, detail="Not found")
+        if e_un_file:
             return FileResponse(file_path, headers=_NO_CACHE_HEADERS)
 
         return FileResponse(

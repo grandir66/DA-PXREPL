@@ -235,11 +235,11 @@ class HostBackupService:
         elif compress:
             # Solo tar + gzip
             backup_file = f"{dest_path}/{backup_name}.tar.gz"
-            cmd = f"tar czf {shlex.quote(backup_file)} {paths_str} 2>/dev/null"
+            cmd = f"tar czf {shlex.quote(backup_file)} {paths_str}"
         else:
             # Solo tar
             backup_file = f"{dest_path}/{backup_name}.tar"
-            cmd = f"tar cf {shlex.quote(backup_file)} {paths_str} 2>/dev/null"
+            cmd = f"tar cf {shlex.quote(backup_file)} {paths_str}"
         
         result = await ssh_service.execute(
             hostname=hostname,
@@ -249,10 +249,26 @@ class HostBackupService:
             key_path=key_path
         )
         
-        if not result.success:
+        # tar esce con 1 quando un file cambia mentre lo legge (succede con
+        # /etc/pve): l'archivio c'e' ed e' buono. Prima lo stderr era buttato e
+        # il job falliva con un messaggio vuoto (DA-PX-04, 3 volte in 14 giorni,
+        # 24/11/2026). Con la cifratura lo stato e' quello di openssl.
+        solo_avviso = (
+            not result.success
+            and result.exit_code == 1
+            and not (encrypt and encrypt_password)
+        )
+        if solo_avviso:
+            logger.warning(
+                f"Backup config {hostname}: tar ha segnalato file cambiati durante "
+                f"la lettura: {(result.stderr or '').strip()[:300]}"
+            )
+        elif not result.success:
+            dettaglio = (result.stderr or result.stdout or "").strip()
             return {
                 "success": False,
-                "error": f"Errore creazione backup: {result.stderr or result.stdout}"
+                "error": f"Errore creazione backup (tar uscito con {result.exit_code}): "
+                         f"{dettaglio or 'nessun messaggio dal nodo'}"
             }
         
         # Verifica dimensione file creato
@@ -270,6 +286,12 @@ class HostBackupService:
                 size = int(size_result.stdout.strip())
             except ValueError:
                 pass
+
+        if solo_avviso and size == 0:
+            return {
+                "success": False,
+                "error": "Errore creazione backup: tar uscito con 1 e archivio vuoto o assente"
+            }
         
         return {
             "success": True,

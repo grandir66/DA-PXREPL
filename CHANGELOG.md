@@ -5,6 +5,31 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.24.5] - 2026-11-24
+
+Correzioni nate dalla verifica delle due installazioni (Domarc e DTS) del 24/11.
+
+### Correzioni
+
+- **Il backup della configurazione non fallisce più con un messaggio vuoto.** `tar`
+  esce con 1 quando un file cambia mentre lo legge (capita con `/etc/pve`) e il suo
+  stderr veniva buttato: a Domarc DA-PX-04 ha dato tre «Errore creazione backup:» in
+  14 giorni senza dire perché. Ora l'uscita 1 con archivio non vuoto è un avviso nel
+  log; ogni altro errore riporta il codice di uscita e il messaggio del nodo.
+- **La pulizia del registro di audit funziona.** Cancellava per una colonna
+  `timestamp` che non esiste (è `created_at`): non ha mai tolto una riga.
+- **I PBS non vengono più interrogati come nodi PVE.** L'aggiornamento della cache
+  chiedeva loro l'elenco delle VM: circa 1900 avvisi a settimana a Domarc.
+- **Un percorso illeggibile è un 404, non un 500.** Una scansione con byte nulli nel
+  percorso produceva «Unhandled exception» con traceback.
+- **`last_check` dei nodi si aggiorna a ogni giro riuscito**, non solo col «Test» a mano.
+
+### Aggiunte
+
+- **`/api/health` porta il conto dei job falliti** (`jobs`: repliche fallite, massimo
+  di fallimenti di fila, ultima corsa riuscita). Lo stato non cambia: serve a chi
+  controlla da fuori. A Domarc un job falliva da 50 giorni con «healthy».
+
 ## [3.24.4] - 2026-11-08
 
 ### Correzioni

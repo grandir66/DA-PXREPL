@@ -46,6 +46,11 @@ class CacheService:
             # Nota: update_host_details crea la sua sessione, quindi è autonomo
             await host_service.update_host_details(node.id)
 
+            # Un PBS non ospita VM: chiedergli le risorse del cluster dava solo
+            # un avviso a ogni giro (~1900 a settimana a Domarc, 24/11/2026).
+            if node.node_type == NodeType.PBS.value:
+                return
+
             logger.debug(f"Fetching Cluster Resources for node {node.name}")
             
             # 2. Ottieni lista VM/CT con metriche avanzate (via pvesh cluster resource)
@@ -143,6 +148,10 @@ class CacheService:
                 if vmid not in found_vmids:
                     db.delete(vm_obj)
             
+            if guests:
+                # Il nodo ha risposto con dei dati: e' la prova che e' raggiungibile.
+                # Prima last_check lo scriveva solo il «Test» a mano (24/11/2026).
+                node.last_check = datetime.utcnow()
             db.commit()
             logger.info(f"Updated {len(guests)} VMs for node {node.name}")
             
