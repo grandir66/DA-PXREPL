@@ -5,8 +5,8 @@
 **Obiettivo:** dopo che una replica è stata accesa al posto dell'originale, riportare la produzione sulla VM originale (stesso VMID, nome, uuid, rete, impostazioni) coi dati aggiornati della replica, e rimettere il job di replica nel verso giusto.
 **Architettura:** un servizio nuovo `backend/services/ritorno_originale.py` (logica pura + passi SSH) e tre rotte in `backend/routers/vms.py`, accanto ad «Attiva DR». I dati viaggiano solo con `syncoid_service.run_sync` a ruoli invertiti. La configurazione dell'originale viene fotografata nel DB a ogni corsa del job, perché al momento del ritorno può non esistere più.
 **Spec:** richiesta di Riccardo del 24/11/2026 in `TASKS.md` (sezione 2026-11-24) e le quattro risposte qui sotto. Caso reale: 3CX di DTS, fatto a mano il 24/11 (stessa sezione).
-**Livello di controllo:** completo (zona rossa: dischi e configurazione di VM di produzione). Proposto il 24/11, da confermare da Riccardo.
-**Stato:** bozza · **Ultimo aggiornamento:** 2026-11-24 20:15
+**Livello di controllo:** completo (zona rossa: dischi e configurazione di VM di produzione), deciso da Riccardo il 24/11/2026.
+**Stato:** approvato · **Ultimo aggiornamento:** 2026-11-24 20:25
 
 ## Decisioni di Riccardo (24/11/2026)
 
