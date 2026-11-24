@@ -6,7 +6,7 @@ Riccardo: «a che punto è la traduzione inglese dell'interfaccia». Analisi del
 Esito: **la traduzione non esiste**. Nel frontend non c'è libreria di localizzazione (niente `vue-i18n` in `frontend/package.json`), nessun file di lingua, nessun selettore, nessuna lingua predefinita o di ripiego; `frontend/index.html` dichiara `lang="en"` su un'interfaccia italiana. Misure (script di estrazione, conteggi indicativi ±10%): ~2.400 testi scritti a mano in 62 file (~1.700 distinti); ~1.180 sicuramente italiani, ~310 già inglesi (un quarto in `views/Cluster.vue`, poi `VMs.vue`, `Logs.vue`), ~900 parole singole o termini tecnici. Backend: 485 `detail=` nei router, ~370 letterali italiani, 37 inglesi (`routers/clusters.py` tutto inglese); e-mail solo in italiano (`services/email_service.py`). Date: 14 `toLocaleString('it-IT')` fissi in 10 file, 17 senza lingua.
 
 Da decidere prima di tutto (Riccardo):
-- [ ] Serve davvero l'inglese (cliente o rivendita che lo chiede) o basta **uniformare all'italiano** le ~310 voci inglesi rimaste? La seconda costa 1 giorno, la prima 8-12.
+- [x] Riccardo, 24/11: «Serve l'inglese». Si fa la traduzione vera (P0-P8, 8-12 giorni); l'alternativa «solo italiano» in fondo decade.
 - [ ] Se sì all'inglese: lingua per utente (colonna sul profilo) o per browser/appliance? E le e-mail seguono l'appliance o il destinatario?
 
 Lavoro, in ordine di priorità (solo se si decide per l'inglese; stima totale 8-12 giorni):
