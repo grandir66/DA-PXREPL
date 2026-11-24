@@ -1,5 +1,28 @@
 # TASKS — DA-PXREPL
 
+## 2026-11-24 — traduzione inglese della UI
+
+Riccardo: «a che punto è la traduzione inglese dell'interfaccia». Analisi del 24/11 sulla 3.26.0, sola lettura, niente codice toccato.
+Esito: **la traduzione non esiste**. Nel frontend non c'è libreria di localizzazione (niente `vue-i18n` in `frontend/package.json`), nessun file di lingua, nessun selettore, nessuna lingua predefinita o di ripiego; `frontend/index.html` dichiara `lang="en"` su un'interfaccia italiana. Misure (script di estrazione, conteggi indicativi ±10%): ~2.400 testi scritti a mano in 62 file (~1.700 distinti); ~1.180 sicuramente italiani, ~310 già inglesi (un quarto in `views/Cluster.vue`, poi `VMs.vue`, `Logs.vue`), ~900 parole singole o termini tecnici. Backend: 485 `detail=` nei router, ~370 letterali italiani, 37 inglesi (`routers/clusters.py` tutto inglese); e-mail solo in italiano (`services/email_service.py`). Date: 14 `toLocaleString('it-IT')` fissi in 10 file, 17 senza lingua.
+
+Da decidere prima di tutto (Riccardo):
+- [ ] Serve davvero l'inglese (cliente o rivendita che lo chiede) o basta **uniformare all'italiano** le ~310 voci inglesi rimaste? La seconda costa 1 giorno, la prima 8-12.
+- [ ] Se sì all'inglese: lingua per utente (colonna sul profilo) o per browser/appliance? E le e-mail seguono l'appliance o il destinatario?
+
+Lavoro, in ordine di priorità (solo se si decide per l'inglese; stima totale 8-12 giorni):
+- [ ] P0 — Glossario unico IT/EN prima di tradurre (replica→replication, corsa/run→run, nodo→node, conservazione/retention→retention, ripristino/restore→restore, origine/sorgente→source, «Riallinea identità», «Ritorna all'originale»): oggi la stessa cosa ha 2-3 nomi anche in italiano («Ultimo run»/«Ultima run»/«Ultima esecuzione», «sorgente»/«origine»). 0,5 g
+- [ ] P1 — Impianto: `vue-i18n`, `frontend/src/locales/{it,en}.json`, italiano predefinito e di ripiego, selettore in `layouts/MainLayout.vue`, scelta salvata; `lang` di `index.html` allineato; una funzione sola per date e numeri al posto dei 31 `toLocaleString`. Più una prova che fa fallire il cancello se una chiave manca in una delle due lingue. 1 g
+- [ ] P2 — Guscio e pezzi condivisi: menu (`MainLayout.vue`), `Login.vue`, `components/ui/*`, `stores/confirm.ts`, `stores/toast.ts`, `utils/cronHuman.ts`, `ScheduleEditor.vue` (giorni Lun-Dom). ~120 testi, 0,5 g
+- [ ] P3 — Viste d'uso quotidiano: `Dashboard.vue`, `Replication.vue`, `JobsList.vue`, `JobModal.vue` (147), `JobLogViewer.vue`, `Logs.vue`. ~370 testi, 1,5 g
+- [ ] P4 — `VMs.vue` (304, la più grossa) e `Nodes.vue` (144). **Dopo** che la sessione «Ritorna all'originale» ha chiuso: tocca gli stessi file. 1,5 g
+- [ ] P5 — Resto: repliche file dati, NAS sync, snapshot VM, PBS, host backup, migrazioni, Sanoid, `views/settings/*` (syslog remoto e recupero all'avvio compresi). ~1.000 testi, 3 g
+- [ ] P6 — Backend: codici d'errore stabili al posto delle frasi (`detail={"code": …, "params": …}`) tradotti dal frontend, cominciando dai più ripetuti («Nodo non trovato», «Accesso negato a questo nodo», «Job non trovato»); i 71 `detail` dinamici (stderr di ssh/zfs) restano com'escono. Zona gialla/rossa (auth, settings): per router, non in massa. 2 g
+- [ ] P7 — E-mail di notifica in due lingue (`services/email_service.py` e i quattro `*notifications.py`). 1 g
+- [ ] P8 — Rilettura dell'inglese a schermo e una schermata a 1920 per vista (le etichette inglesi sono più corte, quelle lunghe no). 1 g
+
+Se invece si resta sull'italiano:
+- [ ] Portare in italiano `views/Cluster.vue` (77 testi inglesi), il dettaglio VM di `VMs.vue` («Target Node», «Start on Boot», «Start VM after restore», «Size», «Yes/No»), `Logs.vue` («System Logs», «Job Type», «Next →», «Success/Failed»), `Nodes.vue` («Node Name:»), i `detail` di `routers/clusters.py`, e `lang="it"` in `index.html`. 1 g
+
 ## 2026-11-24 — Migliorie, 3.26.0 (Riccardo: «puoi procedere con ulteriori punti di miglioramento»)
 
 - [x] Recupero all'avvio delle corse saltate (`scheduler_recupero_avvio`, Impostazioni → Generale → Scheduler): nasce spento
