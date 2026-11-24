@@ -2,13 +2,14 @@
 
 ## 2026-11-24 — Migliorie, 3.26.0 (Riccardo: «puoi procedere con ulteriori punti di miglioramento»)
 
-- [x] Recupero all'avvio delle corse saltate (`scheduler_recupero_avvio`, Impostazioni → Generale → Scheduler): **nasce spento, spento su tutti e due i siti**; accenderlo è una decisione di Riccardo
+- [x] Recupero all'avvio delle corse saltate (`scheduler_recupero_avvio`, Impostazioni → Generale → Scheduler): nasce spento
 - [x] Cache VM: un nodo che non risponde non svuota più la cache (`get_cluster_resources_esito`)
 - [x] `is_online`/`last_check` dei nodi dal giro periodico (non in linea dopo 3 giri muti). I PBS restano fuori: il loro stato lo scrive ancora solo il «Test» a mano
 - [x] `update.sh`: ultime 10 copie di database e ambiente, journal a 200 MB. Vale dall'aggiornamento successivo (gira lo script vecchio): le 36 copie di Domarc spariscono al prossimo
 - [x] Lint e typecheck del frontend verdi
 - [x] Domarc alla 3.26.0 (24/11 17:10, snapshot LXC 332 `pre-pxrepl-3260-20261124`): healthy, nodi con `last_check` di oggi, 84 VM in cache come prima
-- [ ] DTS alla 3.26.0 (è alla 3.25.0): aspetta l'ok di Riccardo
+- [x] DTS alla 3.26.0 (24/11 17:20, ok di Riccardo): snapshot LXC 124 `pre-pxrepl-3260-20261124`, healthy, chiavi del cluster 8 righe
+- [x] Recupero all'avvio **acceso sui due siti** (24/11, ok di Riccardo), scritto nel database DOPO il riavvio: vale dal prossimo avvio del servizio, oggi non ha rilanciato niente (a DTS avrebbe fatto partire 12 repliche con 12 giorni di arretrato in orario di lavoro)
 - [ ] Snapshot dell'LXC 332 da togliere quando le corse di stanotte sono verdi: `pre-pxrepl-3245-`, `-3250-`, `-3260-20261124`
 - [ ] Non fatto, da valutare: ripuntare un job su un'altra VM dall'interfaccia (oggi serve scrivere nel database, come per la 699)
 
