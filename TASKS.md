@@ -20,7 +20,8 @@ Domarc (LXC 332 su DA-PX-04):
 - [x] (3.24.5: uscita 1 di tar = avviso, errore col codice e il messaggio; causa probabile, non provata: file di /etc/pve cambiato durante la lettura. Leggere le prossime corse) Backup Config DA-PX-04: 3 falliti in 14 giorni con «Errore creazione backup:» vuoto (`host_backup_service.py:255`, stderr e stdout vuoti)
 - [ ] 36 copie di `dapx.db.backup-*` e 15+ `.env.pre-update-*` mai ruotate; resti: `/opt/dapx-unified/_archive`, `get_valid_key.py`, `/var/log/dapx-backandrepl`
 
-- [ ] DTS è ancora alla 3.24.4: portarla alla 3.24.5 (cliente: aspetta l'ok di Riccardo)
+- [x] DTS alla 3.24.5 (24/11 14:32, ok di Riccardo): snapshot LXC 124 `pre-pxrepl-3245-20261124` su DTS-PX-04, health 3.24.5 healthy, chiavi del cluster 8 righe prima e dopo
+- [ ] DTS: leggere le repliche che ripartono da stasera (ultima riuscita 12/11 21:02) e togliere poi gli snapshot vecchi dell'LXC 124 (ne ha 6)
 - [ ] `cache_service`: se il nodo non risponde l'elenco è vuoto e le VM in cache vengono cancellate (ripiego muto, visto leggendo il codice il 24/11, non corretto)
 
 Codice (valgono per tutti e due):
