@@ -7,8 +7,8 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ### Aggiunte
 
-- **Ritorno all'originale** (backend; l'interfaccia arriva nello stesso rilascio).
-  Quando una replica è stata accesa al posto dell'originale, il sistema riporta la
+- **Ritorno all'originale** (scheda nel dettaglio VM della replica, sotto «Identità
+  replica»). Quando una replica è stata accesa al posto dell'originale, il sistema riporta la
   produzione sulla VM originale coi dati aggiornati della replica, in due tempi:
   «Prepara» a replica accesa (disco vecchio dell'originale rinominato in
   `dapx-vecchio-…`, mai cancellato, e copia syncoid replica → origine) e «Completa»

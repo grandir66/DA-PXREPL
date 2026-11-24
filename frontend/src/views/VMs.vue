@@ -533,6 +533,51 @@
  </div>
  </div>
 
+ <!-- Ritorno all'originale (3.27.0): solo repliche che stanno, o sono state, al posto dell'originale -->
+ <div v-if="ritornoVisibile && ritorno" class="detail-card full-width">
+ <h4><Icon name="rotate-ccw" :size="20" /> Ritorno all'originale</h4>
+ <p class="text-sm mb-3">
+ <span class="badge" :class="ritornoVista.classe"><Icon :name="ritornoVista.icona" :size="12" /> {{ ritornoVista.parola }}</span>
+ <span class="ml-2">{{ ritornoVista.frase }}</span>
+ <span v-if="ritorno.dettaglio.aggiornato" class="text-xs text-secondary ml-2">({{ ritorno.dettaglio.aggiornato }})</span>
+ </p>
+ <table class="simple-table">
+ <tr><td>Replica:</td><td>VM <strong>{{ ritorno.replica.vmid }}</strong> {{ ritorno.replica.nome }} su {{ ritorno.replica.nodo }}, {{ statoVmParola(ritorno.replica.stato) }}</td></tr>
+ <tr><td>Originale:</td><td>VM <strong>{{ ritorno.originale.vmid }}</strong> {{ ritorno.originale.nome }} su {{ ritorno.originale.nodo }}, {{ statoVmParola(ritorno.originale.stato) }}</td></tr>
+ <tr><td>Configurazione:</td><td>
+ <span v-if="ritorno.fotografia.presente">dell'originale, salvata il {{ ritorno.fotografia.del }}</span>
+ <span v-else><Icon name="alert-triangle" :size="12" /> mai salvata: nome e uuid si ricavano dalla replica, bridge, onboot e tag no</span>
+ </td></tr>
+ </table>
+ <table class="simple-table mt-3">
+ <tr><th class="text-left">Disco</th><th class="text-left">Da (replica)</th><th class="text-left">A (origine)</th><th class="text-left">Disco attuale dell'originale</th></tr>
+ <tr v-for="d in ritorno.piano.dischi" :key="d.job_id">
+ <td>{{ d.disk_name || '—' }}</td>
+ <td class="text-xs font-mono">{{ d.da }}</td>
+ <td class="text-xs font-mono">{{ d.a }}</td>
+ <td class="text-xs">
+ <span v-if="ritorno.dettaglio.dischi?.[d.job_id]?.vecchio">messo da parte: <span class="font-mono">{{ ritorno.dettaglio.dischi?.[d.job_id]?.vecchio }}</span></span>
+ <span v-else-if="ritorno.dettaglio.dischi?.[d.job_id]">non c'era</span>
+ <span v-else-if="d.rinomina">verrà messo da parte (rinominato, non cancellato)</span>
+ <span v-else>non c'è</span>
+ </td>
+ </tr>
+ </table>
+ <ul v-if="ritornoAvvisi.length" class="text-sm mt-3 space-y-1">
+ <li v-for="a in ritornoAvvisi" :key="a"><Icon name="alert-triangle" :size="12" /> {{ a }}</li>
+ </ul>
+ <div class="mt-3 flex items-center gap-3">
+ <button class="btn btn-sm btn-primary" :disabled="!ritornoPuoPreparare" @click="openRitorno('prepara')">
+ <Icon name="refresh" :size="14" /> Prepara ritorno…
+ </button>
+ <button class="btn btn-sm btn-warning" :disabled="ritorno.stato !== 'pronto' || ritorno.in_corso" @click="openRitorno('completa')">
+ <Icon name="rotate-ccw" :size="14" /> Completa ritorno…
+ </button>
+ <span v-if="!ritorno.piano.possibile && !ritornoAttivo" class="text-xs text-secondary">Non si può preparare: {{ ritorno.piano.motivo }}</span>
+ <span v-else-if="ritorno.stato === 'pronto'" class="text-xs text-secondary">«Prepara» si può ripetere per accorciare l'ultima copia.</span>
+ </div>
+ </div>
+
  <!-- Replica registrata prima della 3.22.0: stessa identita' della sorgente -->
  <div v-else-if="vmInfoData.replica_identity?.da_riallineare" class="detail-card full-width">
  <h4><Icon name="shield" :size="20" /> Identità replica</h4>
@@ -580,6 +625,39 @@
  </ModalDialog>
 
  <!-- Attiva DR (identita' replica) -->
+ <ModalDialog :visible="showRitorno" @close="showRitorno = false" :title="ritornoAzione === 'prepara' ? 'Prepara ritorno all\'originale' : 'Completa ritorno all\'originale'" width="600px">
+ <div v-if="ritornoAzione === 'prepara'" class="alert alert-info mb-4">
+ <Icon name="info" :size="14" /> <strong>La replica resta accesa.</strong> Il disco attuale dell'originale viene rinominato, non cancellato, e i dati della replica vengono copiati sul nodo d'origine con syncoid.
+ La replica programmata di questa VM resta ferma fino al completamento.
+ </div>
+ <div v-else class="alert alert-warning mb-4">
+ <Icon name="alert-triangle" :size="14" /> <strong>La replica viene spenta:</strong> il servizio è fermo finché l'originale non risponde.
+ Se non risponde entro il tempo qui sotto, l'originale viene spenta e la replica riaccesa.
+ </div>
+ <div class="p-4 bg-dark-soft rounded mb-4 space-y-2" v-if="ritorno">
+ <div><strong>Replica:</strong> VM {{ ritorno.replica.vmid }} {{ ritorno.replica.nome }} su {{ ritorno.replica.nodo }}</div>
+ <div><strong>Originale:</strong> VM {{ ritorno.originale.vmid }} {{ ritorno.originale.nome }} su {{ ritorno.originale.nodo }}</div>
+ </div>
+ <div class="space-y-4">
+ <div v-if="ritornoAzione === 'completa'">
+ <label class="block text-sm text-secondary mb-1">Attesa della risposta dell'originale (secondi)</label>
+ <input v-model.number="ritornoAttesa" type="number" min="30" max="1800" class="form-input">
+ </div>
+ <div>
+ <label class="block text-sm text-secondary mb-1">Scrivi <code>RITORNA</code> per confermare <span class="text-danger">*</span></label>
+ <input v-model="ritornoConferma" type="text" class="form-input" placeholder="RITORNA" autocomplete="off">
+ </div>
+ </div>
+ <template #footer>
+ <div class="flex justify-between w-full">
+ <button class="btn btn-secondary" @click="showRitorno = false">Annulla</button>
+ <button class="btn" :class="ritornoAzione === 'prepara' ? 'btn-primary' : 'btn-warning'" @click="confirmRitorno" :disabled="ritornoConferma !== 'RITORNA' || ritornoBusy">
+ {{ ritornoBusy ? 'In corso…' : (ritornoAzione === 'prepara' ? 'Prepara ritorno' : 'Completa ritorno') }}
+ </button>
+ </div>
+ </template>
+ </ModalDialog>
+
  <ModalDialog :visible="showActivateDR" @close="showActivateDR = false" title="Attiva DR sulla replica" width="600px">
  <div class="alert alert-warning mb-4">
  <Icon name="alert-triangle" :size="14" /> <strong>Cosa fa:</strong> scrive su questa replica l'uuid SMBIOS della VM sorgente, così i sistemi che la riconoscono dall'uuid (licenze, Veeam, Windows) la vedono come l'originale.
@@ -628,12 +706,12 @@
 <script setup lang="ts">
 import apiClient from '../services/api';
 import { useToast, errorMessage } from '../stores/toast';
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import { confirmDangerous } from '../stores/confirm';
 import { useRoute } from 'vue-router';
 import PageHeader from '../components/ui/PageHeader.vue';
 import Icon from '../components/ui/Icon.vue';
-import vmsService, { type VM, type Snapshot, type Backup, type SanoidConfig, type ZFSSnapshot } from '../services/vms';
+import vmsService, { type VM, type Snapshot, type Backup, type SanoidConfig, type ZFSSnapshot, type RitornoStato } from '../services/vms';
 import nodesService from '../services/nodes';
 import ModalDialog from '../components/ModalDialog.vue';
 import JobModal from '../components/jobs/JobModal.vue';
@@ -829,12 +907,14 @@ const manageState = async (vm: VM, action: any) => {
 const openVMInfoModal = async (vm: VM) => {
  selectedVM.value = vm;
  vmInfoData.value = null;
+ ritorno.value = null;
  vmInfoLoading.value = true;
  showVMInfoModal.value = true;
  
  try {
  const res = await vmsService.getVMDetails(vm.node_id!, vm.vmid, vm.type);
  vmInfoData.value = res.data;
+ void caricaRitorno();
  } catch (e) {
  console.error('Error loading VM details', e);
  vmInfoData.value = null;
@@ -856,6 +936,97 @@ const riallineaIdentita = async () => {
  toast.error('Riallineo rifiutato', errorMessage(e));
  } finally {
  riallineaBusy.value = false;
+ }
+};
+
+// --- Ritorno all'originale (3.27.0) ---
+const ritorno = ref<RitornoStato | null>(null);
+const showRitorno = ref(false);
+const ritornoAzione = ref<'prepara' | 'completa'>('prepara');
+const ritornoConferma = ref('');
+const ritornoAttesa = ref(180);
+const ritornoBusy = ref(false);
+let ritornoTimer: ReturnType<typeof setTimeout> | null = null;
+
+const ritornoAttivo = computed(() => !!ritorno.value && ['preparazione', 'scambio'].includes(ritorno.value.stato) && ritorno.value.in_corso);
+const ritornoVisibile = computed(() => {
+ const r = ritorno.value;
+ if (!r) return false;
+ const ident = vmInfoData.value?.replica_identity;
+ return r.stato !== 'nessuno' || !!ident?.dr_attivo || (!!ident?.is_replica && vmInfoData.value?.status === 'running');
+});
+const ritornoPuoPreparare = computed(() => {
+ const r = ritorno.value;
+ return !!r && !r.in_corso && r.piano.possibile;
+});
+const ritornoAvvisi = computed(() => {
+ const r = ritorno.value;
+ if (!r) return [];
+ return Array.from(new Set([...(r.piano.avvisi || []), ...(r.dettaglio.avvisi || [])]));
+});
+// Stati distinti da icona e parola, non dal solo colore.
+const ritornoVista = computed(() => {
+ const r = ritorno.value;
+ if (!r) return { icona: 'info', parola: '', frase: '', classe: '' };
+ if (r.interrotto) return { icona: 'rotate-ccw', parola: 'Interrotto', frase: 'Il servizio si è riavviato a metà: controllare quale VM è accesa, poi rilanciare «Prepara».', classe: 'badge-warning' };
+ switch (r.stato) {
+ case 'preparazione': return { icona: 'refresh', parola: 'Preparazione in corso', frase: 'Copia dei dati verso il nodo d\'origine. La replica resta accesa.', classe: 'badge-info' };
+ case 'pronto': return { icona: 'check', parola: 'Pronto', frase: 'I dati sono sul nodo d\'origine: si può completare.', classe: 'badge-success' };
+ case 'scambio': return { icona: 'refresh', parola: 'Scambio in corso', frase: 'La replica è ferma: ultima copia e accensione dell\'originale.', classe: 'badge-warning' };
+ case 'completato': return { icona: 'check-circle', parola: 'Completato', frase: r.dettaglio.messaggio || 'L\'originale lavora.', classe: 'badge-success' };
+ case 'fallito': return { icona: 'alert-triangle', parola: 'Non riuscito', frase: r.dettaglio.messaggio || r.dettaglio.errore || '', classe: 'badge-danger' };
+ default: return { icona: 'info', parola: 'Da preparare', frase: 'Nessun ritorno aperto.', classe: 'badge-secondary' };
+ }
+});
+const statoVmParola = (stato: string) => ({ running: 'accesa', stopped: 'spenta', assente: 'non esiste più', sconosciuto: 'stato non leggibile' } as Record<string, string>)[stato] || stato;
+
+const fermaRitornoTimer = () => {
+ if (ritornoTimer) { clearTimeout(ritornoTimer); ritornoTimer = null; }
+};
+const caricaRitorno = async () => {
+ fermaRitornoTimer();
+ const vm = selectedVM.value;
+ const ident = vmInfoData.value?.replica_identity;
+ if (!vm || vm.type !== 'qemu' || !(ident?.is_replica || ident?.da_riallineare)) { ritorno.value = null; return; }
+ try {
+ const res = await vmsService.getRitorno(vm.node_id!, vm.vmid);
+ if (selectedVM.value !== vm) return;
+ ritorno.value = res.data;
+ if (showVMInfoModal.value && ['preparazione', 'scambio'].includes(res.data.stato) && res.data.in_corso) {
+ ritornoTimer = setTimeout(caricaRitorno, 5000);
+ }
+ } catch {
+ // 404 = nessun job di replica collegato: la scheda non si mostra
+ ritorno.value = null;
+ }
+};
+watch(showVMInfoModal, (aperta) => { if (!aperta) fermaRitornoTimer(); });
+onUnmounted(fermaRitornoTimer);
+
+const openRitorno = (azione: 'prepara' | 'completa') => {
+ ritornoAzione.value = azione;
+ ritornoConferma.value = '';
+ ritornoAttesa.value = 180;
+ showRitorno.value = true;
+};
+const confirmRitorno = async () => {
+ const vm = selectedVM.value;
+ if (!vm || ritornoConferma.value !== 'RITORNA') return;
+ ritornoBusy.value = true;
+ try {
+ if (ritornoAzione.value === 'prepara') {
+ await vmsService.preparaRitorno(vm.node_id!, vm.vmid);
+ toast.success('Preparazione avviata', 'La copia verso il nodo d\'origine è partita: lo stato si aggiorna da solo.');
+ } else {
+ await vmsService.completaRitorno(vm.node_id!, vm.vmid, ritornoAttesa.value);
+ toast.success('Scambio avviato', 'La replica viene spenta e l\'originale accesa: lo stato si aggiorna da solo.');
+ }
+ showRitorno.value = false;
+ setTimeout(caricaRitorno, 1500);
+ } catch (e) {
+ toast.error('Ritorno rifiutato', errorMessage(e));
+ } finally {
+ ritornoBusy.value = false;
  }
 };
 

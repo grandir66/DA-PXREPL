@@ -66,6 +66,29 @@ export interface ZFSSnapshot {
     datasetsCount?: number; // Added for grouped snapshots
 }
 
+export interface RitornoStato {
+    stato: 'nessuno' | 'preparazione' | 'pronto' | 'scambio' | 'completato' | 'fallito';
+    in_corso: boolean;
+    interrotto: boolean;
+    dettaglio: {
+        messaggio?: string;
+        errore?: string;
+        fase?: string;
+        avvisi?: string[];
+        aggiornato?: string;
+        dischi?: Record<string, { dataset: string; vecchio: string | null }>;
+    };
+    piano: {
+        possibile: boolean;
+        motivo: string;
+        avvisi: string[];
+        dischi: { job_id: number; disk_name: string | null; da: string; a: string; rinomina: boolean }[];
+    };
+    originale: { vmid: number; nodo: string; stato: string; nome: string | null };
+    replica: { vmid: number; nodo: string; stato: string; nome: string | null };
+    fotografia: { presente: boolean; del: string | null };
+}
+
 export default {
     getVMs(forceRefresh: boolean = false) {
         return apiClient.get<VM[]>(`/dashboard/vms${forceRefresh ? '?force_refresh=true' : ''}`);
@@ -78,6 +101,19 @@ export default {
     // Identita' della replica (3.22.0): ripristina l'uuid SMBIOS della sorgente. Non avvia la VM.
     activateDR(node: number | string, vmid: number | string, body: { confirm: string; force?: boolean; ripristina_vmgenid?: boolean; vm_type?: string }) {
         return apiClient.post(`/vms/node/${node}/vm/${vmid}/activate-dr`, body);
+    },
+
+    // Ritorno all'originale (3.27.0): dalla replica accesa alla VM originale, in due tempi.
+    getRitorno(node: number | string, vmid: number | string) {
+        return apiClient.get<RitornoStato>(`/vms/node/${node}/vm/${vmid}/ritorno`);
+    },
+
+    preparaRitorno(node: number | string, vmid: number | string) {
+        return apiClient.post(`/vms/node/${node}/vm/${vmid}/ritorno/prepara`, { confirm: 'RITORNA' });
+    },
+
+    completaRitorno(node: number | string, vmid: number | string, attesa_avvio_s: number = 180) {
+        return apiClient.post(`/vms/node/${node}/vm/${vmid}/ritorno/completa`, { confirm: 'RITORNA', attesa_avvio_s });
     },
 
     // Lifecycle

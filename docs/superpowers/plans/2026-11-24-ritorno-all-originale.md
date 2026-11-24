@@ -6,7 +6,7 @@
 **Architettura:** un servizio nuovo `backend/services/ritorno_originale.py` (logica pura + passi SSH) e tre rotte in `backend/routers/vms.py`, accanto ad «Attiva DR». I dati viaggiano solo con `syncoid_service.run_sync` a ruoli invertiti. La configurazione dell'originale viene fotografata nel DB a ogni corsa del job, perché al momento del ritorno può non esistere più.
 **Spec:** richiesta di Riccardo del 24/11/2026 in `TASKS.md` (sezione 2026-11-24) e le quattro risposte qui sotto. Caso reale: 3CX di DTS, fatto a mano il 24/11 (stessa sezione).
 **Livello di controllo:** completo (zona rossa: dischi e configurazione di VM di produzione), deciso da Riccardo il 24/11/2026.
-**Stato:** approvato · **Ultimo aggiornamento:** 2026-11-24 20:25
+**Stato:** approvato · **Ultimo aggiornamento:** 2026-11-24, task 1-4 fatti, fermo prima del task 5
 
 ## Decisioni di Riccardo (24/11/2026)
 
@@ -32,7 +32,7 @@
 | S1 | [x] | Fotografia della configurazione dell'originale a ogni corsa | in linea | — | la colonna si riempie dopo una corsa | pytest del task 1 |
 | S2 | [x] | Logica pura del ritorno (piano dei passi, conf ricostruita, nomi) | in linea | S1 | le prove passano dopo essere state viste fallire | pytest del task 2 |
 | S3 | [x] | Passi SSH e rotte «stato», «prepara», «completa» | in linea | S2 | le rotte rispondono e rifiutano i casi vietati | pytest del task 3 |
-| S4 | [ ] | Interfaccia in `VMs.vue` | in linea | S3 | lint e build puliti, una schermata a 1920 | `npm run lint`, `npm run build:check` |
+| S4 | [x] | Interfaccia in `VMs.vue` | in linea | S3 | lint e build puliti, una schermata a 1920 | `npm run lint`, `npm run build:check` |
 | S5 | [ ] | Prova vera su una VM di test a Domarc | in linea | S4 | ritorno riuscito e ritorno fallito apposta, tutti e due letti | registro del piano |
 | S6 | [ ] | Documenti e rilascio | in linea | S5 | release su GitHub | `gh release view` |
 
@@ -95,12 +95,13 @@ def piano_ritorno(jobs: List[dict], stato_replica: str, stato_originale: str,
 **Commit:** `ritorno: prepara e completa con syncoid`.
 **Verifica (24/11 sera):** `cd backend && .venv/bin/python -m pytest tests/test_ritorno_originale.py -q` → 14 prove del task 3 in errore prima del codice, 29 verdi dopo; suite intera `pytest tests -q` → 564 verdi.
 
-### [ ] Task 4 — Interfaccia
+### [x] Task 4 — Interfaccia
 
 **File:** `frontend/src/services/vms.ts` (tre chiamate), `frontend/src/views/VMs.vue` (nel dettaglio VM, accanto alla scheda di «Attiva DR» / «Riallinea identità», riga ~537).
 **Cosa fare:** scheda «Ritorno all'originale», visibile solo sulle repliche con DR attivo o accese. Mostra il piano (dischi, da dove a dove, cosa viene messo da parte, avvisi), lo stato, e due bottoni: «Prepara ritorno» e «Completa ritorno» (attivo solo in `pronto`), tutti e due con finestra che chiede di scrivere `RITORNA` e dice in chiaro il fermo. Stato riletto ogni 5 s mentre è `preparazione` o `scambio`. Stati distinti per forma e testo, non solo per colore (Riccardo è daltonico). Si propone a Riccardo la scheda prima di scriverla.
 **Verifica:** `cd frontend && npm run lint && npm run build:check` → puliti; una schermata a 1920.
 **Commit:** `ritorno: scheda nell'interfaccia`.
+**Verifica (24/11 sera):** `cd frontend && npm run lint` → 0 errori (44 avvisi vecchi); `npm run build:check` → pulito. Schermata a 1920 **non fatta**: in locale non c'è una replica col DR attivo da aprire; si guarda al task 5 su Domarc.
 
 ### [ ] Task 5 — Prova vera a Domarc
 
@@ -118,6 +119,8 @@ def piano_ritorno(jobs: List[dict], stato_replica: str, stato_originale: str,
 - 24/11 sera, task 2: le conf di prova hanno la forma di 103 e 9103 ma sono scritte a mano dai dati di `TASKS.md` (nome, bridge `vmbr_vm`/`vmbr1`, tag), non copiate da `/root/dapx-bak-20261124`: quel percorso sta su DTS-PX-04 e DTS non si tocca. `config_originale_per_ritorno` e `piano_ritorno` hanno parametri in più rispetto al piano (`vmid_replica`, `suffisso_nome`; `replica_segnata`, `fotografia_presente`, e `source_esiste`/`vm_type` nei dict dei job): senza, le regole scritte non erano calcolabili. La nota dell'originale (righe `#` del `.conf`) resta, con la riga «Ripristinata da replica…» in testa.
 - 24/11 sera, task 3. Scostamenti: (a) «Prepara» spegne i job del gruppo (`is_active=False`) e «Completa» li riaccende: dopo la preparazione origine e replica hanno uno snapshot in comune, e una corsa normale farebbe `zfs receive -F` sul disco della replica accesa. (b) Se fallisce l'ultimo syncoid o la scrittura della conf, a replica già spenta, la replica viene riaccesa (il piano lo diceva solo per l'avvio fallito); non la si riaccende se era già spenta prima, né se l'originale non risulta spenta. (c) Un «Prepara» fallito lascia lo stato `fallito` e si rilancia: i dischi già messi da parte sono scritti in `ritorno_dettaglio`, non si rinominano due volte. (d) Stato rimasto a `preparazione`/`scambio` dopo un riavvio del servizio: la rotta di stato risponde `interrotto: true` e «Prepara» si può rilanciare. (e) La prova a due dischi ha trovato un difetto: il servizio lavorava solo sui job ricevuti; ora allarga sempre a tutto il `vm_group_id`. (f) Tempo massimo di syncoid nel ritorno: 24 ore (la corsa normale ne ha una, una copia completa non ci sta).
 - Non provato qui, resta al task 5: syncoid vero a ruoli invertiti (chiavi SSH dal nodo della replica al nodo d'origine), `zfs rename` su uno zvol vero, scrittura della conf in `/etc/pve`, attesa dell'agent.
+- 24/11 sera, task 4: scheda proposta a Riccardo oggetto per oggetto e approvata («Sì, scrivila»). Sta nel dettaglio VM sotto «Identità replica»; si vede sulle repliche col DR attivato, accese, o con un ritorno aperto. `frontend/dist` non è nel commit: si ricostruisce al rilascio (task 6).
+- **Fermo qui**: task 5 (prova vera a Domarc) e task 6 (rilascio) partono solo dopo aver detto a Riccardo cosa si fa su Domarc.
 
 ## Consuntivo
 ### Fatto
