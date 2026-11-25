@@ -169,3 +169,11 @@ Letto nel codice (niente misurato sui nodi, il Proxmox di OVH non so quale sia):
 - [x] Prodotto (25/11, sì di Riccardo): filtro delle reti ammesse (`DAPX_ALLOWED_NETS`, default solo reti private e VPN), `DAPX_HOST` rispettato dall'unità, `/docs` spento, installer che non apre più UFW. Prove mirate verdi. La health pubblica è rimasta com'è: la legge la pagina di accesso e ora è coperta dal filtro.
 - [x] DTS alla 3.28.1 il 25/11 10:38 (sì di Riccardo): snapshot dell'LXC 124 `pre-pxrepl-3281-20261125` su DTS-PX-04, nessuna corsa in piedi prima; health 200 da dentro, da DTS-PX-04 e dal Mac, filtro nel journal. Non lette: le corse successive. Chi entrasse da un indirizzo pubblico resta fuori finché non lo si mette in `DAPX_ALLOWED_NETS`.
 - [x] 25/11, Riccardo: «togli gli snapshot vecchi dell'LXC 124». Tolti su DTS-PX-04 gli otto `pre-pxrepl-*` dall'08/11 al 25/11 (3242, 3243, 3244, 3245, 3250, 3260, 3270, 3280); tenuto `pre-pxrepl-3281-20261125`. Tolti poi, col sì di Riccardo, anche i due di luglio (`preupd3209_202607281840`, `preupd32010_202607291033`).
+
+## 2026-11-25 — Due rami vecchi non fusi in `main`
+
+Riccardo, 25/11: pubblicati su `origin` così come sono, senza fonderli (prima stavano solo sul MacBook).
+
+- [x] Pubblicati `feature/smtp-default-notifications` e `wip/altro-agente-pre-nas-sync` (cercati segreti nei due diff: solo segnaposto).
+- [ ] `feature/smtp-default-notifications` (21/07): la cifratura della password SMTP è già in `main` per altra strada; manca la migrazione che cifra le password salvate in chiaro prima (`backend/update_db_schema.py` di `main` non cita `smtp_password`). Da verificare se `decrypt_secret` accetta un valore in chiaro; poi decidere se portare la migrazione (zona rossa: segreti).
+- [ ] `wip/altro-agente-pre-nas-sync` (20/07, un commit, 48 file): 18 file non esistono in `main` (spazio delle cartelle Synology `synology_du.py`, scoperta dei job di backup del cluster `pve_backup_discovery.py` e `PBSClusterBackupJobs.vue`, `temperature_utils.py`, `MetricRing.vue`, `MetricSparkline.vue`, spec e piano «Repliche dati v2»). Non verificato se le funzioni sono state rifatte con altri nomi. Decidere cosa recuperare, poi togliere il ramo.
