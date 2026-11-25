@@ -1,5 +1,6 @@
 import axios from 'axios'
 import type { AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
+import { traduciErrore } from '../i18n/backend'
 
 const apiClient: AxiosInstance = axios.create({
     baseURL: '/api',
@@ -74,6 +75,7 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
     (response: AxiosResponse) => response,
     async (error) => {
+        traduciErrore(error)
         const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
         if (!originalRequest || error.response?.status !== 401) {
             return Promise.reject(error)

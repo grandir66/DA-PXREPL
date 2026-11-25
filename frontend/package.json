@@ -8,7 +8,7 @@
     "build": "vite build",
     "build:check": "vue-tsc -b && vite build",
     "preview": "vite preview",
-    "lint": "node scripts/controlla-lingue.mjs && eslint src --max-warnings 500",
+    "lint": "node scripts/controlla-lingue.mjs && node scripts/controlla-backend.mjs && eslint src --max-warnings 500",
     "lingue": "node scripts/controlla-lingue.mjs",
     "lint:strict": "eslint src --max-warnings 0",
     "lint:fix": "eslint src --fix",

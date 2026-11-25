@@ -5,6 +5,9 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+### Aggiunte
+- Con l'interfaccia in inglese anche gli errori del backend a frase fissa («Nodo non trovato», «Accesso negato», «Job non trovato» e gli altri, 138 frasi) si leggono in inglese: li traduce il frontend in un punto solo, l'intercettore delle chiamate, senza toccare il backend. Una frase che non è nel dizionario si vede com'è. Il lint del frontend fallisce se nel backend compare una frase fissa senza traduzione (`frontend/src/i18n/backend.ts`, `frontend/src/locales/backend-en.json`, `frontend/scripts/controlla-backend.mjs`, `frontend/src/services/api.ts`).
+
 ## [3.28.2] - 2026-11-25
 
 Gli snapshot della replica nativa di Proxmox non si accumulano più sulla destinazione.
