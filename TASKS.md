@@ -9,7 +9,7 @@ Da decidere prima di tutto (Riccardo):
 - [x] Riccardo, 24/11: «Serve l'inglese». Si fa la traduzione vera (P0-P8, 8-12 giorni); l'alternativa «solo italiano» in fondo decade.
 - [x] Riccardo, 24/11: «Sì, parti così» → lingua **per utente**, e-mail nella lingua **dell'appliance**. Nessun rilascio e selettore nascosto finché menu, login e viste quotidiane non sono tradotti.
 
-- [x] **3.28.0 rilasciata il 25/11** (Riccardo: «fai uno snapshot aggiorna 199»): selettore di lingua visibile a tutti in fondo al menu, release su GitHub. **Domarc alla 3.28.0** (snapshot LXC 332 `pre-pxrepl-3280-20261125` su DA-PX-04; health 3.28.0 healthy, scheduler running; il JS servito contiene selettore e testi inglesi). DTS resta alla 3.27.0 finché Riccardo non lo dice.
+- [x] **3.28.0 rilasciata il 25/11** (Riccardo: «fai uno snapshot aggiorna 199»): selettore di lingua visibile a tutti in fondo al menu, release su GitHub. **Domarc alla 3.28.0** (snapshot LXC 332 `pre-pxrepl-3280-20261125` su DA-PX-04; health 3.28.0 healthy, scheduler running; il JS servito contiene selettore e testi inglesi). **DTS alla 3.28.0 dal 25/11** (Riccardo: «Sì, aggiorna DTS»): prima healthy alla 3.27.0 e nessuna replica in corso; snapshot LXC 124 `pre-pxrepl-3280-20261125` su DTS-PX-04; dopo, health 3.28.0 healthy, scheduler running, 0 repliche fallite, il JS servito contiene il selettore. Snapshot da togliere insieme agli altri cinque `pre-pxrepl-*` dell'LXC 124 quando le corse della notte sono verdi.
 - [x] Riccardo l'ha guardata a schermo sulla `.199` il 25/11: «visto, molto bene». Nessuna correzione chiesta.
 - [ ] Snapshot `pre-pxrepl-3280-20261125` dell'LXC 332 da togliere quando l'interfaccia è confermata.
 
