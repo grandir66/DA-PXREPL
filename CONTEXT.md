@@ -38,4 +38,4 @@ nata su un ramo 35 commit indietro non arrivò mai su `main`.
 ## 2. Stato — dal censimento, 2026-10-20
 
 - Stato: **manutenzione**.
-- Prossimo passo: portare DTS e Domarc alla 3.24.1 dal bottone Aggiorna, poi leggere le corse delle 02:00 e /api/health (battito)
+- Prossimo passo (25/11): leggere la corsa delle 18:00 di DTS (potatura dei `__replicate_` della 3.28.2 mai vista girare); rifare la replica 103 → 9103 del 3CX e riaccendere il job 2; accendere il syslog verso Wazuh dopo il rilascio del modulo `da-pxrepl`; traduzione: backend (P6), e-mail (P7), rilettura a schermo (P8). Elenco completo in `TASKS.md`.
