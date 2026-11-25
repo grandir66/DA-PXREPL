@@ -135,3 +135,13 @@ Diagnosi (08/11, sola lettura sul live):
 - [x] v3.24.4 (08/11): «Saltato: disco precedente fallito» e «VM già registrata» nel riepilogo; DTS aggiornato (snapshot LXC 124 `pre-pxrepl-3244-20261108`, health 3.24.4)
 - [x] ~~Difetto nuovo (08/11)~~: 12 gruppi di replica insieme esauriscono il pool SQLAlchemy (5+10): ogni replica tiene una sessione per tutta la durata. 5 gruppi sono morti in background senza riga nel registro, `/run` del backup config ha dato 500, e la registrazione post-sync della VM 117 (job 4) è saltata (`_try_register_vm_after_sync`): verificare la VM 9117 su DTS-PX-04
 - [ ] A parte: i job dei dischi secondari (101 disk-2/3/4, 109 disk-2/3, 114 disk-0, 115 disk-1) «NON PARTITO» dal 26-27/10
+
+## 2026-11-25 — L'app risponde su tutte le interfacce (anche IP pubblico su OVH)
+
+Riccardo, 25/11: «l'installazione sui Proxmox risponde senza filtri, e sul Proxmox di OVH anche sull'IP pubblico: va analizzato come bloccare».
+Letto nel codice (niente misurato sui nodi, il Proxmox di OVH non so quale sia):
+- uvicorn parte con `--host 0.0.0.0` fisso in `install.sh:764` e `backend/services/dapx_systemd.py:79`; `DAPX_HOST` di `config.env` non viene usato dall'unità systemd; `install.sh` apre la porta in ufw se attivo; HTTP in chiaro se `DAPX_SSL=false`.
+- Senza login rispondono: `/api/health` e `/api/updates/version` (versione), `/api/auth/config`, `/api/auth/realms`, `/docs` e `/openapi.json`, `/api/auth/setup` (crea l'admin se non ci sono utenti).
+- Freno sul login: 10 errori in 15 minuti per IP, in memoria.
+- [ ] Sapere da Riccardo quale Proxmox di OVH e chiuderlo subito col firewall (porta 8420 solo dalle reti di gestione).
+- [ ] Prodotto: indirizzo di ascolto configurabile e rispettato dall'unità, elenco reti ammesse (rifiuto prima delle rotte), `/docs` spento in esercizio, health pubblica ridotta, installer che non apre più ufw. Zona rossa (autenticazione, configurazione globale): serve il sì.
