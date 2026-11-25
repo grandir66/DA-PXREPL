@@ -11,7 +11,7 @@ Da decidere prima di tutto (Riccardo):
 
 - [x] **3.28.0 rilasciata il 25/11** (Riccardo: «fai uno snapshot aggiorna 199»): selettore di lingua visibile a tutti in fondo al menu, release su GitHub. **Domarc alla 3.28.0** (snapshot LXC 332 `pre-pxrepl-3280-20261125` su DA-PX-04; health 3.28.0 healthy, scheduler running; il JS servito contiene selettore e testi inglesi). **DTS alla 3.28.0 dal 25/11** (Riccardo: «Sì, aggiorna DTS»): prima healthy alla 3.27.0 e nessuna replica in corso; snapshot LXC 124 `pre-pxrepl-3280-20261125` su DTS-PX-04; dopo, health 3.28.0 healthy, scheduler running, 0 repliche fallite, il JS servito contiene il selettore. Snapshot da togliere insieme agli altri cinque `pre-pxrepl-*` dell'LXC 124 quando le corse della notte sono verdi.
 - [x] Riccardo l'ha guardata a schermo sulla `.199` il 25/11: «visto, molto bene». Nessuna correzione chiesta.
-- [ ] Snapshot dell'LXC 332 (Domarc, su DA-PX-04): al 25/11 sono sette, `pre-pxrepl-3245`, `-3250`, `-3260`, `-3270-20261124`, `-3280`, `-3281`, `-3282-20261125`. Interfaccia confermata e repliche verdi (health del 25/11: 0 fallite): si tolgono tutti tranne l'ultimo col sì di Riccardo.
+- [x] Snapshot dell'LXC 332 (Domarc, su DA-PX-04): il 25/11, col sì di Riccardo, tolti i sei vecchi (`pre-pxrepl-3245`, `-3250`, `-3260`, `-3270-20261124`, `-3280`, `-3281-20261125`); resta `pre-pxrepl-3282-20261125`, da togliere quando la 3.28.2 è confermata.
 
 Lavoro, in ordine di priorità (solo se si decide per l'inglese; stima totale 8-12 giorni):
 - [x] P0 — Glossario approvato da Riccardo il 24/11 («Glossario ok, continua»): `docs/glossario-it-en.md`.
