@@ -10,7 +10,7 @@ Da decidere prima di tutto (Riccardo):
 - [x] Riccardo, 24/11: «Sì, parti così» → lingua **per utente**, e-mail nella lingua **dell'appliance**. Nessun rilascio e selettore nascosto finché menu, login e viste quotidiane non sono tradotti.
 
 - [x] **3.28.0 rilasciata il 25/11** (Riccardo: «fai uno snapshot aggiorna 199»): selettore di lingua visibile a tutti in fondo al menu, release su GitHub. **Domarc alla 3.28.0** (snapshot LXC 332 `pre-pxrepl-3280-20261125` su DA-PX-04; health 3.28.0 healthy, scheduler running; il JS servito contiene selettore e testi inglesi). DTS resta alla 3.27.0 finché Riccardo non lo dice.
-- [ ] Riccardo sta guardando a schermo sulla `.199`: raccogliere qui quello che trova (testi sbagliati, etichette che non stanno).
+- [x] Riccardo l'ha guardata a schermo sulla `.199` il 25/11: «visto, molto bene». Nessuna correzione chiesta.
 - [ ] Snapshot `pre-pxrepl-3280-20261125` dell'LXC 332 da togliere quando l'interfaccia è confermata.
 
 Lavoro, in ordine di priorità (solo se si decide per l'inglese; stima totale 8-12 giorni):
