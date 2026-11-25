@@ -1019,6 +1019,14 @@ async def execute_sync_job_task(
                         
                         if deleted_count > 0:
                             result["retention_deleted"] = deleted_count
+
+            # Snapshot di pvesr arrivati con la replica e spariti dalla sorgente
+            # (DTS, 25/11/2026: 4,4 T trattenuti sulla destinazione).
+            if result["success"] and not job.recursive:
+                from services.potatura_destinazione import pota_replicate_orfani
+                result["replicate_potati"] = await pota_replicate_orfani(
+                    ssh_service, source_node, dest_node, job.source_dataset, job.dest_dataset
+                )
         
         # Aggiorna job e log
         if result.get("still_running"):
@@ -1088,6 +1096,8 @@ async def execute_sync_job_task(
                     log_entry.message += f" | Retention: {job.keep_snapshots} versioni (eliminate {deleted})"
                 else:
                     log_entry.message += f" | Retention: {job.keep_snapshots} versioni"
+            if result.get("replicate_potati"):
+                log_entry.message += f" | Tolti {result['replicate_potati']} snapshot __replicate_ non più alla sorgente"
         else:
             job_record.last_status = "failed"
             if hasattr(job_record, "current_status"):

@@ -5,6 +5,13 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.28.2] - 2026-11-25
+
+Gli snapshot della replica nativa di Proxmox non si accumulano più sulla destinazione.
+
+### Correzioni
+- Dopo una corsa riuscita si tolgono dalla destinazione gli snapshot `__replicate_*` che alla sorgente non esistono più. Dove gira anche `pvesr`, la sorgente ne tiene uno solo per disco e lo sostituisce a ogni giro; syncoid portava sulla destinazione quello del momento e lì nessuno lo toglieva: il 25/11/2026 su un'installazione erano 1142, e la replica di una sola VM tratteneva 4,4 T per 267 G di dati. Non si tocca nient'altro (`syncoid_*`, `backup_*`, Sanoid, manuali); se l'elenco della sorgente non si legge non si cancella niente; non vale per i job ricorsivi. Il registro della corsa dice quanti ne ha tolti (`backend/services/potatura_destinazione.py`, `backend/services/sync_job_execution.py`).
+
 ## [3.28.1] - 2026-11-25
 
 L'app risponde solo alle reti ammesse.
