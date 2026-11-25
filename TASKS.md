@@ -188,3 +188,9 @@ Riccardo, 25/11: pubblicati su `origin` così come sono, senza fonderli (prima s
 - [x] Pubblicati `feature/smtp-default-notifications` e `wip/altro-agente-pre-nas-sync` (cercati segreti nei due diff: solo segnaposto).
 - [ ] `feature/smtp-default-notifications` (21/07): la cifratura della password SMTP è già in `main` per altra strada; manca la migrazione che cifra le password salvate in chiaro prima (`backend/update_db_schema.py` di `main` non cita `smtp_password`). Da verificare se `decrypt_secret` accetta un valore in chiaro; poi decidere se portare la migrazione (zona rossa: segreti).
 - [ ] `wip/altro-agente-pre-nas-sync` (20/07, un commit, 48 file): 18 file non esistono in `main` (spazio delle cartelle Synology `synology_du.py`, scoperta dei job di backup del cluster `pve_backup_discovery.py` e `PBSClusterBackupJobs.vue`, `temperature_utils.py`, `MetricRing.vue`, `MetricSparkline.vue`, spec e piano «Repliche dati v2»). Non verificato se le funzioni sono state rifatte con altri nomi. Decidere cosa recuperare, poi togliere il ramo.
+
+## 2026-11-25 — Valutazione di sicurezza (prodotto, installazioni, host Proxmox)
+
+Riccardo: valutazione a fondo di DA-PXREPL e degli host che lo ospitano. Fatta il 25/11 in sola lettura, niente corretto. Riccardo, 25/11: «Toglilo dal repo» (il repo è pubblico): rapporto e rimedi stanno **fuori dal repo**, sul MacBook in `/Users/riccardo/Progetti-Clienti/DA-PXREPL-sicurezza-2026-11-25/` (`rapporto.md`, `rimedi.md`). Non stanno in git: non arrivano al Mac mini da soli.
+
+- [ ] Lavorare i rimedi di `rimedi.md` (le caselle si spuntano là, non qui); le correzioni del prodotto entrano nel repo come correzioni normali, senza ricopiare il rapporto.
