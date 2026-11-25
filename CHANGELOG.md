@@ -5,6 +5,13 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.28.3] - 2026-11-25
+
+Chiuso un difetto di sicurezza nelle rotte degli snapshot e del ripristino; errori del backend in inglese.
+
+### Sicurezza
+- I nomi che arrivano dall'utente non entrano più in un comando ssh senza controllo. Rollback, clone ed eliminazione degli snapshot ZFS, ripristino da backup, esecuzione ed eliminazione dei job `pvesr` componevano la riga di comando con un testo libero: un utente col ruolo «operator» poteva aggiungere un secondo comando, eseguito da root sul nodo (valutazione di sicurezza del 25/11/2026, rilievo A1, trovato leggendo il codice). Ora ogni valore è accettato solo se ha la forma attesa, altrimenti la rotta risponde 400 prima di contattare il nodo; gli argomenti di `qm rollback`, `qm delsnapshot`, `vzdump` e della creazione dei job `pvesr` sono citati (`backend/services/argomenti_sicuri.py`, `backend/routers/vms.py`, `backend/routers/snapshots.py`, `backend/routers/sync_jobs.py`, `backend/routers/pve_replication_jobs.py`, `backend/routers/backup_jobs.py`, `backend/services/proxmox_service.py`).
+
 ### Aggiunte
 - Con l'interfaccia in inglese anche gli errori del backend a frase fissa («Nodo non trovato», «Accesso negato», «Job non trovato» e gli altri, 138 frasi) si leggono in inglese: li traduce il frontend in un punto solo, l'intercettore delle chiamate, senza toccare il backend. Una frase che non è nel dizionario si vede com'è. Il lint del frontend fallisce se nel backend compare una frase fissa senza traduzione (`frontend/src/i18n/backend.ts`, `frontend/src/locales/backend-en.json`, `frontend/scripts/controlla-backend.mjs`, `frontend/src/services/api.ts`).
 

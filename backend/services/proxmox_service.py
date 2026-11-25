@@ -1591,7 +1591,7 @@ echo "Configuration created"
         """Rollback snapshot VM"""
         
         cmd_base = "qm" if vm_type == "qemu" else "pct"
-        cmd = f"{cmd_base} rollback {vmid} {snapname}"
+        cmd = f"{cmd_base} rollback {int(vmid)} {shlex.quote(str(snapname))}"
         if start_vm:
             cmd += " --start 1"
             
@@ -1622,7 +1622,7 @@ echo "Configuration created"
         """Elimina snapshot VM"""
         
         cmd_base = "qm" if vm_type == "qemu" else "pct"
-        cmd = f"{cmd_base} delsnapshot {vmid} {snapname}"
+        cmd = f"{cmd_base} delsnapshot {int(vmid)} {shlex.quote(str(snapname))}"
             
         result = await ssh_service.execute(
             hostname=hostname,

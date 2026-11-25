@@ -14,6 +14,7 @@ import logging
 
 from database import get_db, Node, SyncJob, JobLog, User, SyncMethod
 from services.syncoid_service import syncoid_service
+from services import argomenti_sicuri
 from services.btrfs_service import btrfs_service
 from services.scheduler import scheduler_service
 from services.schedule_helpers import resolve_schedule_pair
@@ -1380,7 +1381,8 @@ async def rollback_to_snapshot(
         raise HTTPException(status_code=404, detail="Nodo destinazione non trovato")
     
     # Verifica che la snapshot esista
-    full_snapshot = f"{job.dest_dataset}@{snapshot_name}"
+    argomenti_sicuri.nome_snapshot(snapshot_name)
+    full_snapshot = argomenti_sicuri.snapshot_completo(f"{job.dest_dataset}@{snapshot_name}")
     check_cmd = f"zfs list -t snapshot {full_snapshot} 2>/dev/null && echo 'EXISTS'"
     
     check_result = await ssh_service.execute(
@@ -1453,9 +1455,10 @@ async def clone_snapshot(
         raise HTTPException(status_code=404, detail="Nodo destinazione non trovato")
     
     # Costruisci path del clone (stesso pool del dataset originale)
+    argomenti_sicuri.nome_snapshot(snapshot_name)
     pool = job.dest_dataset.split('/')[0]
-    clone_dataset = f"{pool}/{clone_name}"
-    full_snapshot = f"{job.dest_dataset}@{snapshot_name}"
+    clone_dataset = argomenti_sicuri.nome_dataset(f"{pool}/{clone_name}")
+    full_snapshot = argomenti_sicuri.snapshot_completo(f"{job.dest_dataset}@{snapshot_name}")
     
     # Verifica che il clone non esista già
     check_cmd = f"zfs list {clone_dataset} 2>/dev/null && echo 'EXISTS'"
@@ -1525,7 +1528,8 @@ async def delete_snapshot(
     if not dest_node:
         raise HTTPException(status_code=404, detail="Nodo destinazione non trovato")
     
-    full_snapshot = f"{job.dest_dataset}@{snapshot_name}"
+    argomenti_sicuri.nome_snapshot(snapshot_name)
+    full_snapshot = argomenti_sicuri.snapshot_completo(f"{job.dest_dataset}@{snapshot_name}")
     
     # Rilascia eventuale hold e poi elimina snapshot
     del_cmd = f"zfs release keep {full_snapshot} 2>/dev/null; zfs destroy {full_snapshot}"

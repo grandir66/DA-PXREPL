@@ -10,9 +10,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 import json
+import shlex
 
 from database import get_db, Node, User, NodeType
 from services.ssh_service import ssh_service
+from services import argomenti_sicuri
 from services.pve_sr_discovery import (
     discover_pve_sr_jobs,
     fetch_cluster_replication_config,
@@ -118,6 +120,7 @@ async def create_replication_job(
     db: Session = Depends(get_db),
 ):
     """Crea un job pvesr sul cluster Proxmox."""
+    argomenti_sicuri.nome_nodo(job.target)
     if job.vmid < 100:
         raise HTTPException(status_code=400, detail="VMID non valido")
 
@@ -148,13 +151,13 @@ async def create_replication_job(
         cmd_parts = [
             "pvesh", "create", "/cluster/replication",
             "--id", job_id,
-            "--target", job.target,
-            "--schedule", f"'{job.schedule}'",
+            "--target", argomenti_sicuri.nome_nodo(job.target),
+            "--schedule", shlex.quote(str(job.schedule)),
         ]
         if job.rate:
-            cmd_parts.extend(["--rate", str(job.rate)])
+            cmd_parts.extend(["--rate", shlex.quote(str(job.rate))])
         if job.comment:
-            cmd_parts.extend(["--comment", f"'{job.comment}'"])
+            cmd_parts.extend(["--comment", shlex.quote(str(job.comment))])
         if not job.enabled:
             cmd_parts.extend(["--disable", "1"])
 
@@ -182,6 +185,7 @@ async def delete_replication_job(
     user: User = Depends(require_operator),
     db: Session = Depends(get_db),
 ):
+    argomenti_sicuri.id_job_pvesr(job_id)
     node = db.query(Node).filter(Node.node_type == NodeType.PVE.value).first()
     if not node:
         raise HTTPException(status_code=500, detail="Nessun nodo PVE disponibile")
@@ -211,6 +215,7 @@ async def run_replication_job_now(
     user: User = Depends(require_operator),
     db: Session = Depends(get_db),
 ):
+    argomenti_sicuri.id_job_pvesr(job_id)
     node = db.query(Node).filter(Node.node_type == NodeType.PVE.value).first()
     try:
         jobs = await _get_cluster_replication_jobs(node)

@@ -11,6 +11,7 @@ from datetime import datetime
 import asyncio
 import logging
 import re
+import shlex
 
 from database import (
     get_db, Node, BackupJob, BackupJobStatus, JobLog, NodeType
@@ -427,10 +428,13 @@ async def execute_backup_task(job_id: int, db_path: str):
         vm_cmd = "qm" if job.vm_type == "qemu" else "pct"
         storage_id = await _resolve_backup_storage(source_node, job.pbs_storage_id)
         
-        backup_cmd = f"vzdump {job.vm_id} --storage {storage_id} --mode {job.backup_mode} --compress {job.backup_compress}"
+        backup_cmd = (
+            f"vzdump {int(job.vm_id)} --storage {shlex.quote(str(storage_id))} "
+            f"--mode {shlex.quote(str(job.backup_mode))} --compress {shlex.quote(str(job.backup_compress))}"
+        )
         
         if job.bandwidth_limit:
-            backup_cmd += f" --bwlimit {job.bandwidth_limit}"
+            backup_cmd += f" --bwlimit {int(job.bandwidth_limit)}"
         
         if not job.include_all_disks:
             backup_cmd += " --exclude-path /tmp"

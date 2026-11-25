@@ -136,5 +136,11 @@
   "VMID non valido": "Invalid VMID",
   "VMID sorgente non configurato per questo job": "Source VMID not configured for this job",
   "Webhook non abilitato": "Webhook not enabled",
-  "attesa_avvio_s deve stare tra 30 e 1800 secondi": "attesa_avvio_s must be between 30 and 1800 seconds"
+  "attesa_avvio_s deve stare tra 30 e 1800 secondi": "attesa_avvio_s must be between 30 and 1800 seconds",
+  "Nome snapshot non valido": "Invalid snapshot name",
+  "Nome dataset non valido": "Invalid dataset name",
+  "Storage non valido": "Invalid storage",
+  "Identificativo del backup non valido": "Invalid backup identifier",
+  "Identificativo del job non valido": "Invalid job identifier",
+  "Nome nodo non valido": "Invalid node name"
 }

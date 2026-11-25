@@ -12,6 +12,7 @@ import logging
 
 from database import get_db, Node, Dataset, User, JobLog, VMSnapshotConfig, SyncJob
 from services.ssh_service import ssh_service
+from services import argomenti_sicuri
 from services.sanoid_service import sanoid_service, DEFAULT_TEMPLATES
 from routers.auth import get_current_user, require_operator, log_audit
 
@@ -211,6 +212,7 @@ async def rollback_snapshot(
     if not check_node_access(user, node):
         raise HTTPException(status_code=403, detail="Accesso negato a questo nodo")
     
+    argomenti_sicuri.snapshot_completo(full_name)
     # Costruisci comando rollback
     force_flag = "-r" if force else ""
     cmd = f"zfs rollback {force_flag} {full_name}"
@@ -260,6 +262,8 @@ async def clone_snapshot(
     if not check_node_access(user, node):
         raise HTTPException(status_code=403, detail="Accesso negato a questo nodo")
     
+    argomenti_sicuri.snapshot_completo(full_name)
+    argomenti_sicuri.nome_dataset(clone_name)
     # Costruisci comando clone
     cmd = f"zfs clone {full_name} {clone_name}"
     

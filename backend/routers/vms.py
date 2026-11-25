@@ -14,6 +14,7 @@ import logging
 from database import get_db, Node, VMRegistry, User, NodeType
 from services.proxmox_service import proxmox_service
 from services.ssh_service import ssh_service
+from services import argomenti_sicuri
 from services.pbs_service import pbs_service
 from services.sanoid_config_service import sanoid_config_service
 from services.replica_identity import (
@@ -1228,6 +1229,7 @@ async def restore_zfs_snapshot(
     db: Session = Depends(get_db)
 ):
     """Esegue rollback o clone di snapshot ZFS"""
+    argomenti_sicuri.nome_snapshot(data.snapshot_name)
     node = db.query(Node).filter(Node.id == node_id).first()
     if not node:
         raise HTTPException(status_code=404, detail="Nodo non trovato")
@@ -1296,6 +1298,8 @@ async def delete_zfs_snapshots(
     db: Session = Depends(get_db)
 ):
     """Elimina snapshot ZFS per una VM"""
+    if data.snapshot_name != 'all':
+        argomenti_sicuri.nome_snapshot(data.snapshot_name)
     node = db.query(Node).filter(Node.id == node_id).first()
     if not node:
         raise HTTPException(status_code=404, detail="Nodo non trovato")
@@ -1486,6 +1490,10 @@ async def restore_vm_backup(
     db: Session = Depends(get_db)
 ):
     """Ripristina un backup. Sovrascrive la VM esistente (comportamento distruttivo!)"""
+    argomenti_sicuri.id_storage(data.pbs_storage)
+    argomenti_sicuri.volume_backup(data.backup_id)
+    if data.dest_storage:
+        argomenti_sicuri.id_storage(data.dest_storage)
     # Determina nodo di esecuzione (Target Node)
     target_node_id = data.target_node_id if data.target_node_id else node_id
     
@@ -1513,13 +1521,13 @@ async def restore_vm_backup(
     # Se il nodo target non ha lo storage PBS con lo stesso nome, fallirà.
     # Assumiamo configurazione coerente.
     
-    cmd = f"qmrestore {data.pbs_storage}:{data.backup_id} {vmid} --force"
+    cmd = f"qmrestore {data.pbs_storage}:{data.backup_id} {int(vmid)} --force"
     if data.dest_storage:
         cmd += f" --storage {data.dest_storage}"
     if data.start_vm:
         cmd += " --start"
         
-    cmd_bg = f"nohup {cmd} > /tmp/restore_{vmid}.log 2>&1 &"
+    cmd_bg = f"nohup {cmd} > /tmp/restore_{int(vmid)}.log 2>&1 &"
     
     result = await ssh_service.execute(
         hostname=node.hostname,
