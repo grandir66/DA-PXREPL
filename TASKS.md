@@ -144,4 +144,5 @@ Letto nel codice (niente misurato sui nodi, il Proxmox di OVH non so quale sia):
 - Senza login rispondono: `/api/health` e `/api/updates/version` (versione), `/api/auth/config`, `/api/auth/realms`, `/docs` e `/openapi.json`, `/api/auth/setup` (crea l'admin se non ci sono utenti).
 - Freno sul login: 10 errori in 15 minuti per IP, in memoria.
 - [ ] Sapere da Riccardo quale Proxmox di OVH e chiuderlo subito col firewall (porta 8420 solo dalle reti di gestione).
-- [ ] Prodotto: indirizzo di ascolto configurabile e rispettato dall'unità, elenco reti ammesse (rifiuto prima delle rotte), `/docs` spento in esercizio, health pubblica ridotta, installer che non apre più ufw. Zona rossa (autenticazione, configurazione globale): serve il sì.
+- [x] Prodotto (25/11, sì di Riccardo): filtro delle reti ammesse (`DAPX_ALLOWED_NETS`, default solo reti private e VPN), `DAPX_HOST` rispettato dall'unità, `/docs` spento, installer che non apre più UFW. Prove mirate verdi. La health pubblica è rimasta com'è: la legge la pagina di accesso e ora è coperta dal filtro.
+- [ ] Rilasciare e installare sui siti: chi entra da un indirizzo pubblico (inoltro di porta) resta fuori finché non lo si mette in `DAPX_ALLOWED_NETS`. `DAPX_HOST` ha effetto solo quando l'unità viene riscritta (`backend/scripts/repair_systemd_unit.py`).

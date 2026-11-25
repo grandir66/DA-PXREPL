@@ -694,6 +694,11 @@ SANOID_MANAGER_LOG_LEVEL=INFO
 
 # Operation Mode
 DAPX_MODE=$INSTALL_MODE
+
+# Indirizzo di ascolto (default 0.0.0.0) e reti ammesse. Vuoto = solo reti
+# private, loopback e VPN; elenco "192.168.4.0/24,203.0.113.7"; "*" = tutte.
+#DAPX_HOST=0.0.0.0
+#DAPX_ALLOWED_NETS=
 ENV_FILE
 
     chmod 600 "$CONFIG_DIR/dapx-unified.env"
@@ -761,7 +766,7 @@ EnvironmentFile=-$CONFIG_DIR/dapx-unified.env
 Environment="PATH=$INSTALL_DIR/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 # Execution
-ExecStart=$INSTALL_DIR/venv/bin/uvicorn main:app --host 0.0.0.0 --port $SERVICE_PORT --workers 1$exec_ssl
+ExecStart=$INSTALL_DIR/venv/bin/uvicorn main:app --host ${DAPX_HOST:-0.0.0.0} --port $SERVICE_PORT --workers 1$exec_ssl
 ExecReload=/bin/kill -HUP \$MAINPID
 
 # Restart policy
@@ -809,12 +814,23 @@ LOGROTATE_CONF
 configure_firewall() {
     log_step "Configurazione firewall"
     
-    # UFW
+    # UFW: la porta non si apre piu' da soli (25/11/2026: su un Proxmox con IP
+    # pubblico l'app rispondeva a chiunque). Si dice solo come farlo.
     if command -v ufw &> /dev/null && ufw status | grep -q "active"; then
-        ufw allow $SERVICE_PORT/tcp comment "Sanoid Manager" 2>/dev/null || true
-        log_info "Regola UFW aggiunta per porta $SERVICE_PORT"
+        log_info "UFW attivo: per aprire la porta solo alla rete di gestione: ufw allow from <rete> to any port $SERVICE_PORT proto tcp"
     fi
-    
+
+    # Avviso se la macchina ha un indirizzo pubblico
+    if command -v ip &> /dev/null; then
+        local pubblici
+        pubblici=$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 \
+            | grep -Ev '^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.|100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.)' | tr '\n' ' ')
+        if [[ -n "${pubblici// /}" ]]; then
+            log_warning "Questa macchina ha indirizzi pubblici: $pubblici"
+            log_warning "L'app accetta solo reti private (DAPX_ALLOWED_NETS in $CONFIG_DIR/dapx-unified.env); chiudere comunque la porta $SERVICE_PORT col firewall e valutare DAPX_HOST."
+        fi
+    fi
+
     # iptables (solo se non c'è già la regola)
     if command -v iptables &> /dev/null; then
         if ! iptables -C INPUT -p tcp --dport $SERVICE_PORT -j ACCEPT 2>/dev/null; then

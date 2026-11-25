@@ -113,11 +113,18 @@ async def lifespan(app: FastAPI):
     logger.info("DAPX-backandrepl arrestato")
 
 
+_DOCS_ACCESI = os.environ.get("DAPX_DOCS", "false").lower() == "true"
+
 app = FastAPI(
     title="DAPX-backandrepl",
     description="Sistema centralizzato di backup e replica per Proxmox VE. Supporta ZFS (Sanoid/Syncoid), BTRFS (btrfs send/receive) e PBS (Proxmox Backup Server).",
     version="3.28.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    # L'elenco delle API non si pubblica in esercizio (25/11/2026): si accende
+    # con DAPX_DOCS=true.
+    docs_url="/docs" if _DOCS_ACCESI else None,
+    redoc_url="/redoc" if _DOCS_ACCESI else None,
+    openapi_url="/openapi.json" if _DOCS_ACCESI else None,
 )
 
 
@@ -136,6 +143,11 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-Total-Count"],
 )
+
+# Reti ammesse: aggiunto per ultimo, quindi è il primo a vedere la richiesta e
+# rifiuta prima di CORS e delle rotte (services/reti_ammesse.py).
+from services.reti_ammesse import FiltroReti  # noqa: E402
+app.add_middleware(FiltroReti)
 
 
 # Exception handler globale.

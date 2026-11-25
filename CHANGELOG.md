@@ -5,6 +5,12 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+### Sicurezza
+- L'app accetta richieste solo dalle reti ammesse e rifiuta le altre con 403 prima di arrivare alle rotte: per impostazione, reti private, loopback e VPN (100.64.0.0/10). Il 25/11/2026 un'installazione su un Proxmox con IP pubblico rispondeva a chiunque, comprese le rotte senza login. Si regola con `DAPX_ALLOWED_NETS` in `/etc/dapx-unified/dapx-unified.env` (elenco di reti, oppure `*` per togliere il filtro) (`backend/services/reti_ammesse.py`, `backend/main.py`).
+- L'indirizzo di ascolto è configurabile: `DAPX_HOST` ora viene rispettato dall'unità systemd, prima era scritto fisso a `0.0.0.0` (`backend/services/dapx_systemd.py`, `install.sh`).
+- `/docs`, `/redoc` e `/openapi.json` sono spenti in esercizio; si accendono con `DAPX_DOCS=true` (`backend/main.py`).
+- L'installer non apre più la porta in UFW da solo e avvisa se la macchina ha un indirizzo pubblico (`install.sh`).
+
 ## [3.28.0] - 2026-11-25
 
 Interfaccia in italiano e in inglese.

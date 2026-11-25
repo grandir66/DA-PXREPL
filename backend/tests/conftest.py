@@ -16,6 +16,8 @@ os.environ.setdefault("DAPX_LOG_DIR", _test_log_dir)
 os.environ.setdefault("DAPX_SECRET_KEY", "test-secret-key-for-testing-only")
 os.environ.setdefault("SANOID_MANAGER_SECRET_KEY", "test-secret-key-for-testing-only")
 os.environ.setdefault("SANOID_MANAGER_DB", ":memory:")
+# Il TestClient si presenta come "testclient", che il filtro delle reti rifiuta.
+os.environ.setdefault("DAPX_ALLOWED_NETS", "*")
 
 from database import Base, get_db, User, Node, SyncJob, Dataset
 from main import app

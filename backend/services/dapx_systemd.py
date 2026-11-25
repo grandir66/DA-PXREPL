@@ -16,6 +16,35 @@ DEFAULT_PORT = 8420
 SYSTEMD_UNIT = Path("/etc/systemd/system/dapx-unified.service")
 STATE_CONFIG = Path("/var/lib/dapx-unified/server_config.json")
 LEGACY_CONFIG = Path(__file__).resolve().parent.parent / "server_config.json"
+ENV_FILE = Path("/etc/dapx-unified/dapx-unified.env")
+DEFAULT_HOST = "0.0.0.0"
+
+
+def listen_host() -> str:
+    """Indirizzo di ascolto: `DAPX_HOST` dall'ambiente o dal file env.
+
+    Il file si legge anche a mano perché `repair_systemd_unit.py` e `update.sh`
+    girano fuori dal servizio, senza il suo `EnvironmentFile`. Un valore che
+    non è un indirizzo IP si scarta (finisce in una riga di comando).
+    """
+    import ipaddress
+
+    valore = os.environ.get("DAPX_HOST", "").strip()
+    if not valore and ENV_FILE.exists():
+        try:
+            for riga in ENV_FILE.read_text(encoding="utf-8").splitlines():
+                riga = riga.strip()
+                if riga.startswith("DAPX_HOST="):
+                    valore = riga.split("=", 1)[1].strip().strip('"').strip("'")
+        except OSError as exc:
+            logger.warning("Impossibile leggere %s: %s", ENV_FILE, exc)
+    if not valore:
+        return DEFAULT_HOST
+    try:
+        return str(ipaddress.ip_address(valore))
+    except ValueError:
+        logger.error("DAPX_HOST non è un indirizzo IP (%r): si usa %s", valore, DEFAULT_HOST)
+        return DEFAULT_HOST
 
 
 def install_dir() -> Path:
@@ -76,7 +105,7 @@ def build_exec_start(config: dict[str, Any] | None = None) -> str:
     port = int(cfg.get("port") or DEFAULT_PORT)
     ssl_enabled = bool(cfg.get("ssl_enabled", False))
     uvicorn = install_dir() / "venv" / "bin" / "uvicorn"
-    cmd = f"{uvicorn} main:app --host 0.0.0.0 --port {port} --workers 1"
+    cmd = f"{uvicorn} main:app --host {listen_host()} --port {port} --workers 1"
     if ssl_enabled:
         cert_path, key_path = ssl_cert_paths()
         if cert_path.exists() and key_path.exists():
