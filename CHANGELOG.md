@@ -5,6 +5,10 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.28.4] - 2026-11-26
+
+Un PBS che non risponde non resta più «in linea»; intestazioni di sicurezza e ruoli più stretti sulle prove di connessione.
+
 ### Correzioni
 - Un nodo PBS che non risponde viene segnato non in linea dopo tre giri: prima il suo stato non lo aggiornava nessuno e restava «in linea» (`backend/services/cache_service.py`, `backend/services/host_info_service.py`).
 - Un nodo già non in linea si riprova solo se la sua porta ssh risponde, senza più due errori nel registro a ogni giro; i dati host di un nodo muto restano gli ultimi buoni (`backend/services/cache_service.py`).
