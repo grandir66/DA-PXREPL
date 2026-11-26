@@ -5,6 +5,16 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+### Correzioni
+- Un nodo PBS che non risponde viene segnato non in linea dopo tre giri: prima il suo stato non lo aggiornava nessuno e restava «in linea» (`backend/services/cache_service.py`, `backend/services/host_info_service.py`).
+- Un nodo già non in linea si riprova solo se la sua porta ssh risponde, senza più due errori nel registro a ogni giro; i dati host di un nodo muto restano gli ultimi buoni (`backend/services/cache_service.py`).
+
+### Sicurezza
+- Intestazioni di sicurezza su ogni risposta: `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Content-Security-Policy: frame-ancestors`, e `Strict-Transport-Security` in https (`backend/services/intestazioni.py`).
+- Le prove di connessione ai nodi e ai PBS e l'anteprima degli snapshot VM chiedono il ruolo «operator»: prima un «viewer» poteva far partire connessioni ssh (`backend/routers/nodes.py`, `backend/routers/recovery_jobs.py`, `backend/routers/vm_snapshot_jobs.py`).
+- All'aggiornamento il database e le sue copie diventano leggibili solo da root (`update.sh`).
+- Dipendenze del frontend aggiornate con `npm audit fix`: da 17 segnalazioni a 1, in uno strumento di sviluppo (`frontend/package-lock.json`).
+
 ## [3.28.3] - 2026-11-25
 
 Chiuso un difetto di sicurezza nelle rotte degli snapshot e del ripristino; errori del backend in inglese.

@@ -279,6 +279,8 @@ TIMESTAMP=$(date +%Y%m%d%H%M%S)
 if [ -f "$DATA_DIR/dapx.db" ]; then
     BACKUP_FILE="$BACKUP_DIR/dapx.db.pre-update-$TIMESTAMP"
     cp "$DATA_DIR/dapx.db" "$BACKUP_FILE"
+    # Il database contiene segreti: lui e le sue copie solo per root.
+    chmod 600 "$DATA_DIR"/dapx.db* "$BACKUP_DIR"/dapx.db.* 2>/dev/null || true
     log_success "Database backuppato: $BACKUP_FILE"
 fi
 

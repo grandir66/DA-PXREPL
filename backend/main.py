@@ -144,6 +144,9 @@ app.add_middleware(
     expose_headers=["X-Total-Count"],
 )
 
+from services.intestazioni import IntestazioniSicurezza  # noqa: E402
+app.add_middleware(IntestazioniSicurezza)
+
 # Reti ammesse: aggiunto per ultimo, quindi è il primo a vedere la richiesta e
 # rifiuta prima di CORS e delle rotte (services/reti_ammesse.py).
 from services.reti_ammesse import FiltroReti  # noqa: E402

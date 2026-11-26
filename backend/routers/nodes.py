@@ -510,7 +510,7 @@ async def delete_node(
 @router.post("/{node_id}/test")
 async def test_node_connection(
     node_id: int,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_operator),
     db: Session = Depends(get_db)
 ):
     """Testa la connessione a un nodo e verifica ZFS/BTRFS/PBS disponibili"""

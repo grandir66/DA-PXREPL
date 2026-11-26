@@ -148,7 +148,7 @@ async def vm_index(db: Session = Depends(get_db), user: User = Depends(get_curre
 async def resolve_preview(
     body: dict,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_operator),
 ):
     """Anteprima VM risolte da targets+selectors (dry-run per il wizard)."""
     targets = [TargetRef(**t).model_dump() for t in body.get("targets") or []]

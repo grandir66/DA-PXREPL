@@ -50,6 +50,7 @@ def _nodo_con_vm(db):
 def _giro(db, nodo, esito):
     svc = CacheService()
     with patch("services.host_info_service.HostInfoService.update_host_details", AsyncMock()), \
+         patch("services.cache_service.CacheService._porta_aperta", AsyncMock(return_value=True)), \
          patch("services.cache_service.proxmox_service.get_cluster_resources_esito", AsyncMock(return_value=esito)), \
          patch("services.cache_service.proxmox_service.get_all_guests", AsyncMock(return_value=[])):
         for _ in range(GIRI_MUTI_PER_OFFLINE):

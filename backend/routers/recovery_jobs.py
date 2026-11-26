@@ -224,7 +224,7 @@ async def list_pbs_nodes(
 @router.post("/pbs-nodes/{node_id}/test")
 async def test_pbs_node(
     node_id: int,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_operator),
     db: Session = Depends(get_db)
 ):
     """Testa la connessione a un nodo PBS"""

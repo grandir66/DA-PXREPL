@@ -35,6 +35,15 @@ class CacheService:
             logger.warning(f"Nodo {node.name}: {muti} giri senza risposta, segnato non in linea")
             node.is_online = False
 
+    @staticmethod
+    async def _porta_aperta(host: str, porta: int, attesa: float = 3.0) -> bool:
+        try:
+            _, w = await asyncio.wait_for(asyncio.open_connection(host, porta), attesa)
+        except (OSError, asyncio.TimeoutError):
+            return False
+        w.close()
+        return True
+
     async def refresh_all_nodes(self, db: Session):
         """Aggiorna la cache per tutti i nodi attivi"""
         nodes = db.query(Node).filter(Node.is_active == True).all()
@@ -59,9 +68,13 @@ class CacheService:
 
     async def refresh_node_vms(self, db: Session, node: Node):
         """Aggiorna cache VM e dettagli Host per un singolo nodo"""
+        # Un nodo già segnato non in linea si riprova solo se la porta ssh
+        # risponde: a DTS un PBS con l'indirizzo cambiato ha scritto due errori
+        # ogni 5 minuti per tre settimane (26/11/2026).
         if not node.is_online and not node.is_auth_node:
-             # Se non è online, si potrebbe skippare, ma proviamo comunque
-             pass
+            if not await self._porta_aperta(node.hostname, node.ssh_port or 22):
+                logger.debug(f"Nodo {node.name} ancora non raggiungibile: giro saltato")
+                return
 
         try:
             # 1. Aggiorna Host Info (Advanced Data)
@@ -69,11 +82,17 @@ class CacheService:
             from services.host_info_service import HostInfoService
             host_service = HostInfoService()
             # Nota: update_host_details crea la sua sessione, quindi è autonomo
-            await host_service.update_host_details(node.id)
+            dettagli = await host_service.update_host_details(node.id)
 
             # Un PBS non ospita VM: chiedergli le risorse del cluster dava solo
             # un avviso a ogni giro (~1900 a settimana a Domarc, 24/11/2026).
+            # Il suo stato «in linea» viene dalla raccolta dei dati host: prima
+            # non lo aggiornava nessuno e un PBS irraggiungibile restava «in
+            # linea» (DTS2-PBS, 26/11/2026).
             if node.node_type == NodeType.PBS.value:
+                from services.host_info_service import ha_risposto as host_ha_risposto
+                self._segna_esito(node, host_ha_risposto(dettagli))
+                db.commit()
                 return
 
             logger.debug(f"Fetching Cluster Resources for node {node.name}")

@@ -17,6 +17,13 @@ from database import SessionLocal, Node
 logger = logging.getLogger(__name__)
 
 
+def ha_risposto(details) -> bool:
+    """Vero se la raccolta ha letto qualcosa dal nodo (non solo lo scheletro vuoto)."""
+    if not details:
+        return False
+    return details.get("kernel_version") not in (None, "", "unknown") or bool(details.get("cpu"))
+
+
 class HostInfoService:
     """Servizio per raccogliere informazioni dettagliate sugli host Proxmox"""
     
@@ -152,6 +159,10 @@ class HostInfoService:
                 node_type=node.node_type
             )
             
+            if details and not ha_risposto(details) and node.host_info:
+                # Nodo muto: si tengono gli ultimi dati buoni, con la loro data.
+                logger.warning(f"Nessuna risposta da {node.name}: dati host lasciati com'erano")
+                return details
             if details:
                 node.host_info = details
                 node.host_info_updated_at = datetime.utcnow()
