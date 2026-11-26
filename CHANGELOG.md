@@ -5,6 +5,10 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ## [Unreleased]
 
+## [3.28.5] - 2026-11-26
+
+Il ripristino dal pannello PBS funziona.
+
 ### Correzioni
 - Il ripristino dal pannello PBS falliva sempre con «can't find file»: l'inventario dà il percorso del backup senza lo storage e `qmrestore` lo vuole col prefisso. Ora si usa lo storage PBS trovato sul nodo e si antepone il prefisso (`backend/services/pbs_service.py`).
 

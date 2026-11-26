@@ -118,7 +118,7 @@ _DOCS_ACCESI = os.environ.get("DAPX_DOCS", "false").lower() == "true"
 app = FastAPI(
     title="DAPX-backandrepl",
     description="Sistema centralizzato di backup e replica per Proxmox VE. Supporta ZFS (Sanoid/Syncoid), BTRFS (btrfs send/receive) e PBS (Proxmox Backup Server).",
-    version="3.28.4",
+    version="3.28.5",
     lifespan=lifespan,
     # L'elenco delle API non si pubblica in esercizio (25/11/2026): si accende
     # con DAPX_DOCS=true.
@@ -217,7 +217,7 @@ async def health_check():
     from datetime import datetime as _dt
     payload: dict = {
         "status": "healthy",
-        "version": "3.28.4",
+        "version": "3.28.5",
         "auth_enabled": True,
         "mode": dapx_mode,
         "checks": {},
