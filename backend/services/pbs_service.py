@@ -1253,6 +1253,11 @@ for match in re.finditer(r'pbs:\\s+(\\S+)\\n((?:^\\s+.*\\n)*)', content, re.MULT
                     "error": storage_msg,
                     "duration": 0
                 }
+            # `_ensure_pbs_storage` restituisce il nome dello storage che ha
+            # trovato (o creato): sul nodo puo' chiamarsi diversamente da
+            # `pbs-<datastore>` (a Domarc `PBS-BACK`).
+            if storage_msg and re.fullmatch(r"[A-Za-z][A-Za-z0-9_.\-]*", storage_msg):
+                storage_name = storage_msg
         
         # Se non abbiamo un backup_id specifico, trova l'ultimo
         if not backup_id:
@@ -1310,6 +1315,11 @@ sleep 2
         # Build restore command (tutti i token validati a inizio funzione).
         # Per LXC il comando e' `pct restore`. backup_id deve essere il
         # volid (storage:backup/...) per qmrestore/pct restore.
+        # L'inventario PBS da' il percorso nudo (`vm/100/2026-…`): senza il
+        # prefisso dello storage `qmrestore` risponde «can't find file» e il
+        # ripristino dal pannello PBS falliva sempre (prova dal vivo, 26/11/2026).
+        if re.match(r"(vm|ct)/\d+/", backup_id):
+            backup_id = f"{storage_name}:backup/{backup_id}"
         if vm_type == "lxc":
             restore_cmd = f"pct restore {target_vmid_int} {backup_id}"
         else:

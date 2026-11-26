@@ -73,3 +73,26 @@ def test_intestazioni_di_sicurezza():
     inviati.clear()
     asyncio.run(IntestazioniSicurezza(app)({"type": "http", "scheme": "http"}, None, send))
     assert b"strict-transport-security" not in dict(inviati[0]["headers"])
+
+
+def test_ripristino_pbs_antepone_lo_storage_al_percorso_nudo():
+    """Prova dal vivo a Domarc, 26/11/2026: dal pannello PBS `qmrestore`
+    riceveva `vm/9801/…` senza storage e rispondeva «can't find file»."""
+    from services.pbs_service import pbs_service
+    from services.ssh_service import SSHResult
+
+    comandi = []
+
+    async def finto(hostname, command, **kw):
+        comandi.append(command)
+        return SSHResult(success=True, stdout="", stderr="", exit_code=0 if "qmrestore" in command else 1)
+
+    with patch("services.pbs_service.ssh_service.execute", finto), \
+         patch.object(pbs_service, "_ensure_pbs_storage", AsyncMock(return_value=(True, "PBS-BACK"))):
+        esito = asyncio.run(pbs_service.run_restore(
+            dest_node_hostname="px", vm_id=9802, pbs_hostname="192.0.2.1", datastore="Synology",
+            backup_id="vm/9801/2026-11-26T01:12:56Z", pbs_user="backup@pbs", pbs_password="x",
+            dest_vm_id=9802, dest_storage="zfs", vm_type="qemu", overwrite=True, unique=True))
+    assert esito["success"], esito
+    finale = [c for c in comandi if c.startswith("qmrestore")][0]
+    assert finale.startswith("qmrestore PBS-BACK:backup/vm/9801/2026-11-26T01:12:56Z 9802")
