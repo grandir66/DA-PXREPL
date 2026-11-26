@@ -207,7 +207,20 @@ Riccardo: valutazione a fondo di DA-PXREPL e degli host che lo ospitano. Fatta i
 - [ ] Lasciati fuori dalla tappa 1 perché toccano l'autenticazione (zona rossa) o il controllo di DA-Zabbix: indirizzo del nodo in `/api/auth/config`, `/api/health` ridotto senza login, blocco dei tentativi per utente; `schedule/translate` resta aperta a ogni utente (non apre connessioni).
 - [x] `backend/venv` (Python 3.9 vecchio) tolto da Riccardo a mano il 26/11.
 - [x] **3.28.4 rilasciata il 26/11** (Riccardo: «Sì, rilascia 3.28.4»): tag e release GitHub fatti, 594 prove verdi. **Domarc alla 3.28.4 dalle 01:46**: snapshot LXC 332 `pre-pxrepl-3284-20261126` su DA-PX-04, `update.sh`; health 3.28.4 healthy, le cinque intestazioni presenti, senza login 401, nessun errore nel journal. DTS resta alla 3.28.3.
-- [ ] Dopo l'aggiornamento a Domarc `dapx.db` è ancora `644`: probabilmente ha girato l'`update.sh` vecchio, già in memoria. Da rileggere al prossimo aggiornamento; se resta `644` il `chmod` in `update.sh` non funziona.
+- [x] `dapx.db` a `600` dopo il secondo aggiornamento del 26/11 (02:25): la prima volta aveva girato l'`update.sh` vecchio già in memoria.
+- [x] **Prova dal vivo delle funzioni, 26/11 02:00-02:45, Domarc** (Riccardo: «2 si», «Prima la prova dal vivo»). VM di prova 9801 `dapx-test-prova` su DA-PX-04 (Debian 12, due dischi da 4 G, rete staccata); API chiamate dall'LXC 332 con un gettone di 5 minuti dell'amministratore, come il 24/11. Esiti:
+  - Replica VM verso PX-NAS (`ZFS-LARGE/replica`, VMID 29801): 3 corse riuscite, replica registrata su `vmbr0`.
+  - Snapshot del job: elenco, clone, rollback ed eliminazione riusciti.
+  - A1 dal vivo: nomi con `;`, `$()` e apici rovesci su rollback, eliminazione, clone e ripristino rifiutati, nessun file creato su DA-PX-04 né su PX-NAS.
+  - Backup su PBS (`PBS-BACK`): riuscito in 9 s.
+  - **Ripristino da PBS: falliva sempre** («can't find file»), corretto in `dbfab60` e riprovato: VM 9802 ripristinata in 8 s e accesa. Installato a Domarc sopra la 3.28.4, **non rilasciato**: DTS ha ancora il difetto.
+  - Snapshot VM (job con `keep=1`): due corse, il vecchio snapshot potato.
+  - Migrazione in copia 9802 → PX-NAS (VMID 39802): riuscita in 27 s.
+  - Eliminazione dei job di replica, backup, snapshot VM e migrazione: riuscita.
+  - Non provati: replica dati e sync NAS (servono le credenziali di un NAS), migrazione «move», ripristino di un LXC, HA, replica nativa `pvesr`, backup della configurazione.
+  - Pulizia fatta e verificata: VM 9801 e 9802 su DA-PX-04, 29801 e 39802 e i due dataset di replica su PX-NAS, backup `vm/9801` sul PBS, i quattro job, lo script nell'LXC 332. Resta lo snapshot `pre-pxrepl-3284-20261126` dell'LXC 332.
+- [ ] Difetti minori visti nella prova, non corretti: (a) `DELETE /api/backup-jobs/{id}/backups/{backup_id}` non è raggiungibile, l'identificativo contiene `/` (405; l'interfaccia non la usa); (b) nel ripristino diretto un valore non valido dà 500 invece di 400; (c) eliminare uno snapshot con un clone dipendente dà 500 col messaggio di zfs, andrebbe 409; (d) replica con `keep_snapshots=3`: dopo tre corse c'era un solo snapshot `backup_`, da capire se è voluto; (e) l'elenco dei backup mostra «VM #9801» invece del nome; (f) la migrazione in copia conserva MAC e bridge dell'originale (su PX-NAS `vmbr_int` non esiste).
+- [ ] Rilasciare la 3.28.5 con la correzione del ripristino da PBS e portarla a DTS (da confermare).
 - [ ] Aggiornare DTS alla 3.28.4 (sistema del cliente: con conferma).
 - [ ] Da guardare a Domarc: job 8, 9, 10 fermi al 23/11, job 13 al 20/11, job 15 al 17/07, tutti attivi e con ultimo esito riuscito. Non verificato se è la loro pianificazione.
 - [ ] Mai fatta una prova funzione per funzione dal vivo (ripristino da PBS, migrazione, sync NAS, snapshot VM, replica dati, backup host): c'è solo la copertura delle prove automatiche e quello che gira ogni giorno (repliche, backup host). Da decidere con Riccardo se farla, e dove.
